@@ -9,11 +9,10 @@
   y,
   type = c("selection", "probability"),
   seed = NULL,
-  ncol = 40,
+  ncol = NULL,
   max_dots = 4000,
-  col = "#17594A",
-  col_bg = "#C9D2CE",
   main = NULL,
+  palette = NULL,
   ...
 )
 }
@@ -27,14 +26,16 @@
 \item{seed}{Optional seed for the `"selection"` draw, so the picture is
 reproducible.}
 
-\item{ncol}{Dots per row in the `"selection"` grid.}
+\item{ncol}{Dots per row in the `"selection"` grid. Defaults to whatever
+fills the panel at its current aspect ratio.}
 
 \item{max_dots}{Frames larger than this are shown as an evenly spaced
-subset, with a note under the plot. Keeps individual dots visible.}
-
-\item{col, col_bg}{Colours for selected and unselected rows.}
+subset, noted under the title. Keeps individual dots visible.}
 
 \item{main}{Title. Defaults to a description of the design.}
+
+\item{palette}{Named list overriding any of `surface`, `ink`, `secondary`,
+`muted`, `recessive`, `accent`, `fill`, `rule`.}
 
 \item{...}{Passed to the underlying plot call.}
 }
@@ -43,21 +44,21 @@ subset, with a note under the plot. Keeps individual dots visible.}
 }
 \description{
 Draws the design against a population so you can see what it selects. Two
-views, and both answer questions that a table of numbers answers slowly:
+views, and each answers a question that a table answers slowly:
 }
 \details{
 \describe{
-  \item{`"selection"`}{Every row of the frame as a dot, laid out left to
-    right and top to bottom in frame order, with the selected ones filled in.
-    Designs look distinct: simple random sampling scatters, systematic makes
-    a lattice, cluster sampling takes solid contiguous runs, and
-    probability-proportional-to-size thickens wherever the weight is large.
-    If your frame is sorted by something meaningful, an unintended pattern
-    shows up here immediately.}
-  \item{`"probability"`}{Each row's inclusion probability against its
-    position. Flat means every row had the same chance; steps mean strata;
-    a slope means size-proportional selection. Rows the design can never
-    reach sit at zero, which is usually the thing you wanted to find out.}
+  \item{`"selection"`}{Every row of the frame as a dot, in frame order, with
+    the selected ones filled in. Designs look distinct: simple random
+    sampling scatters, systematic makes a lattice, cluster sampling takes
+    solid contiguous runs, and probability-proportional-to-size thickens
+    wherever the weight is large. If your frame is sorted by something
+    meaningful, an unintended pattern shows up immediately.}
+  \item{`"probability"`}{Each row's inclusion probability across the frame,
+    as a step. Flat means every row had the same chance; plateaus mean
+    strata; a rise means size-proportional selection. Rows the design can
+    never reach sit at zero and are marked, which is usually the thing worth
+    finding out.}
 }
 
 Base graphics, so there is no plotting dependency to install.
@@ -69,7 +70,7 @@ pop <- data.frame(
   cl = rep(paste0("c", 1:40), each = 10)
 )
 
-op <- par(mfrow = c(2, 1), mar = c(2, 1, 2, 1))
+op <- par(mfrow = c(2, 1))
 
 # Scattered, versus a visible lattice
 plot(design_simple(n = 60), pop, seed = 1)

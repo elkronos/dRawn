@@ -45,7 +45,7 @@ test_that("large frames are subsampled for display", {
 
 test_that("the default title describes the design", {
   expect_match(drawn:::design_label(design_stratified("site", n = 60)),
-               "design_stratified\\(n = 60")
+               "^design_stratified\\(strata = \"site\", n = 60")
   expect_match(drawn:::design_label(design_cluster("cl", n_clusters = 4)),
                "n_clusters = 4")
 })
