@@ -1,0 +1,43 @@
+url: https://elkronos.github.io/sampleR/
+
+template:
+  bootstrap: 5
+
+reference:
+- title: Drawing a sample
+  desc: One verb, and the probabilities that make a sample usable.
+  contents:
+  - draw
+  - inclusion_prob
+  - is_design
+
+- title: Equal-probability designs
+  desc: Every unit equally likely, or equally likely within a group.
+  contents:
+  - design_simple
+  - design_systematic
+  - design_stratified
+  - design_reservoir
+
+- title: Cluster designs
+  desc: Sample groups, then optionally sample within them.
+  contents:
+  - design_cluster
+  - design_multistage
+
+- title: Unequal-probability designs
+  desc: Selection driven by a weight, a time window, or a place.
+  contents:
+  - design_weighted
+  - design_temporal
+  - design_spatial
+
+- title: Resampling
+  contents:
+  - design_bootstrap
+
+articles:
+- title: Guides
+  navbar: ~
+  contents:
+  - choosing-a-design

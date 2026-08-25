@@ -1,47 +1,83 @@
-# utils.R
-# Utility functions for the sampling package
+# General-purpose helpers with no design-specific knowledge.
+# Argument checking lives in validate.R, allocation in allocation.R,
+# cluster selection in clusters.R.
 
-# Set the random seed for reproducibility.
-set_seed <- function(seed = NULL) {
-  if (!is.null(seed)) {
-    set.seed(seed)
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+#' Evaluate an expression under a seed without disturbing the caller's RNG
+#'
+#' Saves `.Random.seed`, seeds, evaluates, then restores the previous state on
+#' exit. Calling [set.seed()] directly would permanently move the caller's
+#' random number stream.
+#'
+#' @noRd
+with_seed <- function(seed, code) {
+  if (is.null(seed)) {
+    return(force(code))
   }
+  check_count(seed, "seed")
+  if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+    old <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
+    on.exit(assign(".Random.seed", old, envir = globalenv()), add = TRUE)
+  } else {
+    on.exit(suppressWarnings(rm(".Random.seed", envir = globalenv())),
+            add = TRUE)
+  }
+  set.seed(seed)
+  force(code)
 }
 
-# Return the current random state (for debugging purposes).
-get_random_state <- function(seed = NULL) {
-  if (!is.null(seed)) {
-    set.seed(seed)
-  }
-  return(.Random.seed)
+#' Subset rows and reset row names
+#'
+#' `drop = FALSE` matters: without it a one-column frame collapses to a vector.
+#'
+#' @noRd
+reindex <- function(data, idx, sort = FALSE) {
+  if (sort) idx <- sort(idx)
+  out <- data[idx, , drop = FALSE]
+  rownames(out) <- NULL
+  out
 }
 
-# Setup logging. (This is a basic placeholder.)
-setup_logging <- function(level = "INFO") {
-  message(paste("Logging level set to", level))
+#' Draw `n[[i]]` positions from each group of indices
+#' @noRd
+take_within <- function(idx_by_group, n, replace) {
+  unlist(
+    Map(function(idx, k) {
+      if (k == 0L) return(integer(0))
+      idx[sample.int(length(idx), size = k, replace = replace)]
+    }, idx_by_group, n),
+    use.names = FALSE
+  )
 }
 
-# Validate that the input is a non-empty data.frame and that it contains all required columns.
-validate_dataframe <- function(data, required_columns = NULL) {
-  if (!is.data.frame(data)) {
-    stop("Input must be a data.frame.")
-  }
-  if (nrow(data) == 0) {
-    stop("The dataset is empty.")
-  }
-  if (!is.null(required_columns)) {
-    missing_cols <- setdiff(required_columns, names(data))
-    if (length(missing_cols) > 0) {
-      stop(paste("The dataset is missing required columns:", paste(missing_cols, collapse = ", ")))
-    }
+#' Sample `size` values from the elements of `x`
+#'
+#' `sample(x, size)` reinterprets a length-1 numeric `x` as `seq_len(x)`, so a
+#' frame with a single numeric cluster id would sample integers that were never
+#' in the data.
+#'
+#' @noRd
+sample_values <- function(x, size, replace = FALSE) {
+  x[sample.int(length(x), size = size, replace = replace)]
+}
+
+#' An empty result that still has the input's schema
+#'
+#' `do.call(rbind, list())` is `NULL`, which would turn an empty window into a
+#' 0x0 frame with no columns at all.
+#'
+#' @noRd
+empty_like <- function(data) {
+  data[0L, , drop = FALSE]
+}
+
+#' Require a suggested package at run time
+#' @noRd
+require_suggested <- function(pkg, what) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop("Package `", pkg, "` is required for ", what, ".\n",
+         "Install it with install.packages(\"", pkg, "\").", call. = FALSE)
   }
   invisible(TRUE)
-}
-
-# Apply a maximum rows limit to a data.frame, if specified.
-apply_max_rows <- function(data, max_rows = NULL) {
-  if (!is.null(max_rows) && is.numeric(max_rows)) {
-    return(head(data, max_rows))
-  }
-  return(data)
 }

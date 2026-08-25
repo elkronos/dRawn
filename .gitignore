@@ -1,0 +1,15 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rcheck/
+*.tar.gz
+.DS_Store
+
+# Working artefacts from the pre-CRAN rewrite, not part of the package
+_old/
+.stage/
+drawn/
+CRAN-AUDIT.html
+RUNBOOK.md

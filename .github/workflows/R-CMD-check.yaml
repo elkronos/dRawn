@@ -1,0 +1,66 @@
+# Derived from https://github.com/r-lib/actions/tree/v2/examples
+#
+# Checks the package on macOS, Windows and Linux, against the current R release,
+# the previous one, and R-devel. R-devel is the one that catches deprecations
+# before CRAN does; oldrel-1 backs up the `R (>= 4.1)` claim in DESCRIPTION.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+name: R-CMD-check
+
+permissions: read-all
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: macos-latest,   r: 'release'}
+          - {os: windows-latest, r: 'release'}
+          - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release'}
+          - {os: ubuntu-latest,  r: 'release'}
+          - {os: ubuntu-latest,  r: 'oldrel-1'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      # Surface anything the tests only warn about.
+      _R_CHECK_FORCE_SUGGESTS_: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.http-user-agent }}
+          use-public-rspm: true
+
+      # `sf` is a Suggests-only dependency and needs GDAL, GEOS and PROJ.
+      # setup-r-dependencies installs the Linux system libraries itself; macOS
+      # and Windows get binaries. If it ever fails to install on one platform
+      # the spatial tests skip rather than fail, which is why they are written
+      # with skip_if_not_installed("sf").
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: No duplicate function definitions under R/
+        run: Rscript tools/check-duplicates.R
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
+          error-on: '"warning"'
