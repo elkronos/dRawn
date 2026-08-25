@@ -2,47 +2,86 @@
 
 ## Test environments
 
-* local: Ubuntu 24.04, R 4.3.3
-* (fill in win-builder / R-hub / GitHub Actions results before submitting)
+* local: macOS (aarch64), R 4.6.1
+* GitHub Actions: macOS, Windows and Ubuntu, on R-release, R-devel and oldrel-1
 
 ## R CMD check results
 
 0 errors | 0 warnings | 0 notes
 
-## Notes for the reviewer
+## What this package is for
 
-### Relationship to existing sampling packages
+`drawn` expresses a sampling design as a reusable object and applies it with a
+single verb:
 
-CRAN already hosts several packages with "sample" or "draw" in the name. The
-closest by name is **drawsample**, and the closest by domain are **sampler** and
-**sampling**. `drawn` differs from each in what it is for:
+```r
+plan <- design_stratified(strata = "site", n = 500)
+draw(data, plan, seed = 1, weights = TRUE)
+```
 
-* **drawsample** selects rows so that the resulting subsample matches target
-  distributional characteristics (skewness, kurtosis, and so on). It is a
-  data-shaping tool. `drawn` implements design-based probability sampling: the
-  selection mechanism is specified in advance and every unit has a known
-  inclusion probability.
-* **sampler** computes sample sizes and draws simple and stratified samples,
-  then reports margins of error. `drawn` covers ten designs rather than two, and
-  its distinguishing feature is that a design object can report its own
-  first-order inclusion probabilities via `inclusion_prob()`, which `draw()`
-  attaches to a sample as `.prob` and `.weight` so that Horvitz-Thompson
-  estimation is possible.
-* **sampling** provides a large library of selection algorithms as free
-  functions. `drawn` wraps a smaller set behind a single reusable design object
-  and one verb, and is deliberately explicit about which designs have no
-  closed-form inclusion probability.
+Ten designs share one contract: `n` always means the total drawn, `allocation`
+always means how a total is split, `na_rm` always means the same thing, the
+caller's RNG stream is restored on exit, and the result is a data frame with the
+input's class and column order. A design can also report its own first- and
+second-order inclusion probabilities, so `ht_total()` returns a
+Horvitz-Thompson total with a standard error.
 
-Where a design has no closed form — balanced cluster sampling, proportional
-multi-stage allocation, successive weighted sampling, and the bootstrap —
-`inclusion_prob()` raises an informative error naming an alternative rather than
-returning an approximation. A Monte Carlo estimate is available on request via
-`simulate = TRUE`.
+## Relationship to existing packages
 
-### First submission
+This overlaps a well-established area, and I want to be straightforward about
+where it sits.
+
+**`sampling`** (Tillé and Matei) is the reference library for design-based
+sampling in R and is considerably deeper than this package on the classical
+core. It implements a dozen unequal-probability algorithms where `drawn` has
+three, provides joint inclusion probabilities for several of them, and adds
+calibration, balanced sampling via the cube method, and ratio and regression
+estimators. Anyone who needs Brewer, Midzuno, Sampford, Tillé, pivotal or
+maximum-entropy sampling should use `sampling`, and the documentation for
+`design_weighted()` and `joint_prob()` says so by name.
+
+`drawn` differs in three ways rather than in statistical novelty:
+
+1. **Interface.** `sampling` is a library of functions over vectors that return
+   index tables, which you then join back to your data. `drawn` takes a data
+   frame and returns a data frame, and the design is a value you can hold,
+   print and reuse.
+
+2. **Scope beyond classical survey designs.** Reservoir sampling from a stream,
+   moving-block bootstrap, sampling within time intervals, and sampling within
+   a spatial region are in this package and not in `sampling`.
+
+3. **Declining to approximate.** Four designs have no closed-form inclusion
+   probability, and `inclusion_prob()` raises an informative error naming an
+   alternative rather than returning a plausible number. A Monte Carlo estimate
+   is available on request via `simulate = TRUE`. Similarly, `ht_total()`
+   returns `NA` for the variance under systematic sampling and explains that no
+   design-unbiased estimator exists, rather than silently substituting the
+   simple random sampling formula.
+
+**`survey`** (Lumley) analyses complex survey data given a design specification;
+it does not draw samples. The two are complementary, and a `drawn` sample
+carries the `.weight` column that `survey::svydesign()` expects.
+
+**`drawsample`** selects rows so a subsample matches target distributional
+characteristics. That is a data-shaping tool rather than probability sampling,
+so the overlap is in the name only.
+
+**`sampler`** computes sample sizes and draws simple and stratified samples,
+then reports margins of error.
+
+## Naming
+
+The package is named `drawn`, which does not differ only in case from any
+existing CRAN or Bioconductor package. `drawr` was avoided because of `DRaWR`,
+and `sdraw` because of `SDraw`.
+
+## Correctness checks
+
+Inclusion probabilities are verified against 20,000-draw simulations, and each
+variance estimator against the empirical sampling variance of its own estimator
+over 4,000 replications. These run as part of the test suite (416 tests).
+
+## First submission
 
 This is a first submission, so there are no reverse dependencies.
-
-The package name deliberately avoids `sampleR`, which differs from the existing
-CRAN package `sampler` only in the case of its final letter, and `drawr`, which
-would collide with `DRaWR` the same way.

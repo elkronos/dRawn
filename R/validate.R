@@ -78,8 +78,7 @@ validate_data <- function(data, required_columns = NULL, arg = "data") {
 
 #' Refuse to draw more rows than exist, without replacement
 #'
-#' Shared so the message is identical across designs; it used to be written out
-#' separately in three files.
+#' Shared so the message is identical across every design that needs it.
 #'
 #' @noRd
 check_draw_size <- function(n, n_rows, replace, arg = "n") {

@@ -1,10 +1,10 @@
 # Stage-one cluster selection, shared by design_cluster() and
 # design_multistage().
 #
-# This block used to be duplicated in both design files. Two of the audit's
-# blocker findings lived in it -- A1, where sample() reinterpreted a length-one
-# numeric cluster id as a range, and A15, where `==` against an NA label
-# fabricated all-NA rows -- and each had to be fixed twice. One copy now.
+# Both designs select clusters the same way, and the two subtle traps here --
+# sample() reinterpreting a length-one numeric cluster id as a range, and `==`
+# against an NA label fabricating all-NA rows -- are easy to reintroduce. One
+# copy means one place to get them right.
 
 #' Validate the cluster column and select clusters at random
 #'

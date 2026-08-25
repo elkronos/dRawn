@@ -3,11 +3,8 @@
 ^\.github$
 ^LICENSE\.md$
 ^cran-comments\.md$
-^CRAN-AUDIT\.md$
 ^\.gitattributes$
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
 ^tools$
-^CRAN-AUDIT\.html$
-^RUNBOOK\.md$

@@ -20,8 +20,8 @@ test_that("proportional allocation hits the requested total exactly", {
   expect_equal(nrow(draw(uneven, design_stratified("g", n = 50), seed = 1)), 50)
   expect_equal(nrow(draw(uneven, design_stratified("g", n = 33), seed = 1)), 33)
 
-  # Banker's rounding used to take four strata of 25 down to 8 for a request
-  # of 10.
+  # Independent per-stratum round() is subject to banker's rounding, which
+  # takes four strata of 25 down to 8 rows for a request of 10.
   even <- data.frame(x = 1:100, g = rep(c("a", "b", "c", "d"), each = 25))
   expect_equal(nrow(draw(even, design_stratified("g", n = 10), seed = 1)), 10)
 })
@@ -85,9 +85,8 @@ test_that("strata must be given as column names", {
 })
 
 test_that("min_per_stratum still totals n exactly, at every feasible floor", {
-  # The reduction branch of allocate() used to make a single pass, so it could
-  # only take back one row per stratum. With four strata and a floor of 8 it
-  # left 62 rows for a request of 60.
+  # A single-pass reduction can only take back one row per stratum, which
+  # leaves 62 rows for a request of 60 with four strata and a floor of 8.
   d <- data.frame(id = 1:600,
                   site = rep(c("north", "south", "east", "west"),
                              times = c(300, 180, 90, 30)))

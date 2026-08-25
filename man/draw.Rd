@@ -71,5 +71,6 @@ sum(s$spend * s$.weight)   # estimates sum(df$spend) = 5050
 }
 \seealso{
 [designs] for the full list of constructors, [inclusion_prob()] for
-  the probabilities themselves.
+  the probabilities themselves, and [ht_total()] to estimate a population
+  total with a standard error.
 }

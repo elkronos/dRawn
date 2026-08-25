@@ -9,6 +9,8 @@ reference:
   contents:
   - draw
   - inclusion_prob
+  - joint_prob
+  - ht_total
   - designs
   - is_design
 

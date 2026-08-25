@@ -11,8 +11,9 @@ Draws probability samples from data frames under an explicit, reusable sampling 
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/elkronos/sampleR}
-  \item Report bugs at \url{https://github.com/elkronos/sampleR/issues}
+  \item \url{https://github.com/elkronos/dRawn}
+  \item \url{https://elkronos.github.io/dRawn/}
+  \item Report bugs at \url{https://github.com/elkronos/dRawn/issues}
 }
 
 }

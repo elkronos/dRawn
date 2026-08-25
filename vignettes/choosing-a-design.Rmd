@@ -82,7 +82,21 @@ ht <- sum(s$value * s$.weight)
 c(estimate = round(ht), truth = sum(invoices$value))
 ```
 
-One draw won't land on the truth, but it's unbiased — the average over many
+One draw won't land on the truth. `ht_total()` gives you the total *and* a
+standard error, so you know how far off it might be:
+
+```{r}
+ht_total(s, "value")
+```
+
+That interval comes from second-order inclusion probabilities — the chance a
+*pair* of rows both land in the sample — which `joint_prob()` computes:
+
+```{r}
+round(joint_prob(invoices, plan, rows = 1:4), 4)
+```
+
+The estimator is unbiased — the average over many
 draws converges.
 
 ```{r}
@@ -92,6 +106,16 @@ ests <- vapply(1:400, function(i) {
 }, numeric(1))
 
 c(mean_estimate = round(mean(ests)), truth = sum(invoices$value))
+```
+
+And the reported standard error tracks the estimator's real spread:
+
+```{r}
+ses <- vapply(1:400, function(i) {
+  ht_total(draw(invoices, plan, seed = i, weights = TRUE), "value")$se
+}, numeric(1))
+
+c(mean_reported_se = round(mean(ses)), actual_sd = round(stats::sd(ests)))
 ```
 
 You can also ask the design about the population *before* drawing anything,

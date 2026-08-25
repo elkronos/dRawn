@@ -11,7 +11,8 @@ odd_df <- function() {
 
 test_that("a matrix column is refused rather than silently mis-grouped", {
   d <- odd_df()
-  # cluster_sampling used to return ONE row from this twenty-row frame.
+  # unique() on a matrix column works element-wise, which silently yields one
+  # row from a twenty-row frame rather than an error.
   expect_error(draw(d, design_cluster("mat", n_clusters = 1), seed = 1),
                "which is a 2-dimensional matrix column")
   expect_error(draw(d, design_stratified("mat", n = 4), seed = 1),
@@ -22,7 +23,7 @@ test_that("a matrix column is refused rather than silently mis-grouped", {
 
 test_that("a list column is refused rather than failing inside base R", {
   d <- odd_df()
-  # order() used to raise "unimplemented type 'list' in 'orderVector1'".
+  # order() on a list column raises "unimplemented type 'list'" from base R.
   expect_error(draw(d, design_stratified("lst", n = 4), seed = 1),
                "which is a list column")
   expect_error(draw(d, design_systematic(interval = 2, order_by = "lst"), seed = 1),

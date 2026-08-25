@@ -51,7 +51,8 @@
 #' sum(s$spend * s$.weight)   # estimates sum(df$spend) = 5050
 #'
 #' @seealso [designs] for the full list of constructors, [inclusion_prob()] for
-#'   the probabilities themselves.
+#'   the probabilities themselves, and [ht_total()] to estimate a population
+#'   total with a standard error.
 #' @export
 draw <- function(data, design, seed = NULL, weights = FALSE) {
   if (!is_design(design)) {
@@ -99,7 +100,14 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   ok <- !is.na(p) & p > 0
   w[ok] <- 1 / p[ok]
 
-  cbind(data.frame(.prob = p, .weight = w), out)
+  out <- cbind(data.frame(.prob = p, .weight = w), out)
+
+  # Carry the design and the source rows so ht_total() can recover the joint
+  # inclusion probabilities without being handed the population again.
+  attr(out, "drawn_design") <- design
+  attr(out, "drawn_rows") <- pos
+  attr(out, "drawn_population") <- data
+  out
 }
 
 #' Design-specific draw method

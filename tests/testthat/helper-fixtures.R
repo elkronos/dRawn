@@ -41,7 +41,8 @@ wide_poly <- function() {
   )
 }
 
-# The literal polygon from the retired UAT, kept so its behaviour stays pinned.
+# A lon/lat rectangle whose edges span nearly the whole globe. Under s2 this
+# collapses to a strip across the antimeridian; pinned so that stays detected.
 antimeridian_poly <- function() {
   skip_if_not_installed("sf")
   sf::st_sfc(
