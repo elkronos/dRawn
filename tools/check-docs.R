@@ -6,6 +6,8 @@
 #  2. Every [foo()] cross-reference in R/, README and NEWS resolves.
 #  3. Nothing references an identifier the package no longer has.
 #  4. Every design constructor appears in the overview topic, README and NEWS.
+#  5. Every exported function is reachable from the overview topic, and the
+#     generated Rd is real Rd -- not markdown that was never processed.
 #
 # R CMD check catches undocumented objects but not documentation that has
 # quietly gone stale, which is the failure mode this covers.
@@ -45,7 +47,7 @@ cat("1. arguments documented\n")
 for (f in rd_files) {
   aliases <- intersect(rd_alias(f), exports)
   if (!length(aliases)) next
-  documented <- rd_args(f)
+  documented <- setdiff(rd_args(f), "...")
   all_formals <- unique(unlist(lapply(aliases, function(a)
     setdiff(names(formals(get(a, asNamespace("drawn")))), "..."))))
   for (a in aliases) {
@@ -97,6 +99,30 @@ for (f in c("man/designs.Rd", "README.md", "NEWS.md")) {
   txt <- paste(lines_of(f), collapse = " ")
   miss <- ctors[!vapply(ctors, grepl, logical(1), x = txt, fixed = TRUE)]
   if (length(miss)) note(basename(f), " omits ", paste(miss, collapse = ", "))
+}
+
+cat("5. Rd is processed, and every export is reachable\n")
+# Without `Roxygen: list(markdown = TRUE)` in DESCRIPTION every [foo()] and
+# `code` span is written to Rd verbatim, so the help pages render as raw
+# markdown with no working links. Cheap to check, silent to miss.
+if (!any(grepl("markdown\\s*=\\s*TRUE", lines_of("DESCRIPTION")))) {
+  note("DESCRIPTION: needs Roxygen: list(markdown = TRUE)")
+}
+for (f in rd_files) {
+  txt <- lines_of(f)
+  # Skip \examples and \usage, where both are legitimate literal code.
+  keep <- txt[cumsum(grepl("^\\\\(examples|usage)\\{", txt)) ==
+                cumsum(grepl("^\\}", txt))]
+  if (any(grepl("\\[[a-zA-Z_.][a-zA-Z0-9_.]*\\(\\)\\]", keep))) {
+    note(basename(f), ": unprocessed markdown link -- see DESCRIPTION")
+  }
+}
+hub <- paste(lines_of("man/designs.Rd"), collapse = " ")
+for (e in setdiff(exports, c(grep("^design_", exports, value = TRUE),
+                             "draw_design", "is_design"))) {
+  if (!grepl(e, hub, fixed = TRUE)) {
+    note("designs.Rd: no route to ", e, "() from the overview topic")
+  }
 }
 
 if (bad) {

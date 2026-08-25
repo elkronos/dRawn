@@ -14,17 +14,17 @@ design_cluster(clusters, n_clusters, balanced = FALSE, na_rm = FALSE)
 \item{balanced}{Take an equal number of rows from each selected cluster,
 equal to the smallest selected cluster's size.}
 
-\item{na_rm}{Drop rows whose cluster label is `NA` instead of raising an
-error. When `FALSE`, missing labels are never treated as a cluster of their
+\item{na_rm}{Drop rows whose cluster label is \code{NA} instead of raising an
+error. When \code{FALSE}, missing labels are never treated as a cluster of their
 own.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Selects whole clusters at random and returns all of their rows. The row count
-follows from which clusters were picked, so there is no `n`; use
-[design_multistage()] when you need to control it.
+follows from which clusters were picked, so there is no \code{n}; use
+\code{\link[=design_multistage]{design_multistage()}} when you need to control it.
 }
 \examples{
 df <- data.frame(id = 1:100, site = rep(paste0("s", 1:10), each = 10))
@@ -32,10 +32,11 @@ unique(draw(df, design_cluster("site", n_clusters = 3), seed = 1)$site)
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},

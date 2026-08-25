@@ -11,20 +11,22 @@ design_systematic(interval, start = NULL, order_by = NULL, na_rm = FALSE)
 intervals are rejected: they produce uneven gaps, which is not a systematic
 design.}
 
-\item{start}{Starting row, in `1:interval`. Drawn at random from that range
-when `NULL`.}
+\item{start}{Starting row, in \code{1:interval}. Drawn at random from that range
+when \code{NULL}.}
 
-\item{order_by}{Optional column to sort by before walking the data.}
+\item{order_by}{Optional column to sort by before walking the data. It
+changes which rows can appear together, so \code{\link[=inclusion_prob]{inclusion_prob()}} and
+\code{\link[=joint_prob]{joint_prob()}} compute against the sorted order too.}
 
-\item{na_rm}{When `order_by` is given, drop rows whose sort key is `NA`
+\item{na_rm}{When \code{order_by} is given, drop rows whose sort key is \code{NA}
 instead of raising an error.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Takes every `interval`-th row, beginning at `start`. The number of rows drawn
-follows from the interval and the size of the data, so there is no `n`.
+Takes every \code{interval}-th row, beginning at \code{start}. The number of rows drawn
+follows from the interval and the size of the data, so there is no \code{n}.
 }
 \examples{
 df <- data.frame(id = 1:100, value = (1:100) / 10)
@@ -33,10 +35,11 @@ draw(df, design_systematic(interval = 25, order_by = "value"), seed = 1)
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

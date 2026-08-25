@@ -79,9 +79,7 @@ draw_design.drawn_design_temporal <- function(design, data) {
     stop("`from` and `to` must each be a single parseable date-time.",
          call. = FALSE)
   }
-  if (to_dt <= from_dt) {
-    stop("`to` must be after `from`.", call. = FALSE)
-  }
+  check_window(from_dt, to_dt)
 
   breaks <- make_breaks(from_dt, to_dt, design$interval, design$unit)
   if (length(breaks) < 2L) {
@@ -122,8 +120,13 @@ parse_time <- function(x, tz, arg) {
   if (is.character(x) || is.factor(x)) {
     x <- as.character(x)
     parsed <- suppressWarnings(lubridate::ymd_hms(x, tz = tz, quiet = TRUE))
-    if (all(is.na(parsed) | is.na(x))) {
-      parsed <- suppressWarnings(lubridate::ymd(x, tz = tz, quiet = TRUE))
+    # Retry the date-only parser on whatever is still missing, rather than only
+    # when nothing parsed at all. A column mixing "2024-01-01" with
+    # "2024-01-01 05:00:00" otherwise silently loses every date-only row.
+    todo <- is.na(parsed) & !is.na(x)
+    if (any(todo)) {
+      parsed[todo] <- suppressWarnings(
+        lubridate::ymd(x[todo], tz = tz, quiet = TRUE))
     }
     return(parsed)
   }
@@ -147,8 +150,10 @@ make_breaks <- function(from_dt, to_dt, interval, unit) {
     )
     seq(from_dt, to_dt, by = step)
   }
-  # Keep complete intervals only.
-  breaks[breaks <= to_dt]
+  # seq() never emits a value past `to`, so no trimming is needed here. Only
+  # complete intervals are used, and that is enforced where the buckets are
+  # assigned: a row counts only while `tv < breaks[length(breaks)]`.
+  breaks
 }
 
 # ---- inclusion probability ------------------------------------------------
@@ -160,6 +165,9 @@ exact_inclusion.drawn_design_temporal <- function(design, data) {
   tv <- parse_time(data[[design$time]], tz, design$time)
   from_dt <- parse_time(design$from, tz, "from")
   to_dt <- parse_time(design$to, tz, "to")
+  check_window(from_dt, to_dt)
+  check_na_policy(is.na(tv), design$na_rm,
+                  paste0("an unparseable `", design$time, "`"))
   breaks <- make_breaks(from_dt, to_dt, design$interval, design$unit)
 
   out <- numeric(nrow(data))
@@ -175,4 +183,41 @@ exact_inclusion.drawn_design_temporal <- function(design, data) {
     out[idx] <- min(1, design$per_interval / length(idx))
   }
   out
+}
+
+#' Which sampling interval each row falls in
+#'
+#' `NA` for a row outside the window, which the design can never select. Shared
+#' by the joint-probability and `survey` mappings so the three views of a
+#' temporal design cannot drift apart.
+#'
+#' @noRd
+temporal_bucket <- function(design, data) {
+  validate_data(data, required_columns = design$time)
+  tz <- design$tz %||% "UTC"
+  tv <- parse_time(data[[design$time]], tz, design$time)
+  from_dt <- parse_time(design$from, tz, "from")
+  to_dt <- parse_time(design$to, tz, "to")
+  check_window(from_dt, to_dt)
+  breaks <- make_breaks(from_dt, to_dt, design$interval, design$unit)
+  out <- rep(NA_character_, nrow(data))
+  if (length(breaks) >= 2L) {
+    inw <- !is.na(tv) & tv >= breaks[1] & tv < breaks[length(breaks)]
+    out[inw] <- as.character(findInterval(tv[inw], breaks))
+  }
+  out
+}
+
+#' The window has to run forwards
+#'
+#' `make_breaks()` hands a backwards window to `seq()`, which fails with "wrong
+#' sign in 'by' argument" -- a base-R message that says nothing about the design.
+#' `draw_design()` guarded this; the probability paths did not.
+#'
+#' @noRd
+check_window <- function(from_dt, to_dt) {
+  if (!is.na(from_dt) && !is.na(to_dt) && to_dt <= from_dt) {
+    stop("`to` must be after `from`.", call. = FALSE)
+  }
+  invisible(NULL)
 }

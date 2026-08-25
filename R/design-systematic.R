@@ -8,7 +8,9 @@
 #'   design.
 #' @param start Starting row, in `1:interval`. Drawn at random from that range
 #'   when `NULL`.
-#' @param order_by Optional column to sort by before walking the data.
+#' @param order_by Optional column to sort by before walking the data. It
+#'   changes which rows can appear together, so [inclusion_prob()] and
+#'   [joint_prob()] compute against the sorted order too.
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`
 #'   instead of raising an error.
 #'
@@ -68,6 +70,28 @@ draw_design.drawn_design_systematic <- function(design, data) {
 
 # ---- inclusion probability ------------------------------------------------
 
+#' Where each row of `data` sits in the order the design walks
+#'
+#' `NA` for a row the design drops. Systematic sampling is the one design whose
+#' answer depends on *position*, so both the first- and second-order
+#' probabilities have to be computed against the order `draw_design()` actually
+#' uses -- the sorted, NA-dropped frame -- not against frame order.
+#'
+#' @noRd
+systematic_positions <- function(design, data) {
+  n <- nrow(data)
+  if (is.null(design$order_by)) return(seq_len(n))
+  check_key_columns(data, design$order_by, "order_by")
+  key <- data[[design$order_by]]
+  bad <- check_na_policy(is.na(key), design$na_rm,
+                         paste0("a missing `", design$order_by, "`"))
+  out <- rep(NA_integer_, n)
+  kept <- which(!bad)
+  if (!length(kept)) return(out)
+  out[kept[order(key[kept])]] <- seq_along(kept)
+  out
+}
+
 #' @noRd
 exact_inclusion.drawn_design_systematic <- function(design, data) {
   if (!is.null(design$start)) {
@@ -77,5 +101,6 @@ exact_inclusion.drawn_design_systematic <- function(design, data) {
   }
   # Row j is selected exactly when start == ((j - 1) %% interval) + 1, which is
   # one of the `interval` equally likely starts. Exact for any N.
-  rep(1 / design$interval, nrow(data))
+  pos <- systematic_positions(design, data)
+  ifelse(is.na(pos), 0, 1 / design$interval)
 }

@@ -23,11 +23,23 @@ test_that("weights are attached correctly even with duplicate rows", {
   expect_true(all(s$.prob == 4/6))
 })
 
-test_that("with-replacement draws each carry a probability", {
-  df <- data.frame(id = 1:10)
-  s <- draw(df, design_simple(n = 25, replace = TRUE), seed = 1, weights = TRUE)
-  expect_equal(nrow(s), 25)
+test_that("with-replacement designs refuse weights rather than mislead", {
+  # `.prob` for a with-replacement design is the chance of appearing at least
+  # once, but the sample holds duplicates. Summing y * .weight over it counts
+  # every duplicate at the distinct-unit weight, which came out about 15% high
+  # -- and ht_total() inherited the same bias.
+  df <- data.frame(id = 1:10, y = 1:10)
+  for (des in list(design_simple(n = 25, replace = TRUE),
+                   design_stratified("g", n = 6, replace = TRUE))) {
+    expect_error(
+      draw(transform(df, g = rep(c("a", "b"), each = 5)), des, seed = 1,
+           weights = TRUE),
+      "with-replacement")
+  }
+  # Without replacement, the same designs weight fine.
+  s <- draw(df, design_simple(n = 4), seed = 1, weights = TRUE)
   expect_false(anyNA(s$.prob))
+  expect_equal(sum(s$.weight), nrow(df))
 })
 
 test_that("weights = TRUE fails loudly where the design has no closed form", {

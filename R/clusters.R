@@ -35,8 +35,7 @@ select_clusters <- function(design, data) {
   idx <- lapply(chosen, function(cl) which(labels %in% cl))
   names(idx) <- as.character(chosen)
 
-  list(data = data, labels = labels, chosen = chosen,
-       idx_by_cluster = idx, sizes = lengths(idx))
+  list(data = data, idx_by_cluster = idx, sizes = lengths(idx))
 }
 
 #' How many distinct clusters the population holds

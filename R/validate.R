@@ -19,6 +19,12 @@ check_count <- function(x, arg, allow_zero = TRUE) {
          if (allow_zero) "non-negative" else "at least 1", ", not ", x, ".",
          call. = FALSE)
   }
+  # as.integer() turns anything past 2^31 - 1 into NA with a warning, and the
+  # design then prints `n NA` and fails somewhere far away.
+  if (x > .Machine$integer.max) {
+    stop("`", arg, "` must be at most ", .Machine$integer.max, ", not ", x, ".",
+         call. = FALSE)
+  }
   as.integer(x)
 }
 
@@ -47,6 +53,9 @@ check_flag <- function(x, arg) {
 
 #' @noRd
 format_bad <- function(x) {
+  if (is.character(x)) {
+    return(paste0("`", x, "`", collapse = ", "))
+  }
   if (length(x) != 1L) {
     return(paste0("a length-", length(x), " ", class(x)[1]))
   }
@@ -136,3 +145,37 @@ check_key_columns <- function(data, columns, arg) {
   }
   invisible(TRUE)
 }
+
+#' Apply the design's missing-data policy outside of `draw()`
+#'
+#' `drop_na_rows()` both raises the error and does the dropping, which suits
+#' `draw_design()`. The inclusion-probability methods need only the error: they
+#' report 0 for a row the design cannot reach, so they have nothing to drop.
+#' Without this they answer for a design that `draw()` would refuse, and `na_rm`
+#' stops meaning the same thing everywhere.
+#'
+#' @noRd
+check_na_policy <- function(bad, na_rm, what) {
+  bad[is.na(bad)] <- TRUE
+  if (any(bad) && !isTRUE(na_rm)) {
+    stop(sum(bad), " row(s) have ", what, ". Set na_rm = TRUE to drop them.",
+         call. = FALSE)
+  }
+  invisible(bad)
+}
+
+#' A grouping key that cannot collide
+#'
+#' `interaction()` joins levels with `.`, so `("a.b", "c")` and `("a", "b.c")`
+#' land in the same level and two distinct strata are silently merged --
+#' allocation, inclusion probabilities and the `min_per_stratum` guarantee all
+#' computed over the wrong groups. A separator that cannot appear in a printed
+#' value avoids it; `group_label()` puts a readable one back for display.
+#'
+#' @noRd
+group_key <- function(data, cols) {
+  interaction(data[cols], drop = TRUE, lex.order = TRUE, sep = "\r")
+}
+
+#' @noRd
+group_label <- function(x) gsub("\r", " . ", as.character(x), fixed = TRUE)

@@ -4,56 +4,75 @@
 \alias{designs}
 \title{Sampling designs}
 \description{
-A design describes *how* to sample, independently of *what* you are sampling.
-Build one with a `design_*()` constructor, then hand it to [draw()] with the
+A design describes \emph{how} to sample, independently of \emph{what} you are sampling.
+Build one with a \verb{design_*()} constructor, then hand it to \code{\link[=draw]{draw()}} with the
 data. The same design can be reused across data sets, stored, printed and
 passed around.
 }
 \section{The designs}{
 
 \describe{
-  \item{[design_simple()]}{Rows uniformly at random.}
-  \item{[design_stratified()]}{A share of each stratum.}
-  \item{[design_systematic()]}{Every *k*-th row.}
-  \item{[design_cluster()]}{Whole clusters.}
-  \item{[design_multistage()]}{Clusters, then rows within them.}
-  \item{[design_weighted()]}{Rows with probability governed by a weight.}
-  \item{[design_reservoir()]}{A fixed-size sample from a stream.}
-  \item{[design_bootstrap()]}{Resampled replicates.}
-  \item{[design_temporal()]}{A share of each time interval.}
-  \item{[design_spatial()]}{Rows inside a region.}
+\item{\code{\link[=design_simple]{design_simple()}}}{Rows uniformly at random.}
+\item{\code{\link[=design_stratified]{design_stratified()}}}{A share of each stratum.}
+\item{\code{\link[=design_systematic]{design_systematic()}}}{Every \emph{k}-th row.}
+\item{\code{\link[=design_cluster]{design_cluster()}}}{Whole clusters.}
+\item{\code{\link[=design_multistage]{design_multistage()}}}{Clusters, then rows within them.}
+\item{\code{\link[=design_weighted]{design_weighted()}}}{Rows with probability governed by a weight.}
+\item{\code{\link[=design_certainty]{design_certainty()}}}{Everything above a threshold, plus a sample of
+the rest.}
+\item{\code{\link[=design_reservoir]{design_reservoir()}}}{A fixed-size sample from a stream.}
+\item{\code{\link[=design_bootstrap]{design_bootstrap()}}}{Resampled replicates.}
+\item{\code{\link[=design_temporal]{design_temporal()}}}{A share of each time interval.}
+\item{\code{\link[=design_spatial]{design_spatial()}}}{Rows inside a region.}
 }
 }
 
 \section{What every design guarantees}{
 
 Arguments mean the same thing everywhere they appear:
-
-* `n` is always the **total** number of rows drawn, never a per-group figure.
-  [design_temporal()] uses `per_interval` precisely because that one *is* per
-  group, and [design_cluster()] has no `n` at all because the row count
-  follows from which clusters were selected.
-* `allocation` always says how a total is split across groups, either
-  `"proportional"` or `"equal"`. Splitting is exact: the largest-remainder
-  method is used, so a request for 60 rows returns 60 rather than drifting
-  with per-group rounding.
-* `na_rm` always decides whether rows with a missing key are dropped or raise
-  an error. It is never silently assumed either way.
-* `replace` always means sampling with replacement within whatever group the
-  design works on.
-* [draw()] always restores the caller's random number stream before
-  returning, and always gives back a data frame with the input's class and
-  column order.
+\itemize{
+\item \code{n} is always the \strong{total} number of rows drawn, never a per-group figure.
+\code{\link[=design_temporal]{design_temporal()}} uses \code{per_interval} precisely because that one \emph{is} per
+group, and \code{\link[=design_cluster]{design_cluster()}} has no \code{n} at all because the row count
+follows from which clusters were selected.
+\item \code{allocation} always says how a total is split across groups, either
+\code{"proportional"} or \code{"equal"}. Splitting is exact: the largest-remainder
+method is used, so a request for 60 rows returns 60 rather than drifting
+with per-group rounding.
+\item \code{na_rm} always decides whether rows with a missing key are dropped or raise
+an error. It is never silently assumed either way.
+\item \code{replace} always means sampling with replacement within whatever group the
+design works on, and always rules out \code{draw(weights = TRUE)}: an inclusion
+probability describes distinct units, and a sample holding duplicates
+cannot be weighted by one.
+\item \code{\link[=draw]{draw()}} always restores the caller's random number stream before
+returning, and always gives back a data frame with the input's class and
+column order.
+\item Rows come back in frame order for every design that selects a set of rows.
+The two exceptions are the ones where draw order is meaningful:
+\code{\link[=design_simple]{design_simple()}} and \code{\link[=design_weighted]{design_weighted()}} return rows in the order they
+were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns replicates in order with a
+leading \code{.replicate} column.
+}
 }
 
 \section{Estimating from a sample}{
 
 Because a design is a value, it can report its own inclusion probabilities
-before any sampling happens. [inclusion_prob()] gives first-order
-probabilities, [joint_prob()] second-order ones, and [ht_total()] combines
-them into a population total with a standard error.
+before any sampling happens. \code{\link[=inclusion_prob]{inclusion_prob()}} gives first-order
+probabilities and \code{\link[=sampling_weight]{sampling_weight()}} their reciprocals — the number of
+population rows each sampled row stands for. \code{\link[=joint_prob]{joint_prob()}} gives
+second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and
+\code{\link[=ht_mean]{ht_mean()}} combine them into a population total or mean with a standard
+error. \code{\link[=deff]{deff()}} reports what the design cost in precision against simple
+random sampling, and \code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn
+against what was in the frame.
 
-Not every design has a closed form for these — see [inclusion_prob()] for
+Going the other way, \code{\link[=plan_size]{plan_size()}} solves for the sample size a given margin
+of error requires — the step \emph{before} choosing a design. For analysis this
+package does not do, \code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package.
+
+Not every design has a closed form for these — see \code{\link[=inclusion_prob]{inclusion_prob()}} for
 which, why, and what to do instead. Those that do not say so rather than
 returning an approximation.
 }
@@ -61,23 +80,27 @@ returning an approximation.
 \section{Choosing one}{
 
 \describe{
-  \item{Every unit equally likely}{[design_simple()], or
-    [design_systematic()] when the frame has a useful order, or
-    [design_reservoir()] when it does not fit in memory.}
-  \item{Guaranteed coverage of subgroups}{[design_stratified()], with
-    `min_per_stratum` if rare groups must appear.}
-  \item{Fieldwork cost matters more than efficiency}{[design_cluster()] or
-    [design_multistage()] — visiting five sites is cheaper than visiting
-    fifty, at the cost of precision.}
-  \item{Large units matter more}{[design_weighted()], with
-    `method = "systematic"` or `"poisson"` if you intend to estimate.}
-  \item{Coverage across time or space}{[design_temporal()],
-    [design_spatial()].}
-  \item{Uncertainty of a statistic, not a population total}{
-    [design_bootstrap()].}
+\item{Every unit equally likely}{\code{\link[=design_simple]{design_simple()}}, or
+\code{\link[=design_systematic]{design_systematic()}} when the frame has a useful order, or
+\code{\link[=design_reservoir]{design_reservoir()}} when it does not fit in memory.}
+\item{Guaranteed coverage of subgroups}{\code{\link[=design_stratified]{design_stratified()}}, with
+\code{min_per_stratum} if rare groups must appear.}
+\item{Fieldwork cost matters more than efficiency}{\code{\link[=design_cluster]{design_cluster()}} or
+\code{\link[=design_multistage]{design_multistage()}} — visiting five sites is cheaper than visiting
+fifty, at the cost of precision.}
+\item{Large units matter more}{\code{\link[=design_weighted]{design_weighted()}}, with
+\code{method = "systematic"} or \code{"poisson"} if you intend to estimate.}
+\item{A few units dominate the total}{\code{\link[=design_certainty]{design_certainty()}} — take those
+with certainty and sample the tail, which removes them from the variance
+entirely.}
+\item{Coverage across time or space}{\code{\link[=design_temporal]{design_temporal()}},
+\code{\link[=design_spatial]{design_spatial()}}.}
+\item{Uncertainty of a statistic, not a population total}{
+\code{\link[=design_bootstrap]{design_bootstrap()}}.}
 }
 }
 
 \seealso{
-[draw()], [inclusion_prob()], [ht_total()]
+\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=ht_total]{ht_total()}}, \code{\link[=plan_size]{plan_size()}},
+\code{\link[=sample_summary]{sample_summary()}}
 }

@@ -20,15 +20,20 @@
 #'   rows to pin down than an equally sized group that varies a lot.
 #' @noRd
 allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
-                     spread = NULL) {
+                     spread = NULL, min_arg = "min_per_stratum") {
   k <- length(sizes)
   if (k == 0L) return(integer(0))
 
   if (min_per_stratum * k > n) {
-    stop("min_per_stratum = ", min_per_stratum, " across ", k,
+    stop(min_arg, " = ", min_per_stratum, " across ", k,
          " group(s) needs at least ", min_per_stratum * k,
          " rows, but `n` is ", n, ".", call. = FALSE)
   }
+  # `n` and `sizes` are both integer, so `n * sizes` is evaluated in 32 bits and
+  # overflows to NA once the product passes 2^31 -- 3,000 rows out of 2.4
+  # million was enough. Everything downstream is fractional anyway.
+  n <- as.numeric(n)
+  sizes <- stats::setNames(as.numeric(sizes), names(sizes))
 
   raw <- switch(allocation,
     equal = rep(n / k, k),

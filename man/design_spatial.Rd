@@ -7,10 +7,10 @@
 design_spatial(coords, region, n, crs = 4326, na_rm = FALSE)
 }
 \arguments{
-\item{coords}{Two column names, `c(x, y)` — longitude then latitude.}
+\item{coords}{Two column names, \code{c(x, y)} — longitude then latitude.}
 
-\item{region}{An `sf` or `sfc` geometry, or a list of them, which is unioned.
-Reprojected to `crs` when it differs.}
+\item{region}{An \code{sf} or \code{sfc} geometry, or a list of them, which is unioned.
+Reprojected to \code{crs} when it differs.}
 
 \item{n}{Number of rows to draw from inside the region.}
 
@@ -20,36 +20,36 @@ EPSG:4326.}
 \item{na_rm}{Drop rows with missing coordinates instead of raising an error.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Samples rows whose coordinates fall inside a region.
 }
 \section{Coordinate order}{
 
-`coords` is `c(x, y)` — longitude first, then latitude — matching
-[sf::st_as_sf()]. Getting this backwards puts your points somewhere else
+\code{coords} is \code{c(x, y)} — longitude first, then latitude — matching
+\code{\link[sf:st_as_sf]{sf::st_as_sf()}}. Getting this backwards puts your points somewhere else
 entirely, so it is worth checking against a known landmark once.
 }
 
 \section{Regions that cross the antimeridian}{
 
-With spherical geometry enabled ([sf::sf_use_s2()], the default), consecutive
-polygon vertices are joined by the *shortest* great-circle path. An edge from
+With spherical geometry enabled (\code{\link[sf:s2]{sf::sf_use_s2()}}, the default), consecutive
+polygon vertices are joined by the \emph{shortest} great-circle path. An edge from
 longitude -179 to +179 therefore spans the 2 degrees across the antimeridian,
 not the 358 degrees the coordinates suggest. A "whole world" rectangle
 collapses into a 2-degree-wide pole-to-pole strip of 2.8 million km2 --
 against the roughly 510 million km2 of the globe -- and contains almost
 nothing.
 
-Ring orientation is not the cause and reversing it does not help: `sf`
+Ring orientation is not the cause and reversing it does not help: \code{sf}
 normalises winding, so both directions give the same strip. Adding
 intermediate vertices does not reliably help either, because the intermediate
 edges still bow along geodesics.
 
-[draw()] warns whenever any edge of `region` spans more than 180 degrees of
+\code{\link[=draw]{draw()}} warns whenever any edge of \code{region} spans more than 180 degrees of
 longitude. If you hit it, either split the region at the antimeridian into two
-polygons, or switch to planar interpretation with `sf::sf_use_s2(FALSE)`.
+polygons, or switch to planar interpretation with \code{sf::sf_use_s2(FALSE)}.
 }
 
 \examples{
@@ -65,10 +65,11 @@ draw(df, design_spatial(c("lon", "lat"), region = box, n = 5), seed = 1)
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

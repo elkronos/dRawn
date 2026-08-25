@@ -12,37 +12,64 @@ ht_total(
 )
 }
 \arguments{
-\item{sample}{A data frame returned by [draw()] with `weights = TRUE`.}
+\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}.}
 
 \item{y}{The variable to total: a column name, or a numeric vector as long as
-`sample`.}
+\code{sample}.}
 
-\item{variance}{How to compute it. `"auto"` uses the analytic estimator when
+\item{variance}{How to compute it. \code{"auto"} uses the analytic estimator when
 the design has one and falls back to the jackknife when it does not;
-`"analytic"` insists on the analytic form and errors otherwise;
-`"jackknife"` always resamples; `"none"` skips it. The result reports which
-was used.}
+\code{"analytic"} insists on the analytic form, returning \code{NA} with the reason
+in \code{note} rather than falling back; \code{"jackknife"} always resamples;
+\code{"none"} skips it. The result reports which was used in \code{method} — and
+reports \code{"none"} when neither could produce a figure, rather than naming a
+method that declined.}
 
 \item{level}{Confidence level for the interval.}
 }
 \value{
-A list with `total`, `variance`, `se`, `ci`, `n`, `method` and
-  `note`, with a `print()` method.
+A list with a \code{print()} method, holding:
+\describe{
+\item{\code{total}}{The Horvitz-Thompson total, \code{sum(y / pi)}.}
+\item{\code{variance}, \code{se}, \code{ci}, \code{level}}{Its estimated variance, standard
+error and confidence interval. \code{NA} where the design supports none.}
+\item{\code{n}, \code{design}}{Rows used, and the design's type.}
+\item{\code{deff}}{The design effect — see \code{\link[=deff]{deff()}}.}
+\item{\code{method}}{\code{"analytic"}, \code{"jackknife"} or \code{"none"}.}
+\item{\code{note}}{Why a variance is missing, or which fallback was taken.
+\code{NULL} when the analytic estimator applied cleanly.}
+}
 }
 \description{
-Forms the Horvitz-Thompson total `sum(y / pi)` and, where the design allows
+Forms the Horvitz-Thompson total \code{sum(y / pi)} and, where the design allows
 it, a design-unbiased variance and confidence interval.
 }
 \section{Variance}{
 
-For fixed-size designs the Sen-Yates-Grundy estimator is used, which is
+The estimator is chosen to match how the design actually randomises:
+\itemize{
+\item \strong{Fixed-size designs} use the Sen-Yates-Grundy estimator, which is
 non-negative more often than the general Horvitz-Thompson form and is the
-usual choice. Poisson sampling has a random size, so the independent-units
-form `sum((1 - pi) / pi^2 * y^2)` is used instead.
+usual choice.
+\item \strong{Poisson sampling} has a random size and independent rows, so the
+independent-units form \code{sum((1 - pi) / pi^2 * y^2)} is used instead.
+\item \strong{Cluster designs} take whole clusters, so the number of \emph{rows} is random
+whenever the clusters differ in size. The cluster is the sampling unit, and
+the estimator is applied at that level — algebraically the same thing as
+the delete-a-cluster jackknife.
+\item \strong{Certainty designs} hand the problem to \code{rest} over the rows below the
+threshold, since the certainty rows are in every possible sample and
+contribute nothing to the variance.
+}
+
+Sen-Yates-Grundy can still return a negative number on an unlucky sample.
+That is a failure of the estimator rather than a variance, so it is reported
+as one: \code{variance} is \code{NA}, \code{note} says what happened, and \code{variance = "auto"}
+falls through to the jackknife.
 
 A variance needs joint inclusion probabilities, and not every design has
-them — see [joint_prob()]. Where they are unavailable the estimate is still
-returned, with `variance` as `NA` and a note saying why. Systematic sampling
+them — see \code{\link[=joint_prob]{joint_prob()}}. Where they are unavailable the estimate is still
+returned, with \code{variance} as \code{NA} and a note saying why. Systematic sampling
 is the notable case: most pairs of rows can never co-occur, so no
 design-unbiased variance estimator exists at all.
 }
@@ -62,5 +89,5 @@ sum(pop$spend)   # the truth
 
 }
 \seealso{
-[joint_prob()], [inclusion_prob()]
+\code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
 }

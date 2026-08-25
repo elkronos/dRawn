@@ -49,3 +49,31 @@ test_that("the default title describes the design", {
   expect_match(drawn:::design_label(design_cluster("cl", n_clusters = 4)),
                "n_clusters = 4")
 })
+
+test_that("plot leaves graphical parameters as it found them", {
+  pop <- data.frame(id = 1:200, site = rep(c("a", "b"), each = 100),
+                    w = stats::runif(200, 1, 5))
+  f <- tempfile(fileext = ".png")
+  on.exit(unlink(f), add = TRUE)
+  grDevices::png(f)
+  on.exit(grDevices::dev.off(), add = TRUE, after = FALSE)
+
+  before <- graphics::par(c("mar", "bg"))
+  plot(design_simple(n = 20), pop)
+  expect_identical(graphics::par(c("mar", "bg")), before)
+  plot(design_stratified("site", n = 20), pop, type = "probability")
+  expect_identical(graphics::par(c("mar", "bg")), before)
+})
+
+test_that("plot reports the real reason it cannot draw probabilities", {
+  pop <- data.frame(id = 1:50, site = rep(c("a", "b"), each = 25))
+  expect_error(plot(design_stratified("nope", n = 10), pop,
+                    type = "probability"),
+               "missing column")
+  expect_error(plot(design_systematic(interval = 7, start = 3), pop,
+                    type = "probability"),
+               "fixed `start`")
+  expect_error(plot(design_weighted("site", n = 10), pop,
+                    type = "probability"),
+               "no closed-form")
+})

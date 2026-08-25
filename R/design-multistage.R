@@ -6,7 +6,11 @@
 #'
 #' @param clusters Column naming each row's cluster.
 #' @param n_clusters Number of clusters to select at stage one.
-#' @param n Total rows to draw across the selected clusters.
+#' @param n Total rows to draw across the selected clusters. Make it a
+#'   multiple of `n_clusters`, and no larger than `n_clusters` times the
+#'   smallest cluster, if you intend to estimate: otherwise the per-cluster take
+#'   depends on which clusters were selected and there is no closed-form
+#'   inclusion probability. See [inclusion_prob()].
 #' @param allocation `"equal"` splits `n` evenly across the selected clusters;
 #'   `"proportional"` splits it in proportion to their size.
 #' @param min_per_cluster Minimum rows from each selected cluster. Defaults to
@@ -57,7 +61,8 @@ draw_design.drawn_design_multistage <- function(design, data) {
 
   # The denominator is the rows in the SELECTED clusters, not the population.
   n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_cluster, cap = !design$replace)
+                      design$min_per_cluster, cap = !design$replace,
+                      min_arg = "min_per_cluster")
 
   if (!design$replace && sum(n_alloc) != design$n) {
     stop("`n` (", design$n, ") cannot be allocated across these ",
@@ -82,21 +87,61 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
     )
   }
   cl <- count_clusters(design, data)
+  check_na_policy(!cl$present, design$na_rm, "a missing cluster key")
   labels <- cl$labels
   keep <- cl$present
   sizes <- table(labels[keep])
 
-  # Equal allocation: every selected cluster contributes the same n_h,
-  # so the second stage does not depend on which clusters were picked.
-  per_cluster <- allocate(design$n, rep(1L, design$n_clusters), "equal",
-                          design$min_per_cluster, cap = FALSE)
-  # allocate() spreads a remainder across clusters; with equal-sized targets the
-  # per-cluster take differs by at most one, so average over the positions a
-  # cluster could occupy.
-  mean_take <- mean(per_cluster)
+  # A closed form needs every selected cluster to contribute the same number of
+  # rows, whichever clusters those turn out to be. Two things break that, and
+  # both depend on the draw:
+  #
+  #   * `n` not divisible by `n_clusters` -- allocate() hands the remainder to
+  #     the largest selected clusters, so a cluster's take depends on the company
+  #     it keeps;
+  #   * a cluster smaller than the per-cluster target -- it is capped at its own
+  #     size and the shortfall is dealt to the others.
+  #
+  # Averaging over the possibilities is not a closed form, and the average is not
+  # the answer: it was out by 13% on a four-cluster frame and could exceed 1.
+  m <- design$n %/% design$n_clusters
+  if (design$n %% design$n_clusters != 0L) {
+    no_closed_form(
+      paste0("`design_multistage()` with n = ", design$n, " over ",
+             design$n_clusters, " clusters"),
+      paste0("The remainder goes to the largest clusters selected, so a row's
+",
+             "probability depends on which other clusters were drawn. Choose an
+",
+             "`n` that divides by `n_clusters` (here, a multiple of ",
+             design$n_clusters, "),
+or pass simulate = TRUE.")
+    )
+  }
+  small <- names(sizes)[sizes < m]
+  if (length(small)) {
+    no_closed_form(
+      paste0("`design_multistage()` where ", length(small), " cluster(s) hold ",
+             "fewer than ", m, " rows"),
+      paste0("A cluster smaller than the per-cluster take is capped at its own
+",
+             "size and the shortfall is spread over whichever clusters came with
+",
+             "it, so there is no single answer. Lower `n`, drop the small
+",
+             "clusters, or pass simulate = TRUE.")
+    )
+  }
+  if (design$min_per_cluster > m) {
+    no_closed_form(
+      paste0("`design_multistage(min_per_cluster = ", design$min_per_cluster,
+             ")` above the per-cluster take of ", m),
+      "Lower `min_per_cluster`, or pass simulate = TRUE."
+    )
+  }
 
   stage1 <- design$n_clusters / cl$total
   out <- numeric(nrow(data))
-  out[keep] <- stage1 * (mean_take / as.numeric(sizes[as.character(labels[keep])]))
+  out[keep] <- stage1 * (m / as.numeric(sizes[as.character(labels[keep])]))
   out
 }

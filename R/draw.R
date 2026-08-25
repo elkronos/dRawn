@@ -19,8 +19,14 @@
 #' needs: a Horvitz-Thompson total is `sum(y * .weight)`.
 #'
 #' They come from the design applied to the population, not from the drawn
-#' sample, and four designs have no closed form for them. [inclusion_prob()]
+#' sample, and some designs have no closed form for them. [inclusion_prob()]
 #' documents which, why, and what to do instead.
+#'
+#' `weights = TRUE` is not available for a design that samples **with
+#' replacement**. `.prob` there is the probability of being selected *at least
+#' once*, but the sample holds duplicates, so `sum(y * .weight)` over it counts
+#' each duplicate at the distinct-unit weight and comes out around 15% high.
+#' Use `replace = FALSE`, or the Hansen-Hurwitz form `N / n * sum(y)`.
 #'
 #' @section Seeding:
 #' `seed` is saved, applied, and unwound: `.Random.seed` is restored on exit, so
@@ -75,6 +81,20 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
          "; weights = TRUE would overwrite ",
          if (length(clash) == 1L) "it" else "them", ".", call. = FALSE)
   }
+  if (anyDuplicated(names(data))) {
+    dup <- unique(names(data)[duplicated(names(data))])
+    stop("`data` has duplicated column name(s): ",
+         format_bad(dup), ". Rename them before drawing with weights, which ",
+         "cannot tell them apart.", call. = FALSE)
+  }
+  if (isTRUE(design$replace)) {
+    stop("`weights = TRUE` is not available for a with-replacement design.\n",
+         "`.prob` would be the chance of being selected *at least once*, but ",
+         "the sample holds\nduplicates, so summing `y * .weight` over it ",
+         "double-counts and comes out roughly 15%\nhigh. Use replace = FALSE, ",
+         "or estimate with the Hansen-Hurwitz form, N / n * sum(y).",
+         call. = FALSE)
+  }
 
   # Probabilities first, so a design with no closed form fails before any
   # sampling happens rather than after.
@@ -100,7 +120,13 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   ok <- !is.na(p) & p > 0
   w[ok] <- 1 / p[ok]
 
-  out <- cbind(data.frame(.prob = p, .weight = w), out)
+  # cbind() on a data.frame drops a tibble's class, and the contract is that
+  # what comes back matches what went in. Build the columns in place instead.
+  out <- reindex(out, seq_len(nrow(out)))
+  out[[".prob"]] <- p
+  out[[".weight"]] <- w
+  out <- out[, c(".prob", ".weight", setdiff(names(out), c(".prob", ".weight"))),
+             drop = FALSE]
 
   # Carry the design and the source rows so ht_total() can recover the joint
   # inclusion probabilities without being handed the population again.

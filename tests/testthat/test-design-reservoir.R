@@ -63,3 +63,27 @@ test_that("the sample is uniform over the stream", {
   }
   expect_gt(suppressWarnings(stats::chisq.test(counts)$p.value), 0.001)
 })
+
+test_that("a connection that was not open is read before it is closed", {
+  tf <- tempfile()
+  on.exit(unlink(tf), add = TRUE)
+  writeLines(as.character(1:20), tf)
+  con <- file(tf)                       # created, not opened
+  got <- unlist(draw(con, design_reservoir(n = 3), seed = 1))
+  expect_length(got, 3)
+  expect_true(all(got %in% as.character(1:20)))
+})
+
+test_that("a stream of exactly max_items is not reported as truncated", {
+  make_gen <- function(k) {
+    i <- 0L
+    function() {
+      i <<- i + 1L
+      if (i > k) NULL else i
+    }
+  }
+  expect_silent(draw(make_gen(5), design_reservoir(n = 3, max_items = 5),
+                     seed = 1))
+  expect_warning(draw(make_gen(9), design_reservoir(n = 3, max_items = 5),
+                      seed = 1), "may have held more")
+})

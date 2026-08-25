@@ -20,31 +20,31 @@ are cross-classified.}
 
 \item{n}{Total rows to draw across all strata, under either allocation.}
 
-\item{allocation}{How `n` is split across strata. `"proportional"` gives each
-stratum a share of `n` in proportion to its size; `"equal"` splits `n`
-evenly; `"neyman"` gives shares proportional to `size * sd`, using the
-column named by `allocation_by`. Neyman minimises the variance of a total
-for a fixed `n` by putting more rows where the values vary most, and is
+\item{allocation}{How \code{n} is split across strata. \code{"proportional"} gives each
+stratum a share of \code{n} in proportion to its size; \code{"equal"} splits \code{n}
+evenly; \code{"neyman"} gives shares proportional to \code{size * sd}, using the
+column named by \code{allocation_by}. Neyman minimises the variance of a total
+for a fixed \code{n} by putting more rows where the values vary most, and is
 the right choice when you have a frame variable correlated with what you
 are measuring.}
 
 \item{allocation_by}{Column whose within-stratum standard deviation drives
-`allocation = "neyman"`. Ignored otherwise.}
+\code{allocation = "neyman"}. Ignored otherwise.}
 
-\item{min_per_stratum}{Minimum rows from each stratum. The default of `0`
-leaves allocation unbiased; `1` guarantees coverage of rare strata at the
+\item{min_per_stratum}{Minimum rows from each stratum. The default of \code{0}
+leaves allocation unbiased; \code{1} guarantees coverage of rare strata at the
 cost of over-representing them.}
 
 \item{replace}{Sample with replacement within each stratum?}
 
-\item{na_rm}{Drop rows whose stratum key is `NA` instead of raising an error.}
+\item{na_rm}{Drop rows whose stratum key is \code{NA} instead of raising an error.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Draws a sample from each stratum. Allocation uses the largest-remainder
-method, so the returned row count matches `n` exactly rather than drifting
+method, so the returned row count matches \code{n} exactly rather than drifting
 with per-stratum rounding.
 }
 \examples{
@@ -57,10 +57,11 @@ draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1), seed = 1)$g
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

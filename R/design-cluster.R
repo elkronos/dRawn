@@ -35,13 +35,12 @@ design_cluster <- function(clusters, n_clusters, balanced = FALSE,
 draw_design.drawn_design_cluster <- function(design, data) {
   sel <- select_clusters(design, data)
   data <- sel$data
-  keep <- unlist(sel$idx_by_cluster, use.names = FALSE)
-
-  if (design$balanced) {
-    n_min <- min(sel$sizes)
-    keep <- take_within(sel$idx_by_cluster, rep(n_min, length(sel$sizes)), FALSE)
+  keep <- if (design$balanced) {
+    take_within(sel$idx_by_cluster, rep(min(sel$sizes), length(sel$sizes)),
+                FALSE)
+  } else {
+    unlist(sel$idx_by_cluster, use.names = FALSE)
   }
-
   reindex(data, keep, sort = TRUE)
 }
 
@@ -57,6 +56,7 @@ exact_inclusion.drawn_design_cluster <- function(design, data) {
     )
   }
   cl <- count_clusters(design, data)
+  check_na_policy(!cl$present, design$na_rm, "a missing cluster key")
   out <- rep(design$n_clusters / cl$total, nrow(data))
   out[!cl$present] <- 0
   out

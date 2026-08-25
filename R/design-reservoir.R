@@ -11,7 +11,9 @@
 #'
 #' @param n Reservoir size. Fewer items come back if the stream is shorter; the
 #'   result is never padded.
-#' @param max_items Stop after reading this many items. `Inf` reads the whole
+#' @param max_items Stop after reading this many items. Rows past it are never
+#'   read, so [inclusion_prob()] gives them `0` and gives the rows before it
+#'   `n / max_items` rather than `n / N`. `Inf` reads the whole
 #'   stream. Warns when the cap actually truncates.
 #'
 #' @return A design object, for use with [draw()].
@@ -63,6 +65,8 @@ draw_design.drawn_design_reservoir <- function(design, data) {
   }
 
   next_item <- as_stream(data)
+  con <- attr(next_item, "close_when_done")
+  if (!is.null(con)) on.exit(close(con), add = TRUE)
   reservoir <- vector("list", n)
   count <- 0L
   truncated <- FALSE
@@ -74,12 +78,15 @@ draw_design.drawn_design_reservoir <- function(design, data) {
     next_swap <- n + floor(log(stats::runif(1)) / log(1 - w)) + 1
 
     repeat {
+      item <- next_item()
+      if (is.null(item)) break
+      # Only now is it known that the stream held more than `max_items`. Testing
+      # the count before reading warned on a stream of exactly `max_items`,
+      # where nothing was left behind.
       if (count >= max_items) {
         truncated <- TRUE
         break
       }
-      item <- next_item()
-      if (is.null(item)) break
       count <- count + 1L
 
       if (count <= n) {
@@ -111,14 +118,18 @@ as_stream <- function(x) {
     return(x)
   }
   if (inherits(x, "connection")) {
-    if (!isOpen(x)) {
-      open(x, "r")
-      on.exit(close(x), add = TRUE)
-    }
-    return(function() {
+    # An on.exit() here would close the connection when *this* function
+    # returns, long before the reader below has read a byte from it. The
+    # caller's own open connections are left alone; one opened here is closed
+    # by draw_design(), which knows when the reading is done.
+    opened_here <- !isOpen(x)
+    if (opened_here) open(x, "r")
+    reader <- function() {
       line <- readLines(x, n = 1L, warn = FALSE)
       if (length(line) == 0L) NULL else line
-    })
+    }
+    attr(reader, "close_when_done") <- if (opened_here) x else NULL
+    return(reader)
   }
   if (is.list(x)) {
     i <- 0L
@@ -137,5 +148,16 @@ as_stream <- function(x) {
 
 #' @noRd
 exact_inclusion.drawn_design_reservoir <- function(design, data) {
-  rep(min(1, design$n / nrow(data)), nrow(data))
+  # `max_items` stops the read, so rows past it are never seen -- and the rows
+  # before it are competing against a shorter frame, not the whole of `data`.
+  reach <- reservoir_reach(design, nrow(data))
+  out <- numeric(nrow(data))
+  if (reach > 0L) out[seq_len(reach)] <- min(1, design$n / reach)
+  out
+}
+
+#' How many rows of a data frame a reservoir design can actually see
+#' @noRd
+reservoir_reach <- function(design, n_rows) {
+  as.integer(min(n_rows, design$max_items))
 }

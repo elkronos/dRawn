@@ -158,7 +158,8 @@ plot_selection <- function(x, y, shown, seed, ncol, main, sub, pal, ...) {
   sel <- sel[shown]
 
   k <- length(shown)
-  graphics::par(mar = c(2.4, 1.4, 3.6, 1.4), bg = pal$surface)
+  op <- graphics::par(mar = c(2.4, 1.4, 3.6, 1.4), bg = pal$surface)
+  on.exit(graphics::par(op), add = TRUE)
 
   # Shape the grid to the panel so it fills the space instead of floating in it.
   if (is.null(ncol)) {
@@ -189,9 +190,12 @@ plot_selection <- function(x, y, shown, seed, ncol, main, sub, pal, ...) {
 
 #' @noRd
 plot_probability <- function(x, y, shown, main, sub, pal, ...) {
+  # Keep the real reason. Assuming "no closed form" sent anyone with a missing
+  # column, or a fixed `start`, off in entirely the wrong direction.
   p <- tryCatch(inclusion_prob(y, x), error = function(e) {
-    stop("This design has no closed-form inclusion probability, so there is ",
-         "nothing to plot. Use type = \"selection\", or see ?inclusion_prob.",
+    stop("Cannot plot inclusion probabilities for this design: ",
+         conditionMessage(e),
+         "\nUse type = \"selection\" to see what it draws instead.",
          call. = FALSE)
   })
   pv <- p[shown]
@@ -199,7 +203,8 @@ plot_probability <- function(x, y, shown, main, sub, pal, ...) {
   top <- max(pv, na.rm = TRUE)
   ylim <- c(0, if (!is.finite(top) || top <= 0) 1 else top * 1.14)
 
-  graphics::par(mar = c(3.6, 4.4, 3.6, 1.4), bg = pal$surface)
+  op <- graphics::par(mar = c(3.6, 4.4, 3.6, 1.4), bg = pal$surface)
+  on.exit(graphics::par(op), add = TRUE)
   graphics::plot(NA, xlim = c(1, max(k, 2)), ylim = ylim, axes = FALSE,
                  ann = FALSE, xaxs = "i", yaxs = "i", ...)
 
@@ -236,8 +241,9 @@ plot_probability <- function(x, y, shown, main, sub, pal, ...) {
   graphics::axis(1, at = xt, labels = fmt_n(xt), cex.axis = 0.7,
                  col = pal$rule, col.axis = pal$secondary, lwd = 1,
                  tck = -0.016)
-  graphics::mtext("row (frame order)", side = 1, line = 2.1, cex = 0.72,
-                  col = pal$secondary)
+  graphics::mtext(if (length(shown) < nrow(y)) "row (frame order, thinned)"
+                  else "row (frame order)",
+                  side = 1, line = 2.1, cex = 0.72, col = pal$secondary)
   graphics::mtext("inclusion probability", side = 2, line = 3.0, cex = 0.72,
                   col = pal$secondary)
 

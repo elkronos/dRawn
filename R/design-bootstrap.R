@@ -12,7 +12,8 @@
 #' @param n Rows per replicate. `NULL` uses `nrow(data)`, the standard
 #'   nonparametric bootstrap.
 #' @param method `"simple"` or `"block"`.
-#' @param block_length Block length for `method = "block"`. `NULL` uses
+#' @param block_length Block length for `method = "block"`, and an error for
+#'   `method = "simple"`, where it would have no effect. `NULL` uses
 #'   `floor(nrow(data)^(1/3))`, a common rule of thumb.
 #'
 #' @return A design object, for use with [draw()].
@@ -32,10 +33,15 @@
 design_bootstrap <- function(n_replicates = 1000L, n = NULL,
                              method = c("simple", "block"),
                              block_length = NULL) {
+  method <- match.arg(method)
+  if (method == "simple" && !is.null(block_length)) {
+    stop("`block_length` only applies to method = \"block\". Set the method, ",
+         "or leave `block_length` as NULL.", call. = FALSE)
+  }
   new_design("bootstrap", list(
     n_replicates = check_count(n_replicates, "n_replicates", allow_zero = FALSE),
     n = if (is.null(n)) NULL else check_count(n, "n"),
-    method = match.arg(method),
+    method = method,
     block_length = if (is.null(block_length)) NULL else
       check_count(block_length, "block_length", allow_zero = FALSE)
   ))
@@ -44,6 +50,10 @@ design_bootstrap <- function(n_replicates = 1000L, n = NULL,
 #' @export
 draw_design.drawn_design_bootstrap <- function(design, data) {
   validate_data(data)
+  if (".replicate" %in% names(data)) {
+    stop("`data` already has a column called `.replicate`, which labels the ",
+         "bootstrap replicates. Rename it.", call. = FALSE)
+  }
 
   n_rows <- nrow(data)
   n <- design$n %||% n_rows
@@ -67,7 +77,10 @@ draw_design.drawn_design_bootstrap <- function(design, data) {
              use.names = FALSE)[seq_len(n)]
     }
     out <- reindex(data, idx)
-    cbind(.replicate = rep(i, n), out)
+    # cbind() on a data.frame demotes a tibble, and every other design keeps
+    # the input's class. Build the column in place instead.
+    out[[".replicate"]] <- rep(i, nrow(out))
+    out[, c(".replicate", setdiff(names(out), ".replicate")), drop = FALSE]
   })
 
   out <- do.call(rbind, parts)

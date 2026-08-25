@@ -14,26 +14,27 @@ design_bootstrap(
 \arguments{
 \item{n_replicates}{Number of replicates to generate.}
 
-\item{n}{Rows per replicate. `NULL` uses `nrow(data)`, the standard
+\item{n}{Rows per replicate. \code{NULL} uses \code{nrow(data)}, the standard
 nonparametric bootstrap.}
 
-\item{method}{`"simple"` or `"block"`.}
+\item{method}{\code{"simple"} or \code{"block"}.}
 
-\item{block_length}{Block length for `method = "block"`. `NULL` uses
-`floor(nrow(data)^(1/3))`, a common rule of thumb.}
+\item{block_length}{Block length for \code{method = "block"}, and an error for
+\code{method = "simple"}, where it would have no effect. \code{NULL} uses
+\code{floor(nrow(data)^(1/3))}, a common rule of thumb.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Generates bootstrap replicates. `"simple"` resamples rows independently;
-`"block"` is a moving-block bootstrap, which preserves the serial dependence
-in ordered data by concatenating `ceiling(n / block_length)` independently
+Generates bootstrap replicates. \code{"simple"} resamples rows independently;
+\code{"block"} is a moving-block bootstrap, which preserves the serial dependence
+in ordered data by concatenating \code{ceiling(n / block_length)} independently
 chosen blocks per replicate.
 }
 \details{
-[draw()] returns all replicates in one data frame with a leading `.replicate`
-column. Split them with `split(out, out$.replicate)`.
+\code{\link[=draw]{draw()}} returns all replicates in one data frame with a leading \code{.replicate}
+column. Split them with \code{split(out, out$.replicate)}.
 }
 \examples{
 df <- data.frame(id = 1:100, value = (1:100) / 10)
@@ -46,9 +47,10 @@ vapply(split(reps, reps$.replicate), function(r) mean(r$value), numeric(1))
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

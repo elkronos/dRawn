@@ -15,23 +15,23 @@ design_weighted(
 \arguments{
 \item{weights}{Column of positive, finite weights.}
 
-\item{n}{Number of rows to draw. Under `method = "poisson"` this is the
+\item{n}{Number of rows to draw. Under \code{method = "poisson"} this is the
 expected number, not a guarantee.}
 
 \item{replace}{Sample with replacement? Only available for
-`method = "successive"`.}
+\code{method = "successive"}.}
 
-\item{method}{One of `"successive"`, `"systematic"` or `"poisson"`. See
+\item{method}{One of \code{"successive"}, \code{"systematic"} or \code{"poisson"}. See
 "Choosing a method".}
 
-\item{na_rm}{Drop rows whose weight is `NA` instead of raising an error.}
+\item{na_rm}{Drop rows whose weight is \code{NA} instead of raising an error.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Draws rows with probability governed by a weights column. The weights are
-used as supplied: `prob=` normalises by their sum, so rescaling them changes
+used as supplied: \verb{prob=} normalises by their sum, so rescaling them changes
 nothing and the design does not offer it.
 }
 \section{Choosing a method}{
@@ -40,33 +40,33 @@ The three methods differ in what the weights actually control, which decides
 whether the sample can be used for estimation.
 
 \describe{
-  \item{`"successive"`}{The default, and what [base::sample()] does. The
-    weights govern each sequential draw, not the probability that a row ends
-    up in the sample, and the realised inclusion probabilities are **not**
-    proportional to the weights. How far off depends on the weights: with a
-    single dominant unit the two nearly coincide (about 1% apart), but with a
-    moderate spread the gap is large — weights `1:10` at `n = 5` give
-    inclusion probabilities up to 35% away from proportional. Treating them as
-    if they were proportional biases a Horvitz-Thompson total by around 1% at
-    `n = 15` out of 30 in simulation, small in size but unmistakable in sign.
-    There is no closed form for `pi`, so [inclusion_prob()] refuses to give
-    one. Fine when you want a weighted selection; wrong as the basis for an
-    estimate.}
-  \item{`"systematic"`}{Systematic probability-proportional-to-size. Walks the
-    cumulative weights with a fixed step from a random start, giving
-    `pi_i = n * p_i` exactly. Rows heavy enough that `n * p_i > 1` are taken
-    with certainty and the rest rescaled, repeatedly, until every probability
-    is valid. Fixed sample size. Some pairs of rows can never appear together,
-    so joint inclusion probabilities are zero for them and variance estimation
-    needs care.}
-  \item{`"poisson"`}{Each row is included independently with probability
-    `pi_i = n * p_i`, capped at 1. Inclusion probabilities are exactly
-    proportional to size and every pair can co-occur, at the cost of a
-    **random sample size** averaging `n`.}
+\item{\code{"successive"}}{The default, and what \code{\link[base:sample]{base::sample()}} does. The
+weights govern each sequential draw, not the probability that a row ends
+up in the sample, and the realised inclusion probabilities are \strong{not}
+proportional to the weights. How far off depends on the weights: with a
+single dominant unit the two nearly coincide (about 1\% apart), but with a
+moderate spread the gap is large — weights \code{1:10} at \code{n = 5} give
+inclusion probabilities up to 35\% away from proportional. Treating them as
+if they were proportional biases a Horvitz-Thompson total by around 1\% at
+\code{n = 15} out of 30 in simulation, small in size but unmistakable in sign.
+There is no closed form for \code{pi}, so \code{\link[=inclusion_prob]{inclusion_prob()}} refuses to give
+one. Fine when you want a weighted selection; wrong as the basis for an
+estimate.}
+\item{\code{"systematic"}}{Systematic probability-proportional-to-size. Walks the
+cumulative weights with a fixed step from a random start, giving
+\code{pi_i = n * p_i} exactly. Rows heavy enough that \code{n * p_i > 1} are taken
+with certainty and the rest rescaled, repeatedly, until every probability
+is valid. Fixed sample size. Some pairs of rows can never appear together,
+so joint inclusion probabilities are zero for them and variance estimation
+needs care.}
+\item{\code{"poisson"}}{Each row is included independently with probability
+\code{pi_i = n * p_i}, capped at 1. Inclusion probabilities are exactly
+proportional to size and every pair can co-occur, at the cost of a
+\strong{random sample size} averaging \code{n}.}
 }
 
-`replace = TRUE` is with-replacement PPS and applies only to
-`method = "successive"`.
+\code{replace = TRUE} is with-replacement PPS and applies only to
+\code{method = "successive"}.
 }
 
 \examples{
@@ -83,10 +83,11 @@ sum(s$w * s$.weight)   # estimates sum(df$w) = 210
 
 }
 \seealso{
-[draw()], [inclusion_prob()]
+\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

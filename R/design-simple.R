@@ -3,7 +3,10 @@
 #' Draws `n` rows uniformly at random.
 #'
 #' @param n Number of rows to draw. A single non-negative whole number.
-#' @param replace Sample with replacement?
+#' @param replace Sample with replacement? Note that `draw(weights = TRUE)`
+#'   declines a with-replacement design: `.prob` would be the chance of
+#'   appearing at least once, which does not weight a sample holding
+#'   duplicates. See [draw()].
 #'
 #' @return A design object, for use with [draw()].
 #'

@@ -18,14 +18,15 @@
 #'   [design_stratified()]  \tab `n_h / N_h` within each stratum \cr
 #'   [design_systematic()]  \tab `1 / interval`, for every row, exactly \cr
 #'   [design_cluster()]     \tab `n_clusters / N_clusters` \cr
-#'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, equal allocation only \cr
+#'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take is constant \cr
 #'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods \cr
-#'   [design_reservoir()]   \tab `n / N` \cr
+#'   [design_certainty()]   \tab `1` above the threshold, `rest`'s own below it \cr
+#'   [design_reservoir()]   \tab `n / min(N, max_items)`, and `0` past `max_items` \cr
 #'   [design_temporal()]    \tab `per_interval / N_bucket` within each interval \cr
 #'   [design_spatial()]     \tab `n / N_in_region` \cr
 #' }
 #'
-#' Four cases have no closed form, and the package refuses to invent one:
+#' Five cases have no closed form, and the package refuses to invent one:
 #'
 #' * `design_cluster(balanced = TRUE)` — the per-cluster take is the smallest
 #'   *selected* cluster's size, which is itself random. Simulation on clusters of
@@ -34,6 +35,14 @@
 #' * `design_multistage(allocation = "proportional")` — the stage-two allocation
 #'   depends on which clusters were selected. Simulation on clusters of 3/5/7/9
 #'   gives 0.17, 0.20, 0.17, 0.15, against a naive 0.33, 0.20, 0.14, 0.11.
+#' * `design_multistage()` where the per-cluster take is not constant — `n` not
+#'   divisible by `n_clusters`, or a cluster smaller than `n / n_clusters`. The
+#'   allocation runs over the *selected* clusters, so the remainder goes to the
+#'   largest of them and an undersized cluster is capped with its shortfall
+#'   dealt to whichever clusters came with it. A row's probability then depends
+#'   on the company it keeps. On clusters of 20/10/8/6 with `n = 7` over 2
+#'   clusters, the average take is out by up to 17%, and a cluster smaller than
+#'   the take can push the figure above 1.
 #' * `design_weighted(method = "successive")` — the default. Successive sampling
 #'   has no closed-form inclusion probability; this is the whole reason the other
 #'   two methods exist. Note that its realised probabilities are not merely
@@ -42,21 +51,26 @@
 #' * [design_bootstrap()] — resampling with replacement from the sample is not a
 #'   probability sample of a finite population, so there is no `pi` to report.
 #'
-#' For the first three, pass `simulate = TRUE` to estimate them by Monte Carlo
-#' instead. The estimate carries `R`-sized error, which is fine for checking a
-#' design and not fine for publishing a variance.
+#' For all but the bootstrap, pass `simulate = TRUE` to estimate them by Monte
+#' Carlo instead. The estimate carries `R`-sized error, which is fine for
+#' checking a design and not fine for publishing a variance. Simulating a
+#' bootstrap is refused rather than answered: every row turns up in some
+#' replicate, so the count converges to 1 for all of them.
 #'
 #' @param data A data frame.
 #' @param design A design object.
 #' @param simulate Estimate the probabilities by repeated draws rather than in
-#'   closed form. Required for the designs listed above; allowed for any design,
-#'   which is a convenient way to check the exact formulas.
+#'   closed form. Required for the designs listed above; allowed for any
+#'   probability design, which is a convenient way to check the exact formulas.
 #' @param R Number of simulated draws when `simulate = TRUE`.
 #' @param seed Optional seed for the simulation.
 #'
-#' @return A numeric vector with one element per row of `data`. Rows that the
-#'   design can never select — outside the region, outside the time window —
-#'   get `0`.
+#' @return A numeric vector with one element per row of `data`.
+#'
+#'   Rows the design can never select — outside the region, outside the time
+#'   window, at zero weight — get `0` from `inclusion_prob()` and `NA` from
+#'   `sampling_weight()`, since no finite number of population rows is
+#'   represented by a row that cannot be drawn. [sample_summary()] counts them.
 #'
 #' @examples
 #' df <- data.frame(id = 1:20, site = rep(c("a", "b"), times = c(15, 5)))
@@ -110,6 +124,7 @@ sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
 #'
 #' @noRd
 simulate_inclusion <- function(data, design, R, seed) {
+  refuse_simulation(design)
   n_rows <- nrow(data)
   key <- ".drawn_row_id"
   if (key %in% names(data)) {

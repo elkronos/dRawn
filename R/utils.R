@@ -15,7 +15,11 @@ with_seed <- function(seed, code) {
   if (is.null(seed)) {
     return(force(code))
   }
-  check_count(seed, "seed")
+  if (!is.numeric(seed) || length(seed) != 1L || is.na(seed) ||
+      !is.finite(seed) || seed != trunc(seed)) {
+    stop("`seed` must be a single whole number, not ", format_bad(seed), ".",
+         call. = FALSE)
+  }
   if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
     old <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
     on.exit(assign(".Random.seed", old, envir = globalenv()), add = TRUE)
@@ -80,4 +84,24 @@ require_suggested <- function(pkg, what) {
          "Install it with install.packages(\"", pkg, "\").", call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Designs that simulation cannot rescue
+#'
+#' Counting how often a row appears across repeated draws estimates an inclusion
+#' probability only if the design is a probability sample of the frame. A
+#' bootstrap resamples the sample, so every row appears in some replicate and
+#' the count converges to 1 for every row -- a confident-looking answer that
+#' means nothing. Refuse rather than return it.
+#'
+#' @noRd
+refuse_simulation <- function(design) {
+  if (inherits(design, "drawn_design_bootstrap")) {
+    stop("A bootstrap is not a probability sample of a finite population, so ",
+         "simulating it does not estimate an inclusion probability: every row ",
+         "appears in some replicate, and the count converges to 1 for all of ",
+         "them.\nIf you want the expected number of times each row appears, ",
+         "that is n_replicates * n / nrow(data).", call. = FALSE)
+  }
+  invisible(design)
 }

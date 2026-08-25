@@ -12,8 +12,9 @@
 #'   [design_simple()]      \tab `n(n-1) / (N(N-1))` for a pair, without replacement \cr
 #'   [design_stratified()]  \tab within a stratum as above; across strata, independent \cr
 #'   [design_cluster()]     \tab same cluster: `a/A`; different clusters: `a(a-1)/(A(A-1))` \cr
-#'   [design_multistage()]  \tab the two stages multiplied, equal allocation only \cr
-#'   [design_reservoir()]   \tab identical to simple random sampling \cr
+#'   [design_multistage()]  \tab the two stages multiplied, where the per-cluster take is constant \cr
+#'   [design_certainty()]   \tab `1` between certainty rows; otherwise the other row's own `pi` \cr
+#'   [design_reservoir()]   \tab simple random sampling over the first `max_items` rows \cr
 #'   [design_temporal()]    \tab within an interval as above; across intervals, independent \cr
 #'   [design_spatial()]     \tab simple random sampling inside the region \cr
 #'   [design_weighted()]    \tab `"poisson"` only, where rows are independent: `pi_i * pi_j` \cr
@@ -22,7 +23,9 @@
 #'
 #' Systematic sampling is the awkward one. Most pairs can never co-occur, so
 #' their joint probability is genuinely 0 and no design-unbiased variance
-#' estimator exists. [ht_total()] says so rather than returning a number.
+#' estimator exists. [ht_total()] says so rather than returning a number. Its
+#' residue classes follow the order the design walks, so `order_by` changes
+#' which pairs can co-occur.
 #'
 #' `design_weighted(method = "systematic")` has joint probabilities, but they
 #' depend on the order units are visited and need a dedicated algorithm. Use
@@ -33,6 +36,13 @@
 #' @param rows Optional row indices. Supply these — usually the rows you drew —
 #'   to get the submatrix for them instead of the full `nrow(data)` square,
 #'   which is what makes this usable on a large population.
+#' @param simulate Estimate the probabilities by repeated draws rather than in
+#'   closed form. Works for every probability design, including the ones with no
+#'   closed form, at the cost of Monte Carlo error. Refused for
+#'   [design_bootstrap()], where every row appears in some replicate and the
+#'   count converges to 1 for all of them.
+#' @param R Number of simulated draws when `simulate = TRUE`.
+#' @param seed Optional seed for the simulation.
 #'
 #' @return A square matrix with one row and column per element of `rows`
 #'   (or per row of `data`). The diagonal holds first-order probabilities.
@@ -46,18 +56,57 @@
 #'
 #' @seealso [inclusion_prob()], [ht_total()]
 #' @export
-joint_prob <- function(data, design, rows = NULL) {
+joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
+                       seed = NULL) {
   if (!is_design(design)) {
     stop("`design` must come from one of the design_*() constructors, not a ",
          class(design)[1], ". See ?designs.", call. = FALSE)
   }
   validate_data(data)
+  check_flag(simulate, "simulate")
   rows <- rows %||% seq_len(nrow(data))
   if (!is.numeric(rows) || anyNA(rows) || any(rows < 1) ||
       any(rows > nrow(data))) {
     stop("`rows` must be valid row indices into `data`.", call. = FALSE)
   }
-  joint_inclusion(design, data, as.integer(rows))
+  rows <- as.integer(rows)
+  if (isTRUE(simulate)) {
+    return(simulate_joint(data, design, rows,
+                          check_count(R, "R", allow_zero = FALSE), seed))
+  }
+  joint_inclusion(design, data, rows)
+}
+
+#' Monte Carlo joint inclusion probabilities
+#'
+#' Counts how often each pair of rows lands in the same sample. Slower and
+#' noisier than a closed form, but available for every design -- which makes it
+#' the general answer where no formula exists.
+#'
+#' @noRd
+simulate_joint <- function(data, design, rows, R, seed) {
+  refuse_simulation(design)
+  key <- ".drawn_row_id"
+  if (key %in% names(data)) {
+    stop("`data` already has a column called `", key,
+         "`, which the simulation needs. Rename it.", call. = FALSE)
+  }
+  tagged <- data
+  tagged[[key]] <- seq_len(nrow(data))
+  k <- length(rows)
+  pos <- match(seq_len(nrow(data)), rows)   # NA for rows we are not tracking
+
+  counts <- matrix(0L, k, k)
+  with_seed(seed, {
+    for (i in seq_len(R)) {
+      s <- draw_design(design, tagged)
+      ids <- unique(if (is.data.frame(s)) s[[key]] else unlist(s))
+      hit <- pos[ids]
+      hit <- hit[!is.na(hit)]
+      if (length(hit)) counts[hit, hit] <- counts[hit, hit] + 1L
+    }
+  })
+  counts / R
 }
 
 #' @noRd
@@ -118,10 +167,17 @@ joint_inclusion.drawn_design_simple <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_reservoir <- function(design, data, rows) {
-  joint_inclusion.drawn_design_simple(
-    new_design("simple", list(n = min(design$n, nrow(data)), replace = FALSE)),
-    data, rows
+  reach <- reservoir_reach(design, nrow(data))
+  out <- joint_inclusion.drawn_design_simple(
+    new_design("simple", list(n = min(design$n, reach), replace = FALSE)),
+    utils::head(data, reach), rows[rows <= reach]
   )
+  if (reach == nrow(data)) return(out)
+  # Rows past `max_items` are never read, so they co-occur with nothing.
+  full <- matrix(0, length(rows), length(rows))
+  seen <- rows <= reach
+  full[seen, seen] <- out
+  full
 }
 
 #' @noRd
@@ -134,7 +190,7 @@ joint_inclusion.drawn_design_stratified <- function(design, data, rows) {
 
   keys <- data[design$strata]
   bad <- Reduce(`|`, lapply(keys, is.na))
-  group <- interaction(keys, drop = TRUE, lex.order = TRUE)
+  group <- group_key(data, design$strata)
   idx <- split(seq_len(nrow(data))[!bad], group[!bad])
   sizes <- lengths(idx)
   n_alloc <- allocate(design$n, sizes, design$allocation,
@@ -142,24 +198,17 @@ joint_inclusion.drawn_design_stratified <- function(design, data, rows) {
                       spread = stratum_spread(design, data, idx))
 
   pi_all <- exact_inclusion(design, data)
-  joint_from_groups(as.character(group[rows]), n_alloc, sizes, pi_all[rows])
+  # A dropped row belongs to no stratum. Give it a label of its own so it
+  # co-occurs with nothing, rather than letting NA reach the subscript.
+  g <- as.character(group[rows])
+  g[bad[rows]] <- paste0("\r__dropped__", seq_len(sum(bad[rows])))
+  joint_from_groups(g, n_alloc, sizes, pi_all[rows])
 }
 
 #' @noRd
 joint_inclusion.drawn_design_temporal <- function(design, data, rows) {
-  validate_data(data, required_columns = design$time)
-  tz <- design$tz %||% "UTC"
-  tv <- parse_time(data[[design$time]], tz, design$time)
-  breaks <- make_breaks(parse_time(design$from, tz, "from"),
-                        parse_time(design$to, tz, "to"),
-                        design$interval, design$unit)
   pi_all <- exact_inclusion(design, data)
-
-  bucket <- rep(NA_character_, nrow(data))
-  if (length(breaks) >= 2L) {
-    inw <- !is.na(tv) & tv >= breaks[1] & tv < breaks[length(breaks)]
-    bucket[inw] <- as.character(findInterval(tv[inw], breaks))
-  }
+  bucket <- temporal_bucket(design, data)
   sizes <- table(bucket[!is.na(bucket)])
   n_g <- pmin(sizes, design$per_interval)
 
@@ -201,6 +250,13 @@ joint_inclusion.drawn_design_cluster <- function(design, data, rows) {
   out <- matrix(if (A > 1) a * (a - 1) / (A * (A - 1)) else 0,
                 length(rows), length(rows))
   out[same] <- a / A
+  # A row with no cluster -- a dropped key -- is in no sample at all, so it
+  # co-occurs with nothing. Without this it inherits the between-cluster rate.
+  gone <- is.na(lab)
+  if (any(gone)) {
+    out[gone, ] <- 0
+    out[, gone] <- 0
+  }
   pi_all <- exact_inclusion(design, data)
   diag(out) <- pi_all[rows]
   out
@@ -276,10 +332,16 @@ joint_inclusion.drawn_design_systematic <- function(design, data, rows) {
          "sample.", call. = FALSE)
   }
   k <- design$interval
-  res <- (rows - 1L) %% k
+  # Residue classes come from the order the design walks, which `order_by`
+  # changes. Taking them from frame order instead reports 0 for pairs that
+  # always co-occur and 1/k for pairs that never can.
+  pos <- systematic_positions(design, data)[rows]
+  res <- (pos - 1L) %% k
   out <- matrix(0, length(rows), length(rows))
-  out[outer(res, res, "==")] <- 1 / k
-  diag(out) <- 1 / k
+  same <- outer(res, res, "==")
+  same[is.na(same)] <- FALSE
+  out[same] <- 1 / k
+  diag(out) <- ifelse(is.na(pos), 0, 1 / k)
   out
 }
 
@@ -298,10 +360,25 @@ joint_inclusion.drawn_design_bootstrap <- function(design, data, rows) {
 #' it, a design-unbiased variance and confidence interval.
 #'
 #' @section Variance:
-#' For fixed-size designs the Sen-Yates-Grundy estimator is used, which is
-#' non-negative more often than the general Horvitz-Thompson form and is the
-#' usual choice. Poisson sampling has a random size, so the independent-units
-#' form `sum((1 - pi) / pi^2 * y^2)` is used instead.
+#' The estimator is chosen to match how the design actually randomises:
+#'
+#' * **Fixed-size designs** use the Sen-Yates-Grundy estimator, which is
+#'   non-negative more often than the general Horvitz-Thompson form and is the
+#'   usual choice.
+#' * **Poisson sampling** has a random size and independent rows, so the
+#'   independent-units form `sum((1 - pi) / pi^2 * y^2)` is used instead.
+#' * **Cluster designs** take whole clusters, so the number of *rows* is random
+#'   whenever the clusters differ in size. The cluster is the sampling unit, and
+#'   the estimator is applied at that level — algebraically the same thing as
+#'   the delete-a-cluster jackknife.
+#' * **Certainty designs** hand the problem to `rest` over the rows below the
+#'   threshold, since the certainty rows are in every possible sample and
+#'   contribute nothing to the variance.
+#'
+#' Sen-Yates-Grundy can still return a negative number on an unlucky sample.
+#' That is a failure of the estimator rather than a variance, so it is reported
+#' as one: `variance` is `NA`, `note` says what happened, and `variance = "auto"`
+#' falls through to the jackknife.
 #'
 #' A variance needs joint inclusion probabilities, and not every design has
 #' them — see [joint_prob()]. Where they are unavailable the estimate is still
@@ -314,13 +391,24 @@ joint_inclusion.drawn_design_bootstrap <- function(design, data, rows) {
 #'   `sample`.
 #' @param variance How to compute it. `"auto"` uses the analytic estimator when
 #'   the design has one and falls back to the jackknife when it does not;
-#'   `"analytic"` insists on the analytic form and errors otherwise;
-#'   `"jackknife"` always resamples; `"none"` skips it. The result reports which
-#'   was used.
+#'   `"analytic"` insists on the analytic form, returning `NA` with the reason
+#'   in `note` rather than falling back; `"jackknife"` always resamples;
+#'   `"none"` skips it. The result reports which was used in `method` — and
+#'   reports `"none"` when neither could produce a figure, rather than naming a
+#'   method that declined.
 #' @param level Confidence level for the interval.
 #'
-#' @return A list with `total`, `variance`, `se`, `ci`, `n`, `method` and
-#'   `note`, with a `print()` method.
+#' @return A list with a `print()` method, holding:
+#'   \describe{
+#'     \item{`total`}{The Horvitz-Thompson total, `sum(y / pi)`.}
+#'     \item{`variance`, `se`, `ci`, `level`}{Its estimated variance, standard
+#'       error and confidence interval. `NA` where the design supports none.}
+#'     \item{`n`, `design`}{Rows used, and the design's type.}
+#'     \item{`deff`}{The design effect — see [deff()].}
+#'     \item{`method`}{`"analytic"`, `"jackknife"` or `"none"`.}
+#'     \item{`note`}{Why a variance is missing, or which fallback was taken.
+#'       `NULL` when the analytic estimator applied cleanly.}
+#'   }
 #'
 #' @examples
 #' set.seed(1)
@@ -343,71 +431,16 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
   if (!is.data.frame(sample)) {
     stop("`sample` must be a data frame returned by draw().", call. = FALSE)
   }
-  design <- attr(sample, "drawn_design")
-  rows <- attr(sample, "drawn_rows")
-  pop <- attr(sample, "drawn_population")
-  if (is.null(design) || is.null(rows) || is.null(pop)) {
-    stop("`sample` does not carry its design. Draw it with ",
-         "draw(..., weights = TRUE), and call ht_total() on that result ",
-         "before subsetting it.", call. = FALSE)
-  }
-  if (!is.numeric(level) || length(level) != 1L || level <= 0 || level >= 1) {
-    stop("`level` must be a single number strictly between 0 and 1.",
-         call. = FALSE)
-  }
-
-  yv <- if (is.character(y) && length(y) == 1L) {
-    if (!y %in% names(sample)) {
-      stop("`sample` has no column `", y, "`.", call. = FALSE)
-    }
-    sample[[y]]
-  } else {
-    y
-  }
-  if (!is.numeric(yv) || length(yv) != nrow(sample)) {
-    stop("`y` must be a numeric column name or a numeric vector as long as ",
-         "`sample`.", call. = FALSE)
-  }
-  if (anyNA(yv)) {
-    stop(sum(is.na(yv)), " value(s) of `y` are missing.", call. = FALSE)
-  }
-
-  pi_i <- sample$.prob
+  parts <- ht_prepare(sample, y, level)
+  design <- parts$design; rows <- parts$rows; pop <- parts$pop
+  yv <- parts$y; pi_i <- parts$pi
   total <- sum(yv / pi_i)
 
-  var_out <- switch(variance,
-    none = list(variance = NA_real_, method = "none",
-                note = "Variance not requested."),
-    jackknife = jackknife_variance(design, sample, pop, yv, pi_i),
-    analytic = tryCatch(
-      c(ht_variance(design, pop, rows, yv, pi_i), list(method = "analytic")),
-      error = function(e) list(variance = NA_real_, method = "analytic",
-                               note = conditionMessage(e))),
-    tryCatch(
-      c(ht_variance(design, pop, rows, yv, pi_i), list(method = "analytic")),
-      error = function(e) {
-        jk <- jackknife_variance(design, sample, pop, yv, pi_i)
-        jk$note <- paste0("No analytic variance for this design, so the ",
-                          "jackknife was used instead. ",
-                          sub("\n.*", "", conditionMessage(e)))
-        jk
-      })
-  )
+  var_out <- ht_variance_dispatch(design, parts$sample, pop, rows, yv, pi_i,
+                                  variance)
 
-  se <- if (is.na(var_out$variance) || var_out$variance < 0) {
-    NA_real_
-  } else {
-    sqrt(var_out$variance)
-  }
-  z <- stats::qnorm(1 - (1 - level) / 2)
-  ci <- if (is.na(se)) c(NA_real_, NA_real_) else total + c(-1, 1) * z * se
-
-  structure(
-    list(total = total, variance = var_out$variance, se = se, ci = ci,
-         level = level, n = nrow(sample), design = design_type(design),
-         method = var_out$method %||% "analytic", note = var_out$note),
-    class = "drawn_ht"
-  )
+  finish_estimate(total, var_out, level, nrow(sample), design, yv, pi_i,
+                  nrow(pop), what = "total", class = "drawn_ht")
 }
 
 #' Delete-a-group jackknife variance
@@ -419,14 +452,31 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
 #' estimate moves is a direct measure of how much the estimate depended on
 #' which groups were drawn.
 #'
+#' Two designs are declined rather than approximated. A systematic sample has a
+#' single primary sampling unit -- the random start -- so deleting rows does not
+#' reflect its randomness at all. Poisson sampling has an exact variance and a
+#' random size; deleting rows from it understates by a factor of three.
+#'
 #' @noRd
 jackknife_variance <- function(design, sample, pop, y, pi_i) {
-  if (inherits(design, "drawn_design_systematic")) {
-    return(list(variance = NA_real_, method = "jackknife",
-                note = paste0("A systematic sample has one primary sampling ",
-                              "unit -- the random start -- so deleting rows ",
-                              "does not reflect the design's randomness and ",
-                              "the jackknife is not valid here.")))
+  refusal <- jackknife_refusal(design)
+  if (!is.null(refusal)) {
+    return(list(variance = NA_real_, method = "jackknife", note = refusal))
+  }
+  # Certainty rows are in every possible sample. Deleting one and inflating the
+  # rest invents variance the design does not have -- four times too much on a
+  # sample that is a third certainty -- so hand the whole problem to `rest`.
+  if (inherits(design, "drawn_design_certainty")) {
+    keep <- pi_i < 1
+    if (!any(keep)) {
+      return(list(variance = 0, method = "jackknife", note = paste0(
+        "Every sampled row was taken with certainty, so the total is exact ",
+        "rather than estimated.")))
+    }
+    sp <- certainty_split(design, pop)
+    return(jackknife_variance(design$rest, sample[keep, , drop = FALSE],
+                              sp$data[sp$rest, , drop = FALSE],
+                              y[keep], pi_i[keep]))
   }
   grp <- jackknife_groups(design, sample)
   m <- length(unique(grp))
@@ -451,10 +501,35 @@ jackknife_variance <- function(design, sample, pop, y, pi_i) {
                      else "", "."))
 }
 
+#' Designs the jackknife should decline rather than approximate
+#'
+#' @noRd
+jackknife_refusal <- function(design) {
+  if (inherits(design, "drawn_design_systematic")) {
+    return(paste0("A systematic sample has one primary sampling unit -- the ",
+                  "random start -- so deleting rows does not reflect the ",
+                  "design's randomness and the jackknife is not valid here."))
+  }
+  if (inherits(design, "drawn_design_weighted") && design$method == "poisson") {
+    return(paste0("Poisson sampling selects rows independently and has an ",
+                  "exact variance, sum((1 - pi) / pi^2 * y^2). Deleting rows ",
+                  "from a sample whose size is itself random understates it ",
+                  "by a factor of three. Use variance = \"analytic\"."))
+  }
+  NULL
+}
+
 #' The share of primary sampling units NOT taken
 #'
 #' Applied for single-stage designs, where deleting a sampling unit accounts for
-#' all the randomness there is. Deliberately not applied to multi-stage designs:
+#' all the randomness there is. That includes probability-proportional-to-size
+#' selection, which is still a fixed-size draw without replacement: measured
+#' against the empirical sampling variance over four frames and two response
+#' variables, the corrected estimator sits between 0.86 and 1.11 of the truth
+#' where the uncorrected one runs from 0.98 to 1.77, overstating badly once the
+#' sampling fraction gets large.
+#'
+#' Deliberately not applied to multi-stage designs:
 #' the delete-a-cluster jackknife sees only between-cluster variation, so the
 #' second stage is already missing, and correcting for the first stage on top of
 #' that understates the total. Leaving it out is the ultimate-cluster
@@ -492,7 +567,43 @@ jackknife_groups <- function(design, sample) {
 }
 
 #' @noRd
-ht_variance <- function(design, data, rows, y, pi_i) {
+ht_variance <- function(design, data, rows, y, pi_i) UseMethod("ht_variance")
+
+#' Variance of a single-stage cluster total
+#'
+#' Whole clusters are taken, so the number of *rows* is random whenever the
+#' clusters differ in size. Sen-Yates-Grundy assumes a fixed size, and applied
+#' row by row here it understates the variance badly -- by a factor of five on a
+#' frame whose clusters vary from 2 to 10 rows -- and can return a negative
+#' number or a zero-width interval.
+#'
+#' The cluster is the sampling unit, so the estimator belongs at that level: the
+#' clusters are a simple random sample of `a` from `A`, and the quantity summed
+#' over them is each cluster's contribution to the total. That is the textbook
+#' form, and it is algebraically identical to the delete-a-cluster jackknife.
+#'
+#' @noRd
+ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i) {
+  cl <- count_clusters(design, data)
+  A <- cl$total
+  a <- design$n_clusters
+  lab <- as.character(cl$labels[rows])
+  if (anyNA(lab)) {
+    return(list(variance = NA_real_,
+                note = "Some sampled rows have no cluster label."))
+  }
+  u <- vapply(split(y / pi_i, lab), sum, numeric(1))
+  m <- length(u)
+  if (m < 2L) {
+    return(list(variance = NA_real_, note = paste0(
+      "A variance needs at least two clusters; this sample has ", m, ".")))
+  }
+  fpc <- if (is.finite(A) && A > m) 1 - m / A else 0
+  list(variance = fpc * m * stats::var(u), note = NULL)
+}
+
+#' @noRd
+ht_variance.default <- function(design, data, rows, y, pi_i) {
   if (inherits(design, "drawn_design_systematic")) {
     stop("Systematic sampling has no design-unbiased variance estimator: most ",
          "pairs of rows can never appear together, so their joint inclusion ",
@@ -524,24 +635,5 @@ ht_variance <- function(design, data, rows, y, pi_i) {
 
 #' @export
 print.drawn_ht <- function(x, ...) {
-  cat("Horvitz-Thompson total  (", x$design, " design, n = ", x$n, ")\n",
-      sep = "")
-  cat("  total    ", format(x$total, big.mark = ","), "\n", sep = "")
-  if (is.na(x$se)) {
-    cat("  se       NA\n")
-    if (!is.null(x$note)) {
-      cat("\n", strwrap(x$note, prefix = "  "), sep = "\n")
-      cat("\n")
-    }
-  } else {
-    cat("  se       ", format(x$se, big.mark = ","),
-        "  (", x$method, ")\n", sep = "")
-    cat("  ", format(100 * x$level), "% CI  ",
-        format(x$ci[1], big.mark = ","), " to ",
-        format(x$ci[2], big.mark = ","), "\n", sep = "")
-    if (identical(x$method, "jackknife") && !is.null(x$note)) {
-      cat("\n", strwrap(x$note, prefix = "  "), sep = "\n"); cat("\n")
-    }
-  }
-  invisible(x)
+  print_estimate(x, "total", "Horvitz-Thompson total")
 }

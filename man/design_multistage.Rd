@@ -19,26 +19,30 @@ design_multistage(
 
 \item{n_clusters}{Number of clusters to select at stage one.}
 
-\item{n}{Total rows to draw across the selected clusters.}
+\item{n}{Total rows to draw across the selected clusters. Make it a
+multiple of \code{n_clusters}, and no larger than \code{n_clusters} times the
+smallest cluster, if you intend to estimate: otherwise the per-cluster take
+depends on which clusters were selected and there is no closed-form
+inclusion probability. See \code{\link[=inclusion_prob]{inclusion_prob()}}.}
 
-\item{allocation}{`"equal"` splits `n` evenly across the selected clusters;
-`"proportional"` splits it in proportion to their size.}
+\item{allocation}{\code{"equal"} splits \code{n} evenly across the selected clusters;
+\code{"proportional"} splits it in proportion to their size.}
 
 \item{min_per_cluster}{Minimum rows from each selected cluster. Defaults to
-`0`, which leaves allocation unbiased.}
+\code{0}, which leaves allocation unbiased.}
 
 \item{replace}{Sample with replacement within each cluster?}
 
-\item{na_rm}{Drop rows whose cluster label is `NA` instead of raising an
+\item{na_rm}{Drop rows whose cluster label is \code{NA} instead of raising an
 error.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Selects clusters at the first stage, then draws rows within them at the
-second. `n` is the total across the selected clusters under both allocations,
-matching [design_stratified()].
+second. \code{n} is the total across the selected clusters under both allocations,
+matching \code{\link[=design_stratified]{design_stratified()}}.
 }
 \examples{
 df <- data.frame(id = 1:100, site = rep(paste0("s", 1:10), each = 10))
@@ -46,10 +50,11 @@ nrow(draw(df, design_multistage("site", n_clusters = 4, n = 12), seed = 1))
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},

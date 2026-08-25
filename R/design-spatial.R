@@ -54,6 +54,7 @@ design_spatial <- function(coords, region, n, crs = 4326, na_rm = FALSE) {
     stop("`coords` must name exactly two columns, c(x, y) -- longitude then ",
          "latitude. Got ", length(coords), ".", call. = FALSE)
   }
+  check_region(region, crs)
   new_design("spatial", list(
     coords = coords,
     region = region,
@@ -116,6 +117,8 @@ spatial_inside <- function(design, data, warn = FALSE) {
   }
 
   ok <- !is.na(x) & !is.na(y)
+  check_na_policy(!ok, design$na_rm,
+                  paste0("a missing `", x_col, "` or `", y_col, "`"))
   data_sf <- sf::st_as_sf(data[ok, , drop = FALSE], coords = c(x_col, y_col),
                           crs = design$crs, remove = FALSE)
   if (sf::st_crs(region) != sf::st_crs(data_sf)) {
@@ -177,4 +180,40 @@ exact_inclusion.drawn_design_spatial <- function(design, data) {
   if (!any(inside)) return(out)
   out[inside] <- min(1, design$n / sum(inside))
   out
+}
+
+#' A region has to be geometry `sf` can read, with a CRS
+#'
+#' Both were stored unchecked, so a NULL region or a nonsense CRS surfaced much
+#' later as a raw `sf` message that named neither argument.
+#'
+#' @noRd
+check_region <- function(region, crs) {
+  if (!requireNamespace("sf", quietly = TRUE)) return(invisible(NULL))
+  geom <- tryCatch({
+    if (is.list(region) && !inherits(region, c("sf", "sfc"))) {
+      if (!length(region)) {
+        stop("`region` is an empty list.", call. = FALSE)
+      }
+      sf::st_union(do.call(c, lapply(region, sf::st_geometry)))
+    } else {
+      sf::st_geometry(region)
+    }
+  }, error = function(e) {
+    stop("`region` must be an sf or sfc geometry, or a list of them, not ",
+         if (is.null(region)) "NULL" else class(region)[1], ". (", 
+         conditionMessage(e), ")", call. = FALSE)
+  })
+  if (is.na(sf::st_crs(geom))) {
+    stop("`region` has no CRS. Set one with sf::st_set_crs().", call. = FALSE)
+  }
+  tryCatch(sf::st_crs(crs), error = function(e) {
+    stop("`crs` is not a coordinate reference system sf recognises: ",
+         conditionMessage(e), call. = FALSE)
+  })
+  if (is.na(sf::st_crs(crs))) {
+    stop("`crs` is not a coordinate reference system sf recognises.",
+         call. = FALSE)
+  }
+  invisible(NULL)
 }

@@ -7,14 +7,14 @@
 draw(data, design, seed = NULL, weights = FALSE)
 }
 \arguments{
-\item{data}{A data frame. [design_reservoir()] also accepts a list, a
+\item{data}{A data frame. \code{\link[=design_reservoir]{design_reservoir()}} also accepts a list, a
 connection, or a zero-argument generator function.}
 
-\item{design}{A design built by one of the [design_simple()] family.}
+\item{design}{A design built by one of the \code{\link[=design_simple]{design_simple()}} family.}
 
 \item{seed}{Optional seed, applied only for this draw.}
 
-\item{weights}{Attach `.prob` and `.weight` columns. See "Design weights".}
+\item{weights}{Attach \code{.prob} and \code{.weight} columns. See "Design weights".}
 }
 \value{
 The sampled rows. See "What you get back".
@@ -25,32 +25,39 @@ Applies a sampling design to data.
 \section{What you get back}{
 
 A data frame with the same class and the same columns, in the same order, as
-`data`. Two designs qualify that:
-
-* [design_bootstrap()] prepends a `.replicate` column identifying which
-  replicate each row belongs to, so all replicates come back in one frame.
-  Split them with `split(out, out$.replicate)` if you need a list.
-* [design_reservoir()] returns a list when `data` is a stream rather than a
-  data frame, because there is nothing to make a data frame out of.
+\code{data}. Two designs qualify that:
+\itemize{
+\item \code{\link[=design_bootstrap]{design_bootstrap()}} prepends a \code{.replicate} column identifying which
+replicate each row belongs to, so all replicates come back in one frame.
+Split them with \code{split(out, out$.replicate)} if you need a list.
+\item \code{\link[=design_reservoir]{design_reservoir()}} returns a list when \code{data} is a stream rather than a
+data frame, because there is nothing to make a data frame out of.
+}
 }
 
 \section{Design weights}{
 
-`weights = TRUE` prepends two columns: `.prob`, the probability that the row
-was included in the sample, and `.weight`, its reciprocal — the number of
+\code{weights = TRUE} prepends two columns: \code{.prob}, the probability that the row
+was included in the sample, and \code{.weight}, its reciprocal — the number of
 population units the row stands for. Those are what an unbiased estimate
-needs: a Horvitz-Thompson total is `sum(y * .weight)`.
+needs: a Horvitz-Thompson total is \code{sum(y * .weight)}.
 
 They come from the design applied to the population, not from the drawn
-sample, and four designs have no closed form for them. [inclusion_prob()]
+sample, and some designs have no closed form for them. \code{\link[=inclusion_prob]{inclusion_prob()}}
 documents which, why, and what to do instead.
+
+\code{weights = TRUE} is not available for a design that samples \strong{with
+replacement}. \code{.prob} there is the probability of being selected \emph{at least
+once}, but the sample holds duplicates, so \code{sum(y * .weight)} over it counts
+each duplicate at the distinct-unit weight and comes out around 15\% high.
+Use \code{replace = FALSE}, or the Hansen-Hurwitz form \code{N / n * sum(y)}.
 }
 
 \section{Seeding}{
 
-`seed` is saved, applied, and unwound: `.Random.seed` is restored on exit, so
+\code{seed} is saved, applied, and unwound: \code{.Random.seed} is restored on exit, so
 drawing a sample inside a simulation does not shift the simulation's own
-random number stream. Leave it `NULL` to draw from the current stream.
+random number stream. Leave it \code{NULL} to draw from the current stream.
 }
 
 \examples{
@@ -70,7 +77,7 @@ sum(s$spend * s$.weight)   # estimates sum(df$spend) = 5050
 
 }
 \seealso{
-[designs] for the full list of constructors, [inclusion_prob()] for
-  the probabilities themselves, and [ht_total()] to estimate a population
-  total with a standard error.
+\link{designs} for the full list of constructors, \code{\link[=inclusion_prob]{inclusion_prob()}} for
+the probabilities themselves, and \code{\link[=ht_total]{ht_total()}} to estimate a population
+total with a standard error.
 }

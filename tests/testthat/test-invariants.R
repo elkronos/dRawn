@@ -286,3 +286,123 @@ test_that("removed arguments stay removed", {
   expect_error(design_spatial(c("x", "y"), region = NULL, n = 5,
                               complex_region = TRUE), "unused argument")
 })
+
+test_that("weights = TRUE keeps the input's class, not just its columns", {
+  skip_if_not_installed("tibble")
+  # cbind() on a data.frame silently demotes a tibble, and the whole contract
+  # is that what comes back matches what went in.
+  tb <- tibble::tibble(id = 1:100, site = rep(c("a", "b"), each = 50))
+  for (w in c(FALSE, TRUE)) {
+    out <- draw(tb, design_stratified("site", n = 20), seed = 1, weights = w)
+    expect_s3_class(out, "tbl_df")
+  }
+  wt <- draw(tb, design_simple(n = 10), seed = 1, weights = TRUE)
+  expect_identical(names(wt), c(".prob", ".weight", "id", "site"))
+})
+
+test_that("simulation refuses the bootstrap instead of returning all ones", {
+  d <- data.frame(id = 1:40, y = 1:40)
+  des <- design_bootstrap(n_replicates = 20)
+  expect_error(inclusion_prob(d, des, simulate = TRUE, R = 10),
+               "not a probability sample")
+  expect_error(joint_prob(d, des, rows = 1:5, simulate = TRUE, R = 10),
+               "not a probability sample")
+})
+
+# ---- guards found by the audit round --------------------------------------
+
+test_that("a design that samples with replacement refuses to weight", {
+  df <- data.frame(id = 1:20, g = rep(c("a", "b"), each = 10), y = 1:20)
+  for (des in list(design_simple(n = 8, replace = TRUE),
+                   design_stratified("g", n = 8, replace = TRUE),
+                   design_multistage("g", n_clusters = 1, n = 4,
+                                     replace = TRUE))) {
+    expect_error(draw(df, des, seed = 1, weights = TRUE), "with-replacement")
+  }
+})
+
+test_that("duplicated column names are refused before they are silently renamed", {
+  dd <- data.frame(a = 1:4, b = 5:8)
+  names(dd) <- c("x", "x")
+  expect_identical(names(draw(dd, design_simple(n = 2), seed = 1)),
+                   c("x", "x"))
+  expect_error(draw(dd, design_simple(n = 2), seed = 1, weights = TRUE),
+               "duplicated column name")
+})
+
+test_that("bootstrap keeps its promises about class and column names", {
+  skip_if_not_installed("tibble")
+  expect_s3_class(draw(tibble::tibble(id = 1:9),
+                       design_bootstrap(n_replicates = 2, n = 3), seed = 1),
+                  "tbl_df")
+  expect_error(draw(data.frame(id = 1:6, .replicate = 1:6),
+                    design_bootstrap(n_replicates = 2, n = 3), seed = 1),
+               "already has a column called `.replicate`")
+  out <- draw(data.frame(id = 1:6), design_bootstrap(n_replicates = 2, n = 3),
+              seed = 1)
+  expect_identical(names(out), c(".replicate", "id"))
+})
+
+test_that("a certainty design refuses a `rest` that reshapes the frame", {
+  expect_error(design_certainty("v", 50, design_bootstrap(n_replicates = 4)),
+               "cannot be a bootstrap design")
+})
+
+test_that("counts are validated at construction, not left to become NA", {
+  expect_error(design_simple(n = 3e9), "at most")
+  expect_error(design_bootstrap(n_replicates = 3e9), "at most")
+  expect_error(design_systematic(interval = 3e9), "at most")
+})
+
+test_that("a negative seed is a seed", {
+  a <- draw(data.frame(id = 1:20), design_simple(n = 5), seed = -1)
+  b <- draw(data.frame(id = 1:20), design_simple(n = 5), seed = -1)
+  expect_identical(a, b)
+  expect_error(draw(data.frame(id = 1:20), design_simple(n = 5), seed = 1.5),
+               "whole number")
+})
+
+test_that("proportional allocation survives a frame big enough to overflow", {
+  # `n * sizes` was evaluated in 32-bit integer arithmetic, so 3,000 rows out
+  # of 2.4 million produced NAs and an unrelated error.
+  big <- data.frame(g = rep(c("a", "b", "c"),
+                            times = c(800000L, 900000L, 700000L)))
+  out <- draw(big, design_stratified("g", n = 3000), seed = 1)
+  expect_equal(nrow(out), 3000)
+  expect_equal(sum(table(out$g)), 3000)
+})
+
+test_that("strata keys containing a dot stay distinct", {
+  # interaction() joins levels with ".", so ("a.b", "c") and ("a", "b.c")
+  # collapsed into one stratum -- wrong allocation, wrong probabilities, and
+  # min_per_stratum silently unmet.
+  d <- data.frame(id = 1:16,
+                  g1 = c(rep("a.b", 6), rep("a", 2), rep("z", 8)),
+                  g2 = c(rep("c", 6), rep("b.c", 2), rep("q", 8)))
+  des <- design_stratified(c("g1", "g2"), n = 6, min_per_stratum = 1)
+  expect_length(unique(inclusion_prob(d, des)), 3)
+  for (s in 1:10) {
+    got <- draw(d, des, seed = s)
+    expect_true(any(got$g1 == "a" & got$g2 == "b.c"))
+  }
+})
+
+test_that("designs validate what they read at construction where they can", {
+  skip_if_not_installed("sf")
+  expect_error(design_spatial(c("x", "y"), NULL, n = 5), "must be an sf")
+  expect_error(design_spatial(c("x", "y"),
+                              sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326),
+                              n = 5, crs = "nonsense"), "coordinate reference")
+  expect_error(design_spatial(c("x", "y"), sf::st_sfc(sf::st_point(c(0, 0))),
+                              n = 5), "no CRS")
+  expect_error(design_bootstrap(10, method = "simple", block_length = 5),
+               "only applies to method")
+})
+
+test_that("non-vector columns are caught wherever a design reads one", {
+  d <- data.frame(id = 1:6)
+  d$m <- matrix(1:12, nrow = 6)
+  expect_error(draw(d, design_weighted("m", n = 2)), "flatten it first")
+  expect_error(draw(d, design_certainty("m", 2, design_simple(n = 1))),
+               "flatten it first")
+})

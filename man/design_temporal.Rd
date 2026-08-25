@@ -16,34 +16,34 @@ design_temporal(
 )
 }
 \arguments{
-\item{time}{Column of timestamps. `POSIXct` and `Date` columns are used as
-they are; character columns are parsed with [lubridate::ymd_hms()].}
+\item{time}{Column of timestamps. \code{POSIXct} and \code{Date} columns are used as
+they are; character columns are parsed with \code{\link[lubridate:ymd_hms]{lubridate::ymd_hms()}}.}
 
 \item{from, to}{Window bounds, as timestamps or strings. The window is
-half-open: `[from, to)`. Trailing partial intervals are dropped.}
+half-open: \verb{[from, to)}. Trailing partial intervals are dropped.}
 
-\item{interval}{Interval width, in units of `unit`.}
+\item{interval}{Interval width, in units of \code{unit}.}
 
 \item{per_interval}{Rows to draw from each interval. Intervals holding fewer
 rows contribute all of them.}
 
-\item{unit}{One of `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`,
-`"months"` or `"years"`. `"months"` and `"years"` step by calendar units,
+\item{unit}{One of \code{"seconds"}, \code{"minutes"}, \code{"hours"}, \code{"days"}, \code{"weeks"},
+\code{"months"} or \code{"years"}. \code{"months"} and \code{"years"} step by calendar units,
 not by fixed 30.44-day durations.}
 
 \item{tz}{Time zone the timestamps are expressed in. Applied when the column
-*and* both bounds are parsed, so it genuinely shifts the window rather than
+\emph{and} both bounds are parsed, so it genuinely shifts the window rather than
 relabelling the output.}
 
 \item{na_rm}{Drop rows whose timestamp is missing or unparseable instead of
 raising an error.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Divides a time window into equal intervals and samples within each one.
-`per_interval` is named for what it is: unlike `n` elsewhere in the package,
+\code{per_interval} is named for what it is: unlike \code{n} elsewhere in the package,
 it is a per-group figure, not a total.
 }
 \details{
@@ -62,10 +62,11 @@ draw(df, d, seed = 1)$ts
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

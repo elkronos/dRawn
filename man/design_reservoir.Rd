@@ -10,11 +10,13 @@ design_reservoir(n, max_items = Inf)
 \item{n}{Reservoir size. Fewer items come back if the stream is shorter; the
 result is never padded.}
 
-\item{max_items}{Stop after reading this many items. `Inf` reads the whole
+\item{max_items}{Stop after reading this many items. Rows past it are never
+read, so \code{\link[=inclusion_prob]{inclusion_prob()}} gives them \code{0} and gives the rows before it
+\code{n / max_items} rather than \code{n / N}. \code{Inf} reads the whole
 stream. Warns when the cap actually truncates.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Draws a uniform sample of fixed size from a stream of unknown length in a
@@ -22,10 +24,10 @@ single pass, using Algorithm L.
 }
 \details{
 A data frame is not a stream: its length is already known and it already fits
-in memory, so [draw()] takes a direct vectorised path for one. Reach for the
+in memory, so \code{\link[=draw]{draw()}} takes a direct vectorised path for one. Reach for the
 streaming path when the data genuinely does not fit — pass a connection, or a
-function that returns the next item and `NULL` at end of stream. For those,
-[draw()] returns a list rather than a data frame.
+function that returns the next item and \code{NULL} at end of stream. For those,
+\code{\link[=draw]{draw()}} returns a list rather than a data frame.
 }
 \examples{
 nrow(draw(data.frame(id = 1:1000), design_reservoir(n = 10), seed = 1))
@@ -40,10 +42,11 @@ unlist(draw(gen, design_reservoir(n = 5), seed = 1))
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_simple}()},

@@ -10,7 +10,7 @@ is_design(x)
 \item{x}{An object.}
 }
 \value{
-`TRUE` if `x` was built by one of the `design_*()` constructors.
+\code{TRUE} if \code{x} was built by one of the \verb{design_*()} constructors.
 }
 \description{
 Is this a sampling design?

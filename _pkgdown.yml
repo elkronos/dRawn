@@ -5,16 +5,34 @@ template:
 
 reference:
 - title: Drawing a sample
-  desc: One verb, and the probabilities that make a sample usable.
+  desc: One verb, and the designs it takes.
   contents:
   - draw
-  - inclusion_prob
-  - joint_prob
-  - ht_total
-  - sampling_weight
-  - plot.drawn_design
   - designs
+  - plot.drawn_design
   - is_design
+  - draw_design
+
+- title: What a design knows before you draw
+  desc: The probabilities that make a sample estimable.
+  contents:
+  - inclusion_prob
+  - sampling_weight
+  - joint_prob
+
+- title: Estimating from a sample
+  desc: A total or a mean, with a standard error and the design's price.
+  contents:
+  - ht_total
+  - ht_mean
+  - deff
+
+- title: Planning and checking
+  desc: How many rows to draw, what you actually got, and where to go next.
+  contents:
+  - plan_size
+  - sample_summary
+  - as_svydesign
 
 - title: Equal-probability designs
   desc: Every unit equally likely, or equally likely within a group.
@@ -40,6 +58,10 @@ reference:
 - title: Resampling
   contents:
   - design_bootstrap
+
+- title: Composite designs
+  contents:
+  - design_certainty
 
 articles:
 - title: Guides

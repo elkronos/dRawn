@@ -87,6 +87,7 @@ draw_design.drawn_design_weighted <- function(design, data) {
   validate_data(data, required_columns = design$weights)
 
   col <- design$weights
+  check_key_columns(data, col, "weights")
   w <- data[[col]]
   if (!is.numeric(w)) {
     stop("`", col, "` must be numeric, not ", class(w)[1], ".", call. = FALSE)
@@ -96,14 +97,7 @@ draw_design.drawn_design_weighted <- function(design, data) {
                          paste0("a missing weight in `", col, "`"))
     w <- data[[col]]
   }
-  if (any(!is.finite(w))) {
-    stop("`", col, "` contains ", sum(!is.finite(w)), " non-finite weight(s).",
-         call. = FALSE)
-  }
-  if (any(w <= 0)) {
-    stop("All weights must be positive; ", sum(w <= 0), " are not.",
-         call. = FALSE)
-  }
+  check_weights(w, col)
 
   n_rows <- nrow(data)
 
@@ -193,9 +187,30 @@ exact_inclusion.drawn_design_weighted <- function(design, data) {
     )
   }
   validate_data(data, required_columns = design$weights)
-  w <- data[[design$weights]]
-  keep <- !is.na(w)
+  col <- design$weights
+  check_key_columns(data, col, "weights")
+  w <- data[[col]]
+  keep <- !check_na_policy(is.na(w), design$na_rm,
+                           paste0("a missing weight in `", col, "`"))
+  # pps_pi()'s rescaling loop runs off the rails on a non-positive weight --
+  # `n_free` goes negative and it returns a vector of 0s and 1s summing to the
+  # wrong total. draw_design() rejects these; so must this.
+  check_weights(w[keep], col)
   out <- numeric(nrow(data))
   out[keep] <- pps_pi(w[keep], design$n)
   out
+}
+
+#' Weights a probability-proportional-to-size design can actually use
+#' @noRd
+check_weights <- function(w, col) {
+  if (any(!is.finite(w))) {
+    stop("`", col, "` contains ", sum(!is.finite(w)), " non-finite weight(s).",
+         call. = FALSE)
+  }
+  if (any(w <= 0)) {
+    stop("All weights must be positive; ", sum(w <= 0), " are not.",
+         call. = FALSE)
+  }
+  invisible(w)
 }

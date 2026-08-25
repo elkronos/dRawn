@@ -105,3 +105,29 @@ test_that("unparseable timestamps follow the na_rm contract", {
          seed = 1)
   )
 })
+
+test_that("a backwards window is refused on every path, not just the draw", {
+  d <- data.frame(ts = seq(as.POSIXct("2020-01-01", tz = "UTC"), by = "hour",
+                           length.out = 10))
+  bad <- design_temporal("ts", from = "2020-01-02", to = "2020-01-01",
+                         interval = 1, per_interval = 1, unit = "hours")
+  expect_error(draw(d, bad), "`to` must be after `from`")
+  expect_error(inclusion_prob(d, bad), "`to` must be after `from`")
+  expect_error(joint_prob(d, bad), "`to` must be after `from`")
+})
+
+test_that("a column mixing dates with date-times keeps both", {
+  # The date-only fallback fired only when nothing at all parsed, so a mixed
+  # column silently lost every date-only row.
+  parse_time <- drawn:::parse_time
+  got <- parse_time(c("2020-01-01", "2020-01-01 05:00:00", "2020-01-02"),
+                    "UTC", "x")
+  expect_false(anyNA(got))
+  expect_equal(format(got[1], "%Y-%m-%d %H:%M:%S"), "2020-01-01 00:00:00")
+
+  d <- data.frame(ts = c("2024-03-01", "2024-03-01 06:00:00",
+                         "2024-03-02 09:00:00", "2024-03-02"))
+  des <- design_temporal("ts", from = "2024-03-01", to = "2024-03-03",
+                         interval = 1, per_interval = 1, unit = "days")
+  expect_equal(sum(inclusion_prob(d, des) > 0), 4)
+})

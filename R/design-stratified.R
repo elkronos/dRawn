@@ -69,9 +69,12 @@ stratum_spread <- function(design, data, idx_by_stratum) {
     stop("`allocation_by` names `", col, "`, which must be numeric for Neyman ",
          "allocation, not ", class(v)[1], ".", call. = FALSE)
   }
-  if (anyNA(v)) {
-    stop(sum(is.na(v)), " value(s) of `", col, "` are missing; Neyman ",
-         "allocation needs it for every frame row.", call. = FALSE)
+  # Only the rows that survive the design's own NA handling matter. Checking
+  # the whole frame made a design that draws fine fail on inclusion_prob().
+  used <- unlist(idx_by_stratum, use.names = FALSE)
+  if (anyNA(v[used])) {
+    stop(sum(is.na(v[used])), " value(s) of `", col, "` are missing; Neyman ",
+         "allocation needs it for every row it allocates over.", call. = FALSE)
   }
   vapply(idx_by_stratum, function(i) {
     if (length(i) < 2L) 0 else stats::sd(v[i])
@@ -91,7 +94,7 @@ draw_design.drawn_design_stratified <- function(design, data) {
   }
 
   idx_by_stratum <- split(seq_len(nrow(data)),
-                          interaction(keys, drop = TRUE, lex.order = TRUE))
+                          group_key(data, design$strata))
   sizes <- lengths(idx_by_stratum)
 
   check_draw_size(design$n, nrow(data), design$replace)
@@ -125,8 +128,9 @@ exact_inclusion.drawn_design_stratified <- function(design, data) {
   validate_data(data, required_columns = design$strata)
   check_key_columns(data, design$strata, "strata")
   keys <- data[design$strata]
-  bad <- Reduce(`|`, lapply(keys, is.na))
-  group <- interaction(keys, drop = TRUE, lex.order = TRUE)
+  bad <- check_na_policy(Reduce(`|`, lapply(keys, is.na)), design$na_rm,
+                         "a missing stratum key")
+  group <- group_key(data, design$strata)
 
   idx_by_stratum <- split(seq_len(nrow(data))[!bad], group[!bad])
   sizes <- lengths(idx_by_stratum)

@@ -9,13 +9,16 @@ design_simple(n, replace = FALSE)
 \arguments{
 \item{n}{Number of rows to draw. A single non-negative whole number.}
 
-\item{replace}{Sample with replacement?}
+\item{replace}{Sample with replacement? Note that \code{draw(weights = TRUE)}
+declines a with-replacement design: \code{.prob} would be the chance of
+appearing at least once, which does not weight a sample holding
+duplicates. See \code{\link[=draw]{draw()}}.}
 }
 \value{
-A design object, for use with [draw()].
+A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Draws `n` rows uniformly at random.
+Draws \code{n} rows uniformly at random.
 }
 \examples{
 df <- data.frame(id = 1:100)
@@ -24,10 +27,11 @@ draw(df, design_simple(n = 150, replace = TRUE), seed = 1)
 
 }
 \seealso{
-[draw()]
+\code{\link[=draw]{draw()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},
+\code{\link{design_certainty}()},
 \code{\link{design_cluster}()},
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},

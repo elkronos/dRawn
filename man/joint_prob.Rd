@@ -4,7 +4,7 @@
 \alias{joint_prob}
 \title{Joint inclusion probabilities}
 \usage{
-joint_prob(data, design, rows = NULL)
+joint_prob(data, design, rows = NULL, simulate = FALSE, R = 5000, seed = NULL)
 }
 \arguments{
 \item{data}{A data frame.}
@@ -12,16 +12,26 @@ joint_prob(data, design, rows = NULL)
 \item{design}{A design object.}
 
 \item{rows}{Optional row indices. Supply these — usually the rows you drew —
-to get the submatrix for them instead of the full `nrow(data)` square,
+to get the submatrix for them instead of the full \code{nrow(data)} square,
 which is what makes this usable on a large population.}
+
+\item{simulate}{Estimate the probabilities by repeated draws rather than in
+closed form. Works for every probability design, including the ones with no
+closed form, at the cost of Monte Carlo error. Refused for
+\code{\link[=design_bootstrap]{design_bootstrap()}}, where every row appears in some replicate and the
+count converges to 1 for all of them.}
+
+\item{R}{Number of simulated draws when \code{simulate = TRUE}.}
+
+\item{seed}{Optional seed for the simulation.}
 }
 \value{
-A square matrix with one row and column per element of `rows`
-  (or per row of `data`). The diagonal holds first-order probabilities.
+A square matrix with one row and column per element of \code{rows}
+(or per row of \code{data}). The diagonal holds first-order probabilities.
 }
 \description{
-The probability that a *pair* of rows both land in the sample. First-order
-probabilities from [inclusion_prob()] give you an unbiased total;
+The probability that a \emph{pair} of rows both land in the sample. First-order
+probabilities from \code{\link[=inclusion_prob]{inclusion_prob()}} give you an unbiased total;
 second-order probabilities are what let you put a standard error on it.
 }
 \section{Which designs have them}{
@@ -30,24 +40,27 @@ Closed forms exist, and are used, for the designs whose selection is either
 independent across groups or a simple random sample within them:
 
 \tabular{ll}{
-  [design_simple()]      \tab `n(n-1) / (N(N-1))` for a pair, without replacement \cr
-  [design_stratified()]  \tab within a stratum as above; across strata, independent \cr
-  [design_cluster()]     \tab same cluster: `a/A`; different clusters: `a(a-1)/(A(A-1))` \cr
-  [design_multistage()]  \tab the two stages multiplied, equal allocation only \cr
-  [design_reservoir()]   \tab identical to simple random sampling \cr
-  [design_temporal()]    \tab within an interval as above; across intervals, independent \cr
-  [design_spatial()]     \tab simple random sampling inside the region \cr
-  [design_weighted()]    \tab `"poisson"` only, where rows are independent: `pi_i * pi_j` \cr
-  [design_systematic()]  \tab `1/interval` for rows sharing a residue class, otherwise **zero** \cr
+\code{\link[=design_simple]{design_simple()}}      \tab \code{n(n-1) / (N(N-1))} for a pair, without replacement \cr
+\code{\link[=design_stratified]{design_stratified()}}  \tab within a stratum as above; across strata, independent \cr
+\code{\link[=design_cluster]{design_cluster()}}     \tab same cluster: \code{a/A}; different clusters: \code{a(a-1)/(A(A-1))} \cr
+\code{\link[=design_multistage]{design_multistage()}}  \tab the two stages multiplied, where the per-cluster take is constant \cr
+\code{\link[=design_certainty]{design_certainty()}}   \tab \code{1} between certainty rows; otherwise the other row's own \code{pi} \cr
+\code{\link[=design_reservoir]{design_reservoir()}}   \tab simple random sampling over the first \code{max_items} rows \cr
+\code{\link[=design_temporal]{design_temporal()}}    \tab within an interval as above; across intervals, independent \cr
+\code{\link[=design_spatial]{design_spatial()}}     \tab simple random sampling inside the region \cr
+\code{\link[=design_weighted]{design_weighted()}}    \tab \code{"poisson"} only, where rows are independent: \code{pi_i * pi_j} \cr
+\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero} \cr
 }
 
 Systematic sampling is the awkward one. Most pairs can never co-occur, so
 their joint probability is genuinely 0 and no design-unbiased variance
-estimator exists. [ht_total()] says so rather than returning a number.
+estimator exists. \code{\link[=ht_total]{ht_total()}} says so rather than returning a number. Its
+residue classes follow the order the design walks, so \code{order_by} changes
+which pairs can co-occur.
 
-`design_weighted(method = "systematic")` has joint probabilities, but they
+\code{design_weighted(method = "systematic")} has joint probabilities, but they
 depend on the order units are visited and need a dedicated algorithm. Use
-`sampling::UPsystematicpi2()` for those.
+\code{sampling::UPsystematicpi2()} for those.
 }
 
 \examples{
@@ -59,5 +72,5 @@ joint_prob(df, design_simple(n = 4), rows = c(2, 5, 7))
 
 }
 \seealso{
-[inclusion_prob()], [ht_total()]
+\code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=ht_total]{ht_total()}}
 }

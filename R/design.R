@@ -13,6 +13,8 @@
 #'   \item{[design_cluster()]}{Whole clusters.}
 #'   \item{[design_multistage()]}{Clusters, then rows within them.}
 #'   \item{[design_weighted()]}{Rows with probability governed by a weight.}
+#'   \item{[design_certainty()]}{Everything above a threshold, plus a sample of
+#'     the rest.}
 #'   \item{[design_reservoir()]}{A fixed-size sample from a stream.}
 #'   \item{[design_bootstrap()]}{Resampled replicates.}
 #'   \item{[design_temporal()]}{A share of each time interval.}
@@ -33,16 +35,32 @@
 #' * `na_rm` always decides whether rows with a missing key are dropped or raise
 #'   an error. It is never silently assumed either way.
 #' * `replace` always means sampling with replacement within whatever group the
-#'   design works on.
+#'   design works on, and always rules out `draw(weights = TRUE)`: an inclusion
+#'   probability describes distinct units, and a sample holding duplicates
+#'   cannot be weighted by one.
 #' * [draw()] always restores the caller's random number stream before
 #'   returning, and always gives back a data frame with the input's class and
 #'   column order.
+#' * Rows come back in frame order for every design that selects a set of rows.
+#'   The two exceptions are the ones where draw order is meaningful:
+#'   [design_simple()] and [design_weighted()] return rows in the order they
+#'   were drawn, and [design_bootstrap()] returns replicates in order with a
+#'   leading `.replicate` column.
 #'
 #' @section Estimating from a sample:
 #' Because a design is a value, it can report its own inclusion probabilities
 #' before any sampling happens. [inclusion_prob()] gives first-order
-#' probabilities, [joint_prob()] second-order ones, and [ht_total()] combines
-#' them into a population total with a standard error.
+#' probabilities and [sampling_weight()] their reciprocals — the number of
+#' population rows each sampled row stands for. [joint_prob()] gives
+#' second-order probabilities, and [ht_total()] and
+#' [ht_mean()] combine them into a population total or mean with a standard
+#' error. [deff()] reports what the design cost in precision against simple
+#' random sampling, and [sample_summary()] reports what was actually drawn
+#' against what was in the frame.
+#'
+#' Going the other way, [plan_size()] solves for the sample size a given margin
+#' of error requires — the step *before* choosing a design. For analysis this
+#' package does not do, [as_svydesign()] hands a sample to the `survey` package.
 #'
 #' Not every design has a closed form for these — see [inclusion_prob()] for
 #' which, why, and what to do instead. Those that do not say so rather than
@@ -60,6 +78,9 @@
 #'     fifty, at the cost of precision.}
 #'   \item{Large units matter more}{[design_weighted()], with
 #'     `method = "systematic"` or `"poisson"` if you intend to estimate.}
+#'   \item{A few units dominate the total}{[design_certainty()] — take those
+#'     with certainty and sample the tail, which removes them from the variance
+#'     entirely.}
 #'   \item{Coverage across time or space}{[design_temporal()],
 #'     [design_spatial()].}
 #'   \item{Uncertainty of a statistic, not a population total}{
@@ -67,7 +88,8 @@
 #' }
 #'
 #' @name designs
-#' @seealso [draw()], [inclusion_prob()], [ht_total()]
+#' @seealso [draw()], [inclusion_prob()], [ht_total()], [plan_size()],
+#'   [sample_summary()]
 NULL
 
 #' Build a design object
