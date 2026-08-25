@@ -1,6 +1,5 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://elkronos.github.io/dRawn/404.html</loc></url>
-<url><loc>https://elkronos.github.io/dRawn/CRAN-AUDIT.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/LICENSE.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/articles/choosing-a-design.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/articles/index.html</loc></url>
@@ -21,8 +20,10 @@
 <url><loc>https://elkronos.github.io/dRawn/reference/draw.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/draw_design.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/drawn-package.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/ht_total.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/inclusion_prob.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/index.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/is_design.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/joint_prob.html</loc></url>
 </urlset>
 

@@ -9,6 +9,10 @@ One verb, and the probabilities that make a sample usable.
 - [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
   [`design_weight()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
   : Inclusion probabilities and design weights
+- [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
+  : Joint inclusion probabilities
+- [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+  : Estimate a population total from a sample
 - [`designs`](https://elkronos.github.io/dRawn/reference/designs.md) :
   Sampling designs
 - [`is_design()`](https://elkronos.github.io/dRawn/reference/is_design.md)

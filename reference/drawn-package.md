@@ -15,9 +15,11 @@ instead.
 
 Useful links:
 
-- <https://github.com/elkronos/sampleR>
+- <https://github.com/elkronos/dRawn>
 
-- Report bugs at <https://github.com/elkronos/sampleR/issues>
+- <https://elkronos.github.io/dRawn/>
+
+- Report bugs at <https://github.com/elkronos/dRawn/issues>
 
 ## Author
 

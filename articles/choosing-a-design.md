@@ -101,8 +101,36 @@ c(estimate = round(ht), truth = sum(invoices$value))
 #> 380046.0 428704.5
 ```
 
-One draw won’t land on the truth, but it’s unbiased — the average over
-many draws converges.
+One draw won’t land on the truth.
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+gives you the total *and* a standard error, so you know how far off it
+might be:
+
+``` r
+
+ht_total(s, "value")
+#> Horvitz-Thompson total  (stratified design, n = 60)
+#>   total    380,046.5
+#>   se       49,499.7
+#>   95% CI  283,028.9 to 477,064.1
+```
+
+That interval comes from second-order inclusion probabilities — the
+chance a *pair* of rows both land in the sample — which
+[`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
+computes:
+
+``` r
+
+round(joint_prob(invoices, plan, rows = 1:4), 4)
+#>        [,1]   [,2]   [,3]   [,4]
+#> [1,] 0.1000 0.0097 0.0097 0.0097
+#> [2,] 0.0097 0.1000 0.0097 0.0097
+#> [3,] 0.0097 0.0097 0.1000 0.0097
+#> [4,] 0.0097 0.0097 0.0097 0.1000
+```
+
+The estimator is unbiased — the average over many draws converges.
 
 ``` r
 
@@ -114,6 +142,19 @@ ests <- vapply(1:400, function(i) {
 c(mean_estimate = round(mean(ests)), truth = sum(invoices$value))
 #> mean_estimate         truth 
 #>      435056.0      428704.5
+```
+
+And the reported standard error tracks the estimator’s real spread:
+
+``` r
+
+ses <- vapply(1:400, function(i) {
+  ht_total(draw(invoices, plan, seed = i, weights = TRUE), "value")$se
+}, numeric(1))
+
+c(mean_reported_se = round(mean(ses)), actual_sd = round(stats::sd(ests)))
+#> mean_reported_se        actual_sd 
+#>            74637            80154
 ```
 
 You can also ask the design about the population *before* drawing
