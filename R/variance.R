@@ -138,7 +138,8 @@ joint_inclusion.drawn_design_stratified <- function(design, data, rows) {
   idx <- split(seq_len(nrow(data))[!bad], group[!bad])
   sizes <- lengths(idx)
   n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = TRUE)
+                      design$min_per_stratum, cap = TRUE,
+                      spread = stratum_spread(design, data, idx))
 
   pi_all <- exact_inclusion(design, data)
   joint_from_groups(as.character(group[rows]), n_alloc, sizes, pi_all[rows])
@@ -311,10 +312,15 @@ joint_inclusion.drawn_design_bootstrap <- function(design, data, rows) {
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`.
 #' @param y The variable to total: a column name, or a numeric vector as long as
 #'   `sample`.
+#' @param variance How to compute it. `"auto"` uses the analytic estimator when
+#'   the design has one and falls back to the jackknife when it does not;
+#'   `"analytic"` insists on the analytic form and errors otherwise;
+#'   `"jackknife"` always resamples; `"none"` skips it. The result reports which
+#'   was used.
 #' @param level Confidence level for the interval.
 #'
-#' @return A list with `total`, `variance`, `se`, `ci`, `n` and `note`,
-#'   with a `print()` method.
+#' @return A list with `total`, `variance`, `se`, `ci`, `n`, `method` and
+#'   `note`, with a `print()` method.
 #'
 #' @examples
 #' set.seed(1)
@@ -331,7 +337,9 @@ joint_inclusion.drawn_design_bootstrap <- function(design, data, rows) {
 #'
 #' @seealso [joint_prob()], [inclusion_prob()]
 #' @export
-ht_total <- function(sample, y, level = 0.95) {
+ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
+                                            "none"), level = 0.95) {
+  variance <- match.arg(variance)
   if (!is.data.frame(sample)) {
     stop("`sample` must be a data frame returned by draw().", call. = FALSE)
   }
@@ -367,9 +375,23 @@ ht_total <- function(sample, y, level = 0.95) {
   pi_i <- sample$.prob
   total <- sum(yv / pi_i)
 
-  var_out <- tryCatch(
-    ht_variance(design, pop, rows, yv, pi_i),
-    error = function(e) list(variance = NA_real_, note = conditionMessage(e))
+  var_out <- switch(variance,
+    none = list(variance = NA_real_, method = "none",
+                note = "Variance not requested."),
+    jackknife = jackknife_variance(design, sample, pop, yv, pi_i),
+    analytic = tryCatch(
+      c(ht_variance(design, pop, rows, yv, pi_i), list(method = "analytic")),
+      error = function(e) list(variance = NA_real_, method = "analytic",
+                               note = conditionMessage(e))),
+    tryCatch(
+      c(ht_variance(design, pop, rows, yv, pi_i), list(method = "analytic")),
+      error = function(e) {
+        jk <- jackknife_variance(design, sample, pop, yv, pi_i)
+        jk$note <- paste0("No analytic variance for this design, so the ",
+                          "jackknife was used instead. ",
+                          sub("\n.*", "", conditionMessage(e)))
+        jk
+      })
   )
 
   se <- if (is.na(var_out$variance) || var_out$variance < 0) {
@@ -383,9 +405,90 @@ ht_total <- function(sample, y, level = 0.95) {
   structure(
     list(total = total, variance = var_out$variance, se = se, ci = ci,
          level = level, n = nrow(sample), design = design_type(design),
-         note = var_out$note),
+         method = var_out$method %||% "analytic", note = var_out$note),
     class = "drawn_ht"
   )
+}
+
+#' Delete-a-group jackknife variance
+#'
+#' Works from the sample alone, which is what makes it available where the
+#' analytic form is not. Groups are the primary sampling units: whole clusters
+#' where the design has them, otherwise individual rows. Deleting a group,
+#' inflating the surviving weights to compensate, and looking at how far the
+#' estimate moves is a direct measure of how much the estimate depended on
+#' which groups were drawn.
+#'
+#' @noRd
+jackknife_variance <- function(design, sample, pop, y, pi_i) {
+  if (inherits(design, "drawn_design_systematic")) {
+    return(list(variance = NA_real_, method = "jackknife",
+                note = paste0("A systematic sample has one primary sampling ",
+                              "unit -- the random start -- so deleting rows ",
+                              "does not reflect the design's randomness and ",
+                              "the jackknife is not valid here.")))
+  }
+  grp <- jackknife_groups(design, sample)
+  m <- length(unique(grp))
+  if (m < 2L) {
+    return(list(variance = NA_real_, method = "jackknife",
+                note = paste0("The jackknife needs at least two primary ",
+                              "sampling units; this sample has ", m, ".")))
+  }
+  base <- y / pi_i
+  ug <- unique(grp)
+  reps <- vapply(ug, function(g) sum(base[grp != g]) * m / (m - 1), numeric(1))
+
+  # Without a finite population correction the jackknife treats the frame as
+  # infinite and overstates the variance -- by a factor of four when a quarter
+  # of the clusters were taken.
+  fpc <- jackknife_fpc(design, pop, m)
+  v <- fpc * ((m - 1) / m) * sum((reps - mean(reps))^2)
+  list(variance = v, method = "jackknife",
+       note = paste0("Jackknife over ", m, " primary sampling unit(s)",
+                     if (fpc < 1) paste0(", with a finite population ",
+                                         "correction of ", signif(fpc, 3))
+                     else "", "."))
+}
+
+#' The share of primary sampling units NOT taken
+#'
+#' Applied for single-stage designs, where deleting a sampling unit accounts for
+#' all the randomness there is. Deliberately not applied to multi-stage designs:
+#' the delete-a-cluster jackknife sees only between-cluster variation, so the
+#' second stage is already missing, and correcting for the first stage on top of
+#' that understates the total. Leaving it out is the ultimate-cluster
+#' approximation, which errs conservative -- the usual choice in survey practice.
+#'
+#' @noRd
+jackknife_fpc <- function(design, pop, m) {
+  if (inherits(design, "drawn_design_multistage")) return(1)
+  total <- tryCatch({
+    if (inherits(design, "drawn_design_cluster")) {
+      count_clusters(design, pop)$total
+    } else {
+      nrow(pop)
+    }
+  }, error = function(e) NA_real_)
+  if (!is.finite(total) || total <= m) return(1)
+  1 - m / total
+}
+
+#' @noRd
+jackknife_groups <- function(design, sample) {
+  col <- if (inherits(design, c("drawn_design_cluster",
+                                "drawn_design_multistage"))) {
+    design$clusters
+  } else if (inherits(design, "drawn_design_stratified")) {
+    NULL   # rows within strata are the sampling units
+  } else {
+    NULL
+  }
+  if (!is.null(col) && col %in% names(sample)) {
+    as.character(sample[[col]])
+  } else {
+    as.character(seq_len(nrow(sample)))
+  }
 }
 
 #' @noRd
@@ -431,10 +534,14 @@ print.drawn_ht <- function(x, ...) {
       cat("\n")
     }
   } else {
-    cat("  se       ", format(x$se, big.mark = ","), "\n", sep = "")
+    cat("  se       ", format(x$se, big.mark = ","),
+        "  (", x$method, ")\n", sep = "")
     cat("  ", format(100 * x$level), "% CI  ",
         format(x$ci[1], big.mark = ","), " to ",
         format(x$ci[2], big.mark = ","), "\n", sep = "")
+    if (identical(x$method, "jackknife") && !is.null(x$note)) {
+      cat("\n", strwrap(x$note, prefix = "  "), sep = "\n"); cat("\n")
+    }
   }
   invisible(x)
 }

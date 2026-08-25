@@ -14,8 +14,13 @@
 #' @param min_per_stratum Floor per group.
 #' @param cap When `TRUE`, no group may be allocated more rows than it holds.
 #'   `FALSE` when sampling with replacement, where over-allocation is legal.
+#' @param spread Per-group standard deviation, for Neyman allocation. Groups
+#'   get shares proportional to `size * spread`, which minimises the variance
+#'   of a total for a fixed `n`: a group whose values barely vary needs fewer
+#'   rows to pin down than an equally sized group that varies a lot.
 #' @noRd
-allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE) {
+allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
+                     spread = NULL) {
   k <- length(sizes)
   if (k == 0L) return(integer(0))
 
@@ -25,7 +30,21 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE) {
          " rows, but `n` is ", n, ".", call. = FALSE)
   }
 
-  raw <- if (allocation == "equal") rep(n / k, k) else n * sizes / sum(sizes)
+  raw <- switch(allocation,
+    equal = rep(n / k, k),
+    neyman = {
+      if (is.null(spread)) {
+        stop("Neyman allocation needs `allocation_by`.", call. = FALSE)
+      }
+      sp <- spread[names(sizes)]
+      sp[!is.finite(sp)] <- 0
+      w <- sizes * sp
+      # Every stratum with no spread still needs representation; fall back to
+      # proportional if the auxiliary variable is constant throughout.
+      if (sum(w) <= 0) n * sizes / sum(sizes) else n * w / sum(w)
+    },
+    n * sizes / sum(sizes)
+  )
 
   base <- pmax(min_per_stratum, floor(raw))
   if (cap) base <- pmin(base, sizes)

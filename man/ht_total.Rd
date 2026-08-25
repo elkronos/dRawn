@@ -4,7 +4,12 @@
 \alias{ht_total}
 \title{Estimate a population total from a sample}
 \usage{
-ht_total(sample, y, level = 0.95)
+ht_total(
+  sample,
+  y,
+  variance = c("auto", "analytic", "jackknife", "none"),
+  level = 0.95
+)
 }
 \arguments{
 \item{sample}{A data frame returned by [draw()] with `weights = TRUE`.}
@@ -12,11 +17,17 @@ ht_total(sample, y, level = 0.95)
 \item{y}{The variable to total: a column name, or a numeric vector as long as
 `sample`.}
 
+\item{variance}{How to compute it. `"auto"` uses the analytic estimator when
+the design has one and falls back to the jackknife when it does not;
+`"analytic"` insists on the analytic form and errors otherwise;
+`"jackknife"` always resamples; `"none"` skips it. The result reports which
+was used.}
+
 \item{level}{Confidence level for the interval.}
 }
 \value{
-A list with `total`, `variance`, `se`, `ci`, `n` and `note`,
-  with a `print()` method.
+A list with `total`, `variance`, `se`, `ci`, `n`, `method` and
+  `note`, with a `print()` method.
 }
 \description{
 Forms the Horvitz-Thompson total `sum(y / pi)` and, where the design allows

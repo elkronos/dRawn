@@ -11,6 +11,8 @@ reference:
   - inclusion_prob
   - joint_prob
   - ht_total
+  - sampling_weight
+  - plot.drawn_design
   - designs
   - is_design
 

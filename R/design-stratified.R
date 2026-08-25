@@ -7,8 +7,15 @@
 #' @param strata One or more column names defining the strata. Several columns
 #'   are cross-classified.
 #' @param n Total rows to draw across all strata, under either allocation.
-#' @param allocation `"proportional"` splits `n` in proportion to stratum size;
-#'   `"equal"` splits it evenly.
+#' @param allocation How `n` is split across strata. `"proportional"` gives each
+#'   stratum a share of `n` in proportion to its size; `"equal"` splits `n`
+#'   evenly; `"neyman"` gives shares proportional to `size * sd`, using the
+#'   column named by `allocation_by`. Neyman minimises the variance of a total
+#'   for a fixed `n` by putting more rows where the values vary most, and is
+#'   the right choice when you have a frame variable correlated with what you
+#'   are measuring.
+#' @param allocation_by Column whose within-stratum standard deviation drives
+#'   `allocation = "neyman"`. Ignored otherwise.
 #' @param min_per_stratum Minimum rows from each stratum. The default of `0`
 #'   leaves allocation unbiased; `1` guarantees coverage of rare strata at the
 #'   cost of over-representing them.
@@ -29,17 +36,46 @@
 #' @seealso [draw()]
 #' @export
 design_stratified <- function(strata, n,
-                              allocation = c("proportional", "equal"),
+                              allocation = c("proportional", "equal", "neyman"),
+                              allocation_by = NULL,
                               min_per_stratum = 0L, replace = FALSE,
                               na_rm = FALSE) {
+  allocation <- match.arg(allocation)
+  if (allocation == "neyman" && is.null(allocation_by)) {
+    stop("`allocation = \"neyman\"` needs `allocation_by`, the column whose ",
+         "within-stratum spread should drive the split.", call. = FALSE)
+  }
   new_design("stratified", list(
     strata = check_columns(strata, "strata"),
     n = check_count(n, "n"),
-    allocation = match.arg(allocation),
+    allocation = allocation,
+    allocation_by = if (is.null(allocation_by)) NULL else
+      check_columns(allocation_by, "allocation_by", 1L),
     min_per_stratum = check_count(min_per_stratum, "min_per_stratum"),
     replace = check_flag(replace, "replace"),
     na_rm = check_flag(na_rm, "na_rm")
   ))
+}
+
+
+#' Within-stratum spread for Neyman allocation
+#' @noRd
+stratum_spread <- function(design, data, idx_by_stratum) {
+  if (design$allocation != "neyman") return(NULL)
+  col <- design$allocation_by
+  validate_data(data, required_columns = col)
+  v <- data[[col]]
+  if (!is.numeric(v)) {
+    stop("`allocation_by` names `", col, "`, which must be numeric for Neyman ",
+         "allocation, not ", class(v)[1], ".", call. = FALSE)
+  }
+  if (anyNA(v)) {
+    stop(sum(is.na(v)), " value(s) of `", col, "` are missing; Neyman ",
+         "allocation needs it for every frame row.", call. = FALSE)
+  }
+  vapply(idx_by_stratum, function(i) {
+    if (length(i) < 2L) 0 else stats::sd(v[i])
+  }, numeric(1))
 }
 
 #' @export
@@ -61,7 +97,8 @@ draw_design.drawn_design_stratified <- function(design, data) {
   check_draw_size(design$n, nrow(data), design$replace)
 
   n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = !design$replace)
+                      design$min_per_stratum, cap = !design$replace,
+                      spread = stratum_spread(design, data, idx_by_stratum))
 
   if (!design$replace) {
     over <- n_alloc > sizes
@@ -94,7 +131,8 @@ exact_inclusion.drawn_design_stratified <- function(design, data) {
   idx_by_stratum <- split(seq_len(nrow(data))[!bad], group[!bad])
   sizes <- lengths(idx_by_stratum)
   n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = !design$replace)
+                      design$min_per_stratum, cap = !design$replace,
+                      spread = stratum_spread(design, data, idx_by_stratum))
 
   out <- numeric(nrow(data))
   for (h in names(idx_by_stratum)) {

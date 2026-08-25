@@ -129,3 +129,46 @@ test_that("the print method shows the interval, or the reason there isn't one", 
                                              seed = 1, weights = TRUE), "y")))
   expect_true(any(grepl("se\\s+NA", out2)))
 })
+
+test_that("the jackknife supplies a variance where the analytic form cannot", {
+  set.seed(3); N <- 240
+  pop <- data.frame(id = 1:N, cl = rep(paste0("c", 1:24), each = 10),
+                    y = round(stats::runif(N, 5, 200)))
+  pop$w <- pop$y + 50
+
+  # Systematic PPS has first-order probabilities but no closed-form joint ones
+  r <- ht_total(draw(pop, design_weighted("w", n = 30, method = "systematic"),
+                     seed = 1, weights = TRUE), "y")
+  expect_equal(r$method, "jackknife")
+  expect_true(is.finite(r$se))
+  expect_match(r$note, "jackknife was used")
+})
+
+test_that("jackknife and analytic agree where both exist", {
+  set.seed(3); N <- 240
+  pop <- data.frame(id = 1:N, cl = rep(paste0("c", 1:24), each = 10),
+                    y = round(stats::runif(N, 5, 200)))
+  for (d in list(design_simple(n = 30), design_cluster("cl", n_clusters = 6))) {
+    s <- draw(pop, d, seed = 1, weights = TRUE)
+    a <- ht_total(s, "y", variance = "analytic")$variance
+    j <- ht_total(s, "y", variance = "jackknife")$variance
+    expect_equal(j, a, tolerance = 1e-6)
+  }
+})
+
+test_that("systematic sampling refuses the jackknife too", {
+  set.seed(3)
+  pop <- data.frame(id = 1:240, y = round(stats::runif(240, 5, 200)))
+  r <- ht_total(draw(pop, design_systematic(interval = 8), seed = 1,
+                     weights = TRUE), "y", variance = "jackknife")
+  expect_true(is.na(r$variance))
+  expect_match(r$note, "one primary sampling unit")
+})
+
+test_that("variance = 'none' and 'analytic' behave as documented", {
+  pop <- data.frame(id = 1:100, y = 1:100)
+  s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
+  expect_true(is.na(ht_total(s, "y", variance = "none")$variance))
+  expect_equal(ht_total(s, "y", variance = "analytic")$method, "analytic")
+  expect_error(ht_total(s, "y", variance = "nope"))
+})

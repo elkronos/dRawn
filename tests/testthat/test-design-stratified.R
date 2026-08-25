@@ -99,3 +99,52 @@ test_that("min_per_stratum still totals n exactly, at every feasible floor", {
     }
   }
 })
+
+test_that("Neyman allocation puts rows where the values vary most", {
+  set.seed(2)
+  d <- data.frame(id = 1:300, g = rep(c("a", "b", "c"), each = 100))
+  d$v <- c(stats::rnorm(100, 50, 1), stats::rnorm(100, 50, 10),
+           stats::rnorm(100, 50, 30))
+
+  ney <- table(draw(d, design_stratified("g", n = 60, allocation = "neyman",
+                                         allocation_by = "v"), seed = 1)$g)
+  expect_equal(sum(ney), 60)
+  expect_lt(ney[["a"]], ney[["b"]])
+  expect_lt(ney[["b"]], ney[["c"]])
+
+  # Equal-sized strata with equal spread reduce to proportional
+  flat <- data.frame(id = 1:300, g = rep(c("a", "b", "c"), each = 100),
+                     v = rep(stats::rnorm(100), 3))
+  expect_equal(as.vector(table(draw(flat, design_stratified(
+    "g", n = 60, allocation = "neyman", allocation_by = "v"), seed = 1)$g)),
+    rep(20L, 3))
+})
+
+test_that("Neyman validates its auxiliary column", {
+  d <- data.frame(id = 1:30, g = rep(c("a", "b"), 15), v = 1:30,
+                  ch = letters[rep(1:2, 15)])
+  expect_error(design_stratified("g", n = 10, allocation = "neyman"),
+               "needs `allocation_by`")
+  expect_error(draw(d, design_stratified("g", n = 10, allocation = "neyman",
+                                         allocation_by = "ch"), seed = 1),
+               "must be numeric")
+  na_d <- d; na_d$v[1] <- NA
+  expect_error(draw(na_d, design_stratified("g", n = 10, allocation = "neyman",
+                                            allocation_by = "v"), seed = 1),
+               "are missing")
+})
+
+test_that("Neyman inclusion probabilities are consistent with the draw", {
+  set.seed(4)
+  d <- data.frame(id = 1:200, g = rep(c("a", "b"), each = 100))
+  d$v <- c(stats::rnorm(100, 0, 1), stats::rnorm(100, 0, 20))
+  des <- design_stratified("g", n = 40, allocation = "neyman", allocation_by = "v")
+
+  p <- inclusion_prob(d, des)
+  hits <- integer(200)
+  for (i in 1:1500) {
+    ids <- draw(d, des, seed = i)$id
+    hits[ids] <- hits[ids] + 1L
+  }
+  expect_equal(hits / 1500, p, tolerance = 0.05)
+})
