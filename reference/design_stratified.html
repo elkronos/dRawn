@@ -52,7 +52,8 @@ with per-stratum rounding.</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">design_stratified</span><span class="op">(</span></span>
 <span>  <span class="va">strata</span>,</span>
 <span>  <span class="va">n</span>,</span>
-<span>  allocation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"proportional"</span>, <span class="st">"equal"</span><span class="op">)</span>,</span>
+<span>  allocation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"proportional"</span>, <span class="st">"equal"</span>, <span class="st">"neyman"</span><span class="op">)</span>,</span>
+<span>  allocation_by <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_per_stratum <span class="op">=</span> <span class="fl">0L</span>,</span>
 <span>  replace <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  na_rm <span class="op">=</span> <span class="cn">FALSE</span></span>
@@ -73,8 +74,18 @@ are cross-classified.</p></dd>
 
 
 <dt id="arg-allocation">allocation<a class="anchor" aria-label="anchor" href="#arg-allocation"></a></dt>
-<dd><p>`"proportional"` splits `n` in proportion to stratum size;
-`"equal"` splits it evenly.</p></dd>
+<dd><p>How `n` is split across strata. `"proportional"` gives each
+stratum a share of `n` in proportion to its size; `"equal"` splits `n`
+evenly; `"neyman"` gives shares proportional to `size * sd`, using the
+column named by `allocation_by`. Neyman minimises the variance of a total
+for a fixed `n` by putting more rows where the values vary most, and is
+the right choice when you have a frame variable correlated with what you
+are measuring.</p></dd>
+
+
+<dt id="arg-allocation-by">allocation_by<a class="anchor" aria-label="anchor" href="#arg-allocation-by"></a></dt>
+<dd><p>Column whose within-stratum standard deviation drives
+`allocation = "neyman"`. Ignored otherwise.</p></dd>
 
 
 <dt id="arg-min-per-stratum">min_per_stratum<a class="anchor" aria-label="anchor" href="#arg-min-per-stratum"></a></dt>

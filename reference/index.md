@@ -13,6 +13,8 @@ One verb, and the probabilities that make a sample usable.
   : Joint inclusion probabilities
 - [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
   : Estimate a population total from a sample
+- [`plot(`*`<drawn_design>`*`)`](https://elkronos.github.io/dRawn/reference/plot.drawn_design.md)
+  : Picture a sampling design
 - [`designs`](https://elkronos.github.io/dRawn/reference/designs.md) :
   Sampling designs
 - [`is_design()`](https://elkronos.github.io/dRawn/reference/is_design.md)

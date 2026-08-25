@@ -111,7 +111,7 @@ might be:
 ht_total(s, "value")
 #> Horvitz-Thompson total  (stratified design, n = 60)
 #>   total    380,046.5
-#>   se       49,499.7
+#>   se       49,499.7  (analytic)
 #>   95% CI  283,028.9 to 477,064.1
 ```
 
@@ -366,7 +366,7 @@ indicative:
 ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
 #> Horvitz-Thompson total  (cluster design, n = 120)
 #>   total    446,199.5
-#>   se       46,834.3
+#>   se       46,834.3  (analytic)
 #>   95% CI  354,406 to 537,993.1
 ```
 

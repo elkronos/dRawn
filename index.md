@@ -166,13 +166,24 @@ Arguments mean the same thing everywhere:
 - **`n` is always the total drawn**, never a per-group figure.
   [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md)
   says `per_interval` precisely because that one *is* per group.
-- **`allocation`** always says how a total is split across groups —
-  `"proportional"` or `"equal"`.
+
+- **`allocation`** always says how a total is split across groups:
+  `"proportional"`, `"equal"`, or `"neyman"`, which puts more rows where
+  the values vary most and minimises the variance of a total for a fixed
+  `n`.
+
+  ``` r
+
+  design_stratified("site", n = 60, allocation = "neyman", allocation_by = "value")
+  ```
+
 - **`na_rm`** always decides whether missing keys are dropped or raise
   an error. It is never silently assumed.
+
 - **`seed`** is local to the draw. `.Random.seed` is restored on exit,
   so sampling inside a simulation does not shift the simulation’s own
   stream.
+
 - **The result keeps the input’s class and column order.** A tibble in,
   a tibble out.
 
@@ -195,8 +206,8 @@ design_weighted("size", n = 100, method = "poisson")      # exact piPS, random n
 | `method` | Inclusion probabilities | Sample size | Estimable |
 |----|----|----|----|
 | `"successive"` | not proportional to weight | fixed | no closed form |
-| `"systematic"` | exactly `n * p_i` | fixed | yes, no variance |
-| `"poisson"` | exactly `n * p_i` | random, mean `n` | yes, with variance |
+| `"systematic"` | exactly `n * p_i` | fixed | yes, jackknife variance |
+| `"poisson"` | exactly `n * p_i` | random, mean `n` | yes, analytic variance |
 
 The default is what `base::sample(prob = )` does. It biases selection
 toward heavy units, which is often all you want — but the weights govern
@@ -207,6 +218,34 @@ the sample will be estimated from.
 
 Units heavy enough that `n * p_i > 1` are taken with certainty and the
 remainder rescaled, repeatedly, until every probability is valid.
+
+## Seeing what a design does
+
+``` r
+
+par(mfrow = c(2, 1), mar = c(2, 1, 2, 1))
+plot(design_simple(n = 60), invoices, seed = 1)
+plot(design_systematic(interval = 7), invoices, seed = 1)
+```
+
+Every frame row is a dot, in frame order, with the selected ones filled
+in. Designs look distinct: simple random sampling scatters, systematic
+makes a lattice, cluster sampling takes solid contiguous runs, and
+size-proportional selection thickens wherever the weight is large. If
+your frame is sorted by something meaningful, an unintended pattern
+shows up straight away.
+
+The second view plots inclusion probability against frame position —
+flat means everyone had the same chance, steps mean strata, a slope
+means size-proportional, and anything at zero is a row the design can
+never reach:
+
+``` r
+
+plot(design_stratified("site", n = 60), invoices, type = "probability")
+```
+
+Base graphics, so there is no plotting dependency to install.
 
 ## What can and cannot be estimated
 
@@ -222,8 +261,9 @@ needs both to produce a standard error.
 | simple, stratified, cluster, reservoir, temporal, spatial | exact | yes |
 | multistage, `allocation = "equal"` | exact | yes, when `n` divides by `n_clusters` |
 | `design_weighted(method = "poisson")` | exact | yes |
-| `design_weighted(method = "systematic")` | exact | no — see `sampling::UPsystematicpi2()` |
-| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | exact | no — most pairs can never co-occur |
+| `design_weighted(method = "systematic")` | exact | jackknife |
+| multistage, `n` not divisible by `n_clusters` | exact | jackknife |
+| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | exact | none — most pairs can never co-occur |
 | `design_cluster(balanced = TRUE)` | none | no |
 | `design_multistage(allocation = "proportional")` | none | no |
 | `design_weighted(method = "successive")` | none | no |
@@ -239,9 +279,19 @@ inclusion_prob(data, design_cluster("site", n_clusters = 4, balanced = TRUE),
 ```
 
 Variances use the Sen-Yates-Grundy estimator for fixed-size designs and
-the independent-units form for Poisson sampling. Each was checked
-against the empirical sampling variance of its own estimator over 4,000
-replications.
+the independent-units form for Poisson sampling. Where no analytic form
+exists but inclusion probabilities do,
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+falls back to a delete-a-group jackknife and says so; it reports which
+method it used. Every analytic estimator was checked against the
+empirical sampling variance of its own estimator over 4,000
+replications, and the jackknife reproduces the analytic value exactly
+for simple and cluster designs.
+
+Systematic sampling gets neither: it has a single primary sampling unit
+— the random start — so deleting rows misrepresents the design, and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+declines rather than returning a misleading number.
 
 One caveat worth knowing: cluster designs with few clusters have few
 effective degrees of freedom, so the normal-approximation interval

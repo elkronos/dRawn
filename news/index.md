@@ -70,9 +70,28 @@ ht_total(s, "spend")
 ```
 
 Variances use the Sen-Yates-Grundy estimator for fixed-size designs and
-the independent-units form for Poisson sampling. Each was checked
-against the empirical sampling variance of its own estimator over 4,000
-replications.
+the independent-units form for Poisson sampling. Where a design has
+inclusion probabilities but no closed-form joint ones,
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+falls back to a delete-a-group jackknife with a finite population
+correction, and reports which method it used. Each analytic estimator
+was checked against the empirical sampling variance of its own estimator
+over 4,000 replications; the jackknife reproduces the analytic value
+exactly for simple and cluster designs.
+
+### Seeing a design
+
+`plot(design, data)` shows which rows a design selects — every frame row
+as a dot, selected ones filled in — and `type = "probability"` plots
+inclusion probability against frame position. Base graphics, no plotting
+dependency.
+
+### Allocation
+
+[`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md)
+accepts `allocation = "neyman"` with `allocation_by`, giving strata
+shares proportional to `size * sd`. That minimises the variance of a
+total for a fixed `n` by putting more rows where the values vary most.
 
 ### Saying when it cannot
 

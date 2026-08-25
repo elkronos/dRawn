@@ -155,7 +155,7 @@ might be:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Horvitz-Thompson total  (stratified design, n = 60)</span></span>
 <span><span class="co">#&gt;   total    380,046.5</span></span>
-<span><span class="co">#&gt;   se       49,499.7</span></span>
+<span><span class="co">#&gt;   se       49,499.7  (analytic)</span></span>
 <span><span class="co">#&gt;   95% CI  283,028.9 to 477,064.1</span></span></code></pre></div>
 <p>That interval comes from second-order inclusion probabilities — the
 chance a <em>pair</em> of rows both land in the sample — which
@@ -355,7 +355,7 @@ indicative:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">by_team</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, <span class="st">"value"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Horvitz-Thompson total  (cluster design, n = 120)</span></span>
 <span><span class="co">#&gt;   total    446,199.5</span></span>
-<span><span class="co">#&gt;   se       46,834.3</span></span>
+<span><span class="co">#&gt;   se       46,834.3  (analytic)</span></span>
 <span><span class="co">#&gt;   95% CI  354,406 to 537,993.1</span></span></code></pre></div>
 </div>
 <div class="section level2">

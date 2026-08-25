@@ -10,7 +10,8 @@ drifting with per-stratum rounding.
 design_stratified(
   strata,
   n,
-  allocation = c("proportional", "equal"),
+  allocation = c("proportional", "equal", "neyman"),
+  allocation_by = NULL,
   min_per_stratum = 0L,
   replace = FALSE,
   na_rm = FALSE
@@ -30,8 +31,18 @@ design_stratified(
 
 - allocation:
 
-  \`"proportional"\` splits \`n\` in proportion to stratum size;
-  \`"equal"\` splits it evenly.
+  How \`n\` is split across strata. \`"proportional"\` gives each
+  stratum a share of \`n\` in proportion to its size; \`"equal"\` splits
+  \`n\` evenly; \`"neyman"\` gives shares proportional to \`size \*
+  sd\`, using the column named by \`allocation_by\`. Neyman minimises
+  the variance of a total for a fixed \`n\` by putting more rows where
+  the values vary most, and is the right choice when you have a frame
+  variable correlated with what you are measuring.
+
+- allocation_by:
+
+  Column whose within-stratum standard deviation drives \`allocation =
+  "neyman"\`. Ignored otherwise.
 
 - min_per_stratum:
 

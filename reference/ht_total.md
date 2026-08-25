@@ -6,7 +6,12 @@ allows it, a design-unbiased variance and confidence interval.
 ## Usage
 
 ``` r
-ht_total(sample, y, level = 0.95)
+ht_total(
+  sample,
+  y,
+  variance = c("auto", "analytic", "jackknife", "none"),
+  level = 0.95
+)
 ```
 
 ## Arguments
@@ -20,14 +25,22 @@ ht_total(sample, y, level = 0.95)
   The variable to total: a column name, or a numeric vector as long as
   \`sample\`.
 
+- variance:
+
+  How to compute it. \`"auto"\` uses the analytic estimator when the
+  design has one and falls back to the jackknife when it does not;
+  \`"analytic"\` insists on the analytic form and errors otherwise;
+  \`"jackknife"\` always resamples; \`"none"\` skips it. The result
+  reports which was used.
+
 - level:
 
   Confidence level for the interval.
 
 ## Value
 
-A list with \`total\`, \`variance\`, \`se\`, \`ci\`, \`n\` and \`note\`,
-with a \`print()\` method.
+A list with \`total\`, \`variance\`, \`se\`, \`ci\`, \`n\`, \`method\`
+and \`note\`, with a \`print()\` method.
 
 ## Variance
 
@@ -60,7 +73,7 @@ s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
 ht_total(s, "spend")
 #> Horvitz-Thompson total  (stratified design, n = 40)
 #>   total    54,000
-#>   se       3,713.698
+#>   se       3,713.698  (analytic)
 #>   95% CI  46,721.29 to 61,278.71
 
 sum(pop$spend)   # the truth

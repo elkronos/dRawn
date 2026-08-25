@@ -67,7 +67,15 @@
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">pop</span>, <span class="fu"><a href="../reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">40</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"spend"</span><span class="op">)</span></span></code></pre></div>
-<p>Variances use the Sen-Yates-Grundy estimator for fixed-size designs and the independent-units form for Poisson sampling. Each was checked against the empirical sampling variance of its own estimator over 4,000 replications.</p>
+<p>Variances use the Sen-Yates-Grundy estimator for fixed-size designs and the independent-units form for Poisson sampling. Where a design has inclusion probabilities but no closed-form joint ones, <code><a href="../reference/ht_total.html">ht_total()</a></code> falls back to a delete-a-group jackknife with a finite population correction, and reports which method it used. Each analytic estimator was checked against the empirical sampling variance of its own estimator over 4,000 replications; the jackknife reproduces the analytic value exactly for simple and cluster designs.</p>
+</div>
+<div class="section level3">
+<h3 id="seeing-a-design-0-1-0">Seeing a design<a class="anchor" aria-label="anchor" href="#seeing-a-design-0-1-0"></a></h3>
+<p><code>plot(design, data)</code> shows which rows a design selects — every frame row as a dot, selected ones filled in — and <code>type = "probability"</code> plots inclusion probability against frame position. Base graphics, no plotting dependency.</p>
+</div>
+<div class="section level3">
+<h3 id="allocation-0-1-0">Allocation<a class="anchor" aria-label="anchor" href="#allocation-0-1-0"></a></h3>
+<p><code><a href="../reference/design_stratified.html">design_stratified()</a></code> accepts <code>allocation = "neyman"</code> with <code>allocation_by</code>, giving strata shares proportional to <code>size * sd</code>. That minimises the variance of a total for a fixed <code>n</code> by putting more rows where the values vary most.</p>
 </div>
 <div class="section level3">
 <h3 id="saying-when-it-cannot-0-1-0">Saying when it cannot<a class="anchor" aria-label="anchor" href="#saying-when-it-cannot-0-1-0"></a></h3>
