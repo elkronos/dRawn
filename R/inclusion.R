@@ -2,7 +2,7 @@
 #'
 #' `inclusion_prob()` returns the first-order inclusion probability of every row
 #' of `data` under `design` — the probability that the row lands in a sample —
-#' without drawing one. `design_weight()` returns `1 / inclusion_prob()`, the
+#' without drawing one. `sampling_weight()` returns `1 / inclusion_prob()`, the
 #' number of population units each sampled row stands for.
 #'
 #' These are what make a sample usable for estimation. A Horvitz-Thompson total
@@ -64,7 +64,7 @@
 #' # 8 rows allocated proportionally: 6 of 15, then 2 of 5
 #' inclusion_prob(df, design_stratified("site", n = 8))
 #'
-#' design_weight(df, design_stratified("site", n = 8))
+#' sampling_weight(df, design_stratified("site", n = 8))
 #'
 #' # The default weighted design has no closed form; ask for a simulation
 #' w <- data.frame(id = 1:5, w = c(1, 1, 1, 1, 16))
@@ -95,7 +95,7 @@ inclusion_prob <- function(data, design, simulate = FALSE, R = 5000,
 
 #' @rdname inclusion_prob
 #' @export
-design_weight <- function(data, design, simulate = FALSE, R = 5000,
+sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
                           seed = NULL) {
   p <- inclusion_prob(data, design, simulate = simulate, R = R, seed = seed)
   out <- rep(NA_real_, length(p))

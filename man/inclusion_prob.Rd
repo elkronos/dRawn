@@ -2,12 +2,12 @@
 % Please edit documentation in R/inclusion.R
 \name{inclusion_prob}
 \alias{inclusion_prob}
-\alias{design_weight}
+\alias{sampling_weight}
 \title{Inclusion probabilities and design weights}
 \usage{
 inclusion_prob(data, design, simulate = FALSE, R = 5000, seed = NULL)
 
-design_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
+sampling_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
 }
 \arguments{
 \item{data}{A data frame.}
@@ -30,7 +30,7 @@ A numeric vector with one element per row of `data`. Rows that the
 \description{
 `inclusion_prob()` returns the first-order inclusion probability of every row
 of `data` under `design` — the probability that the row lands in a sample —
-without drawing one. `design_weight()` returns `1 / inclusion_prob()`, the
+without drawing one. `sampling_weight()` returns `1 / inclusion_prob()`, the
 number of population units each sampled row stands for.
 }
 \details{
@@ -83,7 +83,7 @@ df <- data.frame(id = 1:20, site = rep(c("a", "b"), times = c(15, 5)))
 # 8 rows allocated proportionally: 6 of 15, then 2 of 5
 inclusion_prob(df, design_stratified("site", n = 8))
 
-design_weight(df, design_stratified("site", n = 8))
+sampling_weight(df, design_stratified("site", n = 8))
 
 # The default weighted design has no closed form; ask for a simulation
 w <- data.frame(id = 1:5, w = c(1, 1, 1, 1, 16))

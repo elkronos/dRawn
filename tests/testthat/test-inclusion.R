@@ -30,15 +30,15 @@ test_that("a fixed systematic start is refused as a probability sample", {
   )
 })
 
-test_that("design_weight is the reciprocal, and 0 becomes NA not Inf", {
+test_that("sampling_weight is the reciprocal, and 0 becomes NA not Inf", {
   d <- data.frame(id = 1:10)
-  expect_equal(design_weight(d, design_simple(n = 5)), rep(2, 10))
+  expect_equal(sampling_weight(d, design_simple(n = 5)), rep(2, 10))
 
   # A row outside the window has probability 0 and no finite weight.
   ts <- data.frame(id = 1:6,
                    t = seq(as.POSIXct("2020-01-01", tz = "UTC"), by = "hour",
                            length.out = 6))
-  w <- design_weight(ts, design_temporal("t", "2020-01-01", "2020-01-01 03:00:00",
+  w <- sampling_weight(ts, design_temporal("t", "2020-01-01", "2020-01-01 03:00:00",
                                          interval = 1, per_interval = 1,
                                          unit = "hours"))
   expect_true(all(is.na(w[4:6])))

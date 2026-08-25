@@ -65,6 +65,12 @@ jobs:
       - name: No duplicate function definitions under R/
         run: Rscript tools/check-duplicates.R
 
+      - name: Documentation is consistent with the code
+        run: |
+          R CMD INSTALL --no-multiarch --with-keep.source .
+          Rscript tools/check-docs.R
+        shell: bash
+
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
