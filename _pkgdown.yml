@@ -1,4 +1,4 @@
-url: https://elkronos.github.io/sampleR/
+url: https://elkronos.github.io/dRawn/
 
 template:
   bootstrap: 5
@@ -9,6 +9,7 @@ reference:
   contents:
   - draw
   - inclusion_prob
+  - designs
   - is_design
 
 - title: Equal-probability designs

@@ -32,7 +32,7 @@ hit the same rule against [`DRaWR`](https://cran.r-project.org/package=DRaWR).)
 
 ```r
 # install.packages("remotes")
-remotes::install_github("elkronos/sampleR")
+remotes::install_github("elkronos/dRawn")
 ```
 
 `sf` is only needed for `design_spatial()` and lives in `Suggests`, so a plain
