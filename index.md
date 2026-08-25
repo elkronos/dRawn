@@ -1,18 +1,71 @@
 # drawn
 
-Design-based sampling from data frames, with the probabilities you need
-to estimate from the result.
+**Take a sample, then say something defensible about the population it
+came from.**
 
-You describe a design, then draw from it:
+Pulling rows out of a data frame is easy. The hard part is what comes
+next: your boss asks what the total was across all 40,000 invoices, and
+you sampled 200. Answering that honestly needs to know how likely each
+sampled row was to be picked — and that number lives in the *design*,
+not in the sample.
+
+`drawn` keeps the design around so it can answer:
 
 ``` r
 
-draw(data, design_stratified(strata = "site", n = 500), seed = 1)
+plan <- design_stratified(strata = "site", n = 200)
+
+s <- draw(invoices, plan, seed = 1, weights = TRUE)
+ht_total(s, "value")
+#> Horvitz-Thompson total  (stratified design, n = 200)
+#>   total    1,284,300
+#>   se       47,910
+#>   95% CI  1,190,398 to 1,378,202
 ```
 
-The design is a value, not a pile of arguments. You can print it, store
-it, reuse it on next month’s data, and ask it what it does before
-drawing anything.
+That standard error is the point. Without it you have a number; with it
+you have an estimate.
+
+## Why you might want this
+
+**You need an estimate, not just a subset.** `dplyr::slice_sample()`
+gives you rows. It cannot tell you the sampling variance of a total
+computed from them, because it doesn’t retain what the sampling scheme
+was. `drawn` does, so
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+can produce a standard error and a confidence interval.
+
+**You want to check a plan before committing to it.** Because the design
+is a value, you can interrogate it against your population without
+drawing anything:
+
+``` r
+
+inclusion_prob(invoices, plan) |> tapply(invoices$site, unique)
+#>  east north south  west
+#>  0.10  0.10  0.10  0.10
+```
+
+If a site was going to be sampled at 40% and you expected 10%, you find
+out now rather than after the fieldwork.
+
+**You want the same plan applied consistently.** A design is reusable —
+across months, across teams, across data sets — and prints as a
+description of itself, which makes it reviewable in a way a call buried
+in a script is not.
+
+**You want to be told when the answer isn’t available.** Some designs
+have no closed-form inclusion probability. `drawn` says so rather than
+returning a plausible-looking number:
+
+``` r
+
+inclusion_prob(invoices, design_weighted("value", n = 200))
+#> Error: `design_weighted(method = "successive")` has no closed-form
+#> inclusion probability.
+#> Use method = "systematic" or "poisson" for a design whose inclusion
+#> probabilities really are proportional to the weights.
+```
 
 ## Installation
 
@@ -22,94 +75,115 @@ drawing anything.
 remotes::install_github("elkronos/dRawn")
 ```
 
-## Ten designs, one contract
+## How to use it
+
+Three steps, always the same.
+
+**1. Describe the design.**
 
 ``` r
 
 library(drawn)
 
-draw(data, design_simple(n = 100), seed = 1)                       # uniform
-draw(data, design_stratified("site", n = 100), seed = 1)           # by stratum
-draw(data, design_cluster("site", n_clusters = 5), seed = 1)       # whole sites
+plan <- design_stratified(strata = "site", n = 200)
+plan
+#> <sampling design: stratified>
+#>   strata           "site"
+#>   n                200
+#>   allocation       "proportional"
+#>   min_per_stratum  0
+#>   replace          FALSE
+#>   na_rm            FALSE
+```
+
+**2. Draw from it.** Ask for `weights = TRUE` if you intend to estimate.
+
+``` r
+
+s <- draw(invoices, plan, seed = 1, weights = TRUE)
+```
+
+You get back a data frame with the same class and the same columns, in
+the same order, as the one you passed in — plus `.prob` (the chance that
+row was included) and `.weight` (its reciprocal: how many population
+rows it stands for).
+
+**3. Estimate.**
+
+``` r
+
+ht_total(s, "value")
+```
+
+## The ten designs
+
+| Design | Selects | Size argument |
+|----|----|----|
+| [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md) | rows uniformly at random | `n` |
+| [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md) | a share of each stratum | `n` (total) |
+| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | every *k*-th row from a random start | `interval` |
+| [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | whole clusters | `n_clusters` |
+| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | clusters, then rows within them | `n_clusters` and `n` |
+| [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | rows with probability driven by a weight | `n` |
+| [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | a fixed-size sample from a stream, in one pass | `n` |
+| [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md) | resampled replicates | `n_replicates`, `n` |
+| [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | a share of each time interval | `per_interval` |
+| [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | rows inside a region | `n` |
+
+``` r
+
+draw(data, design_simple(n = 100), seed = 1)
+draw(data, design_cluster("site", n_clusters = 5), seed = 1)
+draw(data, design_multistage("site", n_clusters = 5, n = 100), seed = 1)
 draw(data, design_temporal("when", from = "2024-01-01", to = "2024-01-15",
-                           interval = 6, per_interval = 2,
-                           unit = "hours"), seed = 1)
+                           interval = 6, per_interval = 2, unit = "hours"),
+     seed = 1)
 ```
 
-Arguments mean the same thing everywhere. `n` is always the total drawn,
-never a per-group figure. `allocation` always says how a total is split
-across groups. `na_rm` always decides whether missing keys are dropped
-or raise an error.
-[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) always
-restores your random number stream on exit, so sampling inside a
-simulation doesn’t shift the simulation’s own draws. And what comes back
-always has the same class and the same columns, in the same order, as
-what went in.
-
-| Design | Selects |
-|----|----|
-| [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md) | rows uniformly at random |
-| [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md) | a share of each stratum, proportional or equal |
-| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | every *k*-th row from a random start |
-| [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | whole clusters |
-| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | clusters, then rows within them |
-| [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | rows with probability driven by a weight |
-| [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | a fixed-size sample from a stream, in one pass |
-| [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md) | resampled replicates, simple or moving-block |
-| [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | a share of each time interval |
-| [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | rows inside a region |
-
-## Estimating from the sample
-
-A sample is only useful for estimation if you know how likely each row
-was to be in it. Ask for that, and you get a total with a standard
-error:
+Streams are not data frames, and reservoir sampling treats them
+differently: a data frame takes a direct vectorised path, while a
+connection or a zero-argument generator function runs Algorithm L in a
+single pass.
 
 ``` r
 
-s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
-
-ht_total(s, "spend")
-#> Horvitz-Thompson total  (stratified design, n = 40)
-#>   total    54,000
-#>   se       3,713.7
-#>   95% CI  46,721 to 61,279
+draw(gen, design_reservoir(n = 1000), seed = 1)   # gen() returns NULL when done
 ```
 
-`inclusion_prob(data, design)` gives the same probabilities for the
-whole population without drawing anything, which is a quick way to
-sanity-check a plan.
-
-## It tells you when it can’t
-
-Four designs have no closed-form inclusion probability, and rather than
-return a plausible number, they say so:
+Bootstrap replicates come back in one frame with a leading `.replicate`
+column:
 
 ``` r
 
-inclusion_prob(pop, design_weighted("spend", n = 40))
-#> Error: `design_weighted(method = "successive")` has no closed-form
-#> inclusion probability.
-#> Use method = "systematic" or "poisson" for a design whose inclusion
-#> probabilities really are proportional to the weights.
+reps <- draw(data, design_bootstrap(n_replicates = 500), seed = 1)
+vapply(split(reps, reps$.replicate), function(r) mean(r$value), numeric(1))
 ```
 
-The others are `design_cluster(balanced = TRUE)`, whose per-cluster take
-depends on which clusters were drawn;
-`design_multistage(allocation = "proportional")`, for the same reason;
-and
-[`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
-which isn’t a probability sample of a finite population at all. Pass
-`simulate = TRUE` to estimate any of them by Monte Carlo.
+## One contract across all of them
 
-Systematic sampling is a related case: it has inclusion probabilities,
-but most pairs of rows can never co-occur, so no design-unbiased
-variance exists.
-[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
-returns `NA` and explains why instead of quietly using the simple random
-sampling formula.
+Arguments mean the same thing everywhere:
+
+- **`n` is always the total drawn**, never a per-group figure.
+  [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md)
+  says `per_interval` precisely because that one *is* per group.
+- **`allocation`** always says how a total is split across groups —
+  `"proportional"` or `"equal"`.
+- **`na_rm`** always decides whether missing keys are dropped or raise
+  an error. It is never silently assumed.
+- **`seed`** is local to the draw. `.Random.seed` is restored on exit,
+  so sampling inside a simulation does not shift the simulation’s own
+  stream.
+- **The result keeps the input’s class and column order.** A tibble in,
+  a tibble out.
+
+Allocation is exact. Splitting 60 across strata of 300/180/90/30 returns
+60 rows, not 61 — the largest-remainder method is used rather than
+independent per-stratum rounding.
 
 ## Weighted sampling: choose the method deliberately
+
+This is the one place where the obvious call is probably not the one you
+want.
 
 ``` r
 
@@ -118,23 +192,96 @@ design_weighted("size", n = 100, method = "systematic")   # exact piPS, fixed n
 design_weighted("size", n = 100, method = "poisson")      # exact piPS, random n
 ```
 
-The default is what `base::sample(prob = )` does — a fine way to bias
-selection toward heavy units, but the weights govern each sequential
-draw rather than the probability of ending up in the sample, so the
-result is not probability-proportional-to-size. Use `"systematic"` or
-`"poisson"` when you intend to estimate from the sample.
+| `method` | Inclusion probabilities | Sample size | Estimable |
+|----|----|----|----|
+| `"successive"` | not proportional to weight | fixed | no closed form |
+| `"systematic"` | exactly `n * p_i` | fixed | yes, no variance |
+| `"poisson"` | exactly `n * p_i` | random, mean `n` | yes, with variance |
+
+The default is what `base::sample(prob = )` does. It biases selection
+toward heavy units, which is often all you want — but the weights govern
+each sequential *draw*, not the probability of ending up in the sample,
+so the result is not probability-proportional-to-size and has no
+closed-form inclusion probability. Use `"systematic"` or `"poisson"` if
+the sample will be estimated from.
+
+Units heavy enough that `n * p_i > 1` are taken with certainty and the
+remainder rescaled, repeatedly, until every probability is valid.
+
+## What can and cannot be estimated
+
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+gives first-order probabilities,
+[`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
+gives second-order ones, and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+needs both to produce a standard error.
+
+| Design | Inclusion probability | Variance |
+|----|----|----|
+| simple, stratified, cluster, reservoir, temporal, spatial | exact | yes |
+| multistage, `allocation = "equal"` | exact | yes, when `n` divides by `n_clusters` |
+| `design_weighted(method = "poisson")` | exact | yes |
+| `design_weighted(method = "systematic")` | exact | no — see `sampling::UPsystematicpi2()` |
+| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | exact | no — most pairs can never co-occur |
+| `design_cluster(balanced = TRUE)` | none | no |
+| `design_multistage(allocation = "proportional")` | none | no |
+| `design_weighted(method = "successive")` | none | no |
+| [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md) | none | no |
+
+Where there is no closed form, `simulate = TRUE` estimates it by Monte
+Carlo:
+
+``` r
+
+inclusion_prob(data, design_cluster("site", n_clusters = 4, balanced = TRUE),
+               simulate = TRUE, R = 2000, seed = 1)
+```
+
+Variances use the Sen-Yates-Grundy estimator for fixed-size designs and
+the independent-units form for Poisson sampling. Each was checked
+against the empirical sampling variance of its own estimator over 4,000
+replications.
+
+One caveat worth knowing: cluster designs with few clusters have few
+effective degrees of freedom, so the normal-approximation interval
+undercovers. With 8 clusters drawn from 24, observed coverage of a
+nominal 95% interval is about 89%. Treat those intervals as indicative.
+
+## Spatial sampling and the antimeridian
+
+[`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md)
+takes `coords = c(x, y)` — **longitude first**, matching
+[`sf::st_as_sf()`](https://r-spatial.github.io/sf/reference/st_as_sf.html).
+
+Under spherical geometry, consecutive polygon vertices are joined by the
+*shortest* great-circle path. An edge from longitude −179 to +179
+therefore spans the 2 degrees across the antimeridian, not the 358 the
+coordinates suggest, so a “whole world” rectangle collapses to a narrow
+pole-to-pole strip of about 2.8 million km² against the globe’s 510
+million. `drawn` warns when a region has an edge spanning more than 180
+degrees. Split the region at the antimeridian, or use
+`sf::sf_use_s2(FALSE)`.
 
 ## See also
 
 [`sampling`](https://cran.r-project.org/package=sampling) is the deeper
 library for classical design-based sampling: a dozen unequal-probability
 algorithms, joint inclusion probabilities for several of them,
-calibration and balanced sampling. Reach for it when you need Brewer,
-Midzuno, Sampford, Tillé, pivotal or maximum-entropy sampling.
+calibration, and balanced sampling via the cube method. Reach for it
+when you need Brewer, Midzuno, Sampford, Tillé, pivotal or
+maximum-entropy sampling.
 
 [`survey`](https://cran.r-project.org/package=survey) analyses complex
 survey data once you have it. A `drawn` sample carries the `.weight`
-column `svydesign()` expects.
+column that `svydesign()` expects.
+
+## Learn more
+
+``` r
+
+vignette("choosing-a-design", package = "drawn")
+```
 
 ## Credit
 

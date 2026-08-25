@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Design-Based Sampling with Known Inclusion Probabilities">
-<meta name="description" content="Draws probability samples from data frames under an explicit, reusable sampling design: simple random, stratified, systematic, cluster, multi-stage, weighted (including probability-proportional-to-size), reservoir, bootstrap, temporal and spatial. The emphasis is design-based rather than distributional: a design knows its own first-order inclusion probabilities, so a drawn sample can carry them and the corresponding design weights, making Horvitz-Thompson estimation possible. Designs whose inclusion probabilities have no closed form report that rather than supplying an approximation, and can be estimated by simulation instead.">
-<meta property="og:description" content="Draws probability samples from data frames under an explicit, reusable sampling design: simple random, stratified, systematic, cluster, multi-stage, weighted (including probability-proportional-to-size), reservoir, bootstrap, temporal and spatial. The emphasis is design-based rather than distributional: a design knows its own first-order inclusion probabilities, so a drawn sample can carry them and the corresponding design weights, making Horvitz-Thompson estimation possible. Designs whose inclusion probabilities have no closed form report that rather than supplying an approximation, and can be estimated by simulation instead.">
+<meta name="description" content="Draws probability samples from data frames under an explicit, reusable sampling design: simple random, stratified, systematic, cluster, multi-stage, weighted (including probability-proportional-to-size), reservoir, bootstrap, temporal and spatial. A design is a value that can be stored, printed and reused, and that knows its own first- and second-order inclusion probabilities, so a drawn sample carries the weights needed for Horvitz-Thompson estimation and ht_total() returns a population total with a standard error and confidence interval. Designs whose inclusion probabilities have no closed form report that rather than supplying an approximation, and can be estimated by simulation instead.">
+<meta property="og:description" content="Draws probability samples from data frames under an explicit, reusable sampling design: simple random, stratified, systematic, cluster, multi-stage, weighted (including probability-proportional-to-size), reservoir, bootstrap, temporal and spatial. A design is a value that can be stored, printed and reused, and that knows its own first- and second-order inclusion probabilities, so a drawn sample carries the weights needed for Horvitz-Thompson estimation and ht_total() returns a population total with a standard error and confidence interval. Designs whose inclusion probabilities have no closed form report that rather than supplying an approximation, and can be estimated by simulation instead.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -57,125 +57,313 @@
 </h1></div>
 <!-- badges: start -->
 
-<p>Design-based sampling from data frames, with the probabilities you need to estimate from the result.</p>
-<p>You describe a design, then draw from it:</p>
+<p><strong>Take a sample, then say something defensible about the population it came from.</strong></p>
+<p>Pulling rows out of a data frame is easy. The hard part is what comes next: your boss asks what the total was across all 40,000 invoices, and you sampled 200. Answering that honestly needs to know how likely each sampled row was to be picked — and that number lives in the <em>design</em>, not in the sample.</p>
+<p><code>drawn</code> keeps the design around so it can answer:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_stratified.html">design_stratified</a></span><span class="op">(</span>strata <span class="op">=</span> <span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">500</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
-<p>The design is a value, not a pile of arguments. You can print it, store it, reuse it on next month’s data, and ask it what it does before drawing anything.</p>
+<code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/design_stratified.html">design_stratified</a></span><span class="op">(</span>strata <span class="op">=</span> <span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Horvitz-Thompson total  (stratified design, n = 200)</span></span>
+<span><span class="co">#&gt;   total    1,284,300</span></span>
+<span><span class="co">#&gt;   se       47,910</span></span>
+<span><span class="co">#&gt;   95% CI  1,190,398 to 1,378,202</span></span></code></pre></div>
+<p>That standard error is the point. Without it you have a number; with it you have an estimate.</p>
+<div class="section level2">
+<h2 id="why-you-might-want-this">Why you might want this<a class="anchor" aria-label="anchor" href="#why-you-might-want-this"></a>
+</h2>
+<p><strong>You need an estimate, not just a subset.</strong> <code>dplyr::slice_sample()</code> gives you rows. It cannot tell you the sampling variance of a total computed from them, because it doesn’t retain what the sampling scheme was. <code>drawn</code> does, so <code><a href="reference/ht_total.html">ht_total()</a></code> can produce a standard error and a confidence interval.</p>
+<p><strong>You want to check a plan before committing to it.</strong> Because the design is a value, you can interrogate it against your population without drawing anything:</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">site</span>, <span class="va">unique</span><span class="op">)</span></span>
+<span><span class="co">#&gt;  east north south  west</span></span>
+<span><span class="co">#&gt;  0.10  0.10  0.10  0.10</span></span></code></pre></div>
+<p>If a site was going to be sampled at 40% and you expected 10%, you find out now rather than after the fieldwork.</p>
+<p><strong>You want the same plan applied consistently.</strong> A design is reusable — across months, across teams, across data sets — and prints as a description of itself, which makes it reviewable in a way a call buried in a script is not.</p>
+<p><strong>You want to be told when the answer isn’t available.</strong> Some designs have no closed-form inclusion probability. <code>drawn</code> says so rather than returning a plausible-looking number:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="fu"><a href="reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"value"</span>, n <span class="op">=</span> <span class="fl">200</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Error: `design_weighted(method = "successive")` has no closed-form</span></span>
+<span><span class="co">#&gt; inclusion probability.</span></span>
+<span><span class="co">#&gt; Use method = "systematic" or "poisson" for a design whose inclusion</span></span>
+<span><span class="co">#&gt; probabilities really are proportional to the weights.</span></span></code></pre></div>
+</div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"elkronos/dRawn"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="ten-designs-one-contract">Ten designs, one contract<a class="anchor" aria-label="anchor" href="#ten-designs-one-contract"></a>
+<h2 id="how-to-use-it">How to use it<a class="anchor" aria-label="anchor" href="#how-to-use-it"></a>
 </h2>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<p>Three steps, always the same.</p>
+<p><strong>1. Describe the design.</strong></p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/elkronos/dRawn" class="external-link">drawn</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_simple.html">design_simple</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>                       <span class="co"># uniform</span></span>
-<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>           <span class="co"># by stratum</span></span>
-<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"site"</span>, n_clusters <span class="op">=</span> <span class="fl">5</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>       <span class="co"># whole sites</span></span>
-<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_temporal.html">design_temporal</a></span><span class="op">(</span><span class="st">"when"</span>, from <span class="op">=</span> <span class="st">"2024-01-01"</span>, to <span class="op">=</span> <span class="st">"2024-01-15"</span>,</span>
-<span>                           interval <span class="op">=</span> <span class="fl">6</span>, per_interval <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>                           unit <span class="op">=</span> <span class="st">"hours"</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
-<p>Arguments mean the same thing everywhere. <code>n</code> is always the total drawn, never a per-group figure. <code>allocation</code> always says how a total is split across groups. <code>na_rm</code> always decides whether missing keys are dropped or raise an error. <code><a href="reference/draw.html">draw()</a></code> always restores your random number stream on exit, so sampling inside a simulation doesn’t shift the simulation’s own draws. And what comes back always has the same class and the same columns, in the same order, as what went in.</p>
+<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/design_stratified.html">design_stratified</a></span><span class="op">(</span>strata <span class="op">=</span> <span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
+<span><span class="va">plan</span></span>
+<span><span class="co">#&gt; &lt;sampling design: stratified&gt;</span></span>
+<span><span class="co">#&gt;   strata           "site"</span></span>
+<span><span class="co">#&gt;   n                200</span></span>
+<span><span class="co">#&gt;   allocation       "proportional"</span></span>
+<span><span class="co">#&gt;   min_per_stratum  0</span></span>
+<span><span class="co">#&gt;   replace          FALSE</span></span>
+<span><span class="co">#&gt;   na_rm            FALSE</span></span></code></pre></div>
+<p><strong>2. Draw from it.</strong> Ask for <code>weights = TRUE</code> if you intend to estimate.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<p>You get back a data frame with the same class and the same columns, in the same order, as the one you passed in — plus <code>.prob</code> (the chance that row was included) and <code>.weight</code> (its reciprocal: how many population rows it stands for).</p>
+<p><strong>3. Estimate.</strong></p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="the-ten-designs">The ten designs<a class="anchor" aria-label="anchor" href="#the-ten-designs"></a>
+</h2>
 <table class="table">
 <colgroup>
-<col width="50%">
-<col width="50%">
+<col width="33%">
+<col width="33%">
+<col width="33%">
 </colgroup>
 <thead><tr>
 <th>Design</th>
 <th>Selects</th>
+<th>Size argument</th>
 </tr></thead>
 <tbody>
 <tr>
 <td><code><a href="reference/design_simple.html">design_simple()</a></code></td>
 <td>rows uniformly at random</td>
+<td><code>n</code></td>
 </tr>
 <tr>
 <td><code><a href="reference/design_stratified.html">design_stratified()</a></code></td>
-<td>a share of each stratum, proportional or equal</td>
+<td>a share of each stratum</td>
+<td>
+<code>n</code> (total)</td>
 </tr>
 <tr>
 <td><code><a href="reference/design_systematic.html">design_systematic()</a></code></td>
 <td>every <em>k</em>-th row from a random start</td>
+<td><code>interval</code></td>
 </tr>
 <tr>
 <td><code><a href="reference/design_cluster.html">design_cluster()</a></code></td>
 <td>whole clusters</td>
+<td><code>n_clusters</code></td>
 </tr>
 <tr>
 <td><code><a href="reference/design_multistage.html">design_multistage()</a></code></td>
 <td>clusters, then rows within them</td>
+<td>
+<code>n_clusters</code> and <code>n</code>
+</td>
 </tr>
 <tr>
 <td><code><a href="reference/design_weighted.html">design_weighted()</a></code></td>
 <td>rows with probability driven by a weight</td>
+<td><code>n</code></td>
 </tr>
 <tr>
 <td><code><a href="reference/design_reservoir.html">design_reservoir()</a></code></td>
 <td>a fixed-size sample from a stream, in one pass</td>
+<td><code>n</code></td>
 </tr>
 <tr>
 <td><code><a href="reference/design_bootstrap.html">design_bootstrap()</a></code></td>
-<td>resampled replicates, simple or moving-block</td>
+<td>resampled replicates</td>
+<td>
+<code>n_replicates</code>, <code>n</code>
+</td>
 </tr>
 <tr>
 <td><code><a href="reference/design_temporal.html">design_temporal()</a></code></td>
 <td>a share of each time interval</td>
+<td><code>per_interval</code></td>
 </tr>
 <tr>
 <td><code><a href="reference/design_spatial.html">design_spatial()</a></code></td>
 <td>rows inside a region</td>
+<td><code>n</code></td>
 </tr>
 </tbody>
 </table>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_simple.html">design_simple</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"site"</span>, n_clusters <span class="op">=</span> <span class="fl">5</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_multistage.html">design_multistage</a></span><span class="op">(</span><span class="st">"site"</span>, n_clusters <span class="op">=</span> <span class="fl">5</span>, n <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_temporal.html">design_temporal</a></span><span class="op">(</span><span class="st">"when"</span>, from <span class="op">=</span> <span class="st">"2024-01-01"</span>, to <span class="op">=</span> <span class="st">"2024-01-15"</span>,</span>
+<span>                           interval <span class="op">=</span> <span class="fl">6</span>, per_interval <span class="op">=</span> <span class="fl">2</span>, unit <span class="op">=</span> <span class="st">"hours"</span><span class="op">)</span>,</span>
+<span>     seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
+<p>Streams are not data frames, and reservoir sampling treats them differently: a data frame takes a direct vectorised path, while a connection or a zero-argument generator function runs Algorithm L in a single pass.</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">gen</span>, <span class="fu"><a href="reference/design_reservoir.html">design_reservoir</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>   <span class="co"># gen() returns NULL when done</span></span></code></pre></div>
+<p>Bootstrap replicates come back in one frame with a leading <code>.replicate</code> column:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">reps</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_bootstrap.html">design_bootstrap</a></span><span class="op">(</span>n_replicates <span class="op">=</span> <span class="fl">500</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/split.html" class="external-link">split</a></span><span class="op">(</span><span class="va">reps</span>, <span class="va">reps</span><span class="op">$</span><span class="va">.replicate</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="estimating-from-the-sample">Estimating from the sample<a class="anchor" aria-label="anchor" href="#estimating-from-the-sample"></a>
+<h2 id="one-contract-across-all-of-them">One contract across all of them<a class="anchor" aria-label="anchor" href="#one-contract-across-all-of-them"></a>
 </h2>
-<p>A sample is only useful for estimation if you know how likely each row was to be in it. Ask for that, and you get a total with a standard error:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/draw.html">draw</a></span><span class="op">(</span><span class="va">pop</span>, <span class="fu"><a href="reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">40</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"spend"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Horvitz-Thompson total  (stratified design, n = 40)</span></span>
-<span><span class="co">#&gt;   total    54,000</span></span>
-<span><span class="co">#&gt;   se       3,713.7</span></span>
-<span><span class="co">#&gt;   95% CI  46,721 to 61,279</span></span></code></pre></div>
-<p><code>inclusion_prob(data, design)</code> gives the same probabilities for the whole population without drawing anything, which is a quick way to sanity-check a plan.</p>
-</div>
-<div class="section level2">
-<h2 id="it-tells-you-when-it-cant">It tells you when it can’t<a class="anchor" aria-label="anchor" href="#it-tells-you-when-it-cant"></a>
-</h2>
-<p>Four designs have no closed-form inclusion probability, and rather than return a plausible number, they say so:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">pop</span>, <span class="fu"><a href="reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"spend"</span>, n <span class="op">=</span> <span class="fl">40</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Error: `design_weighted(method = "successive")` has no closed-form</span></span>
-<span><span class="co">#&gt; inclusion probability.</span></span>
-<span><span class="co">#&gt; Use method = "systematic" or "poisson" for a design whose inclusion</span></span>
-<span><span class="co">#&gt; probabilities really are proportional to the weights.</span></span></code></pre></div>
-<p>The others are <code>design_cluster(balanced = TRUE)</code>, whose per-cluster take depends on which clusters were drawn; <code>design_multistage(allocation = "proportional")</code>, for the same reason; and <code><a href="reference/design_bootstrap.html">design_bootstrap()</a></code>, which isn’t a probability sample of a finite population at all. Pass <code>simulate = TRUE</code> to estimate any of them by Monte Carlo.</p>
-<p>Systematic sampling is a related case: it has inclusion probabilities, but most pairs of rows can never co-occur, so no design-unbiased variance exists. <code><a href="reference/ht_total.html">ht_total()</a></code> returns <code>NA</code> and explains why instead of quietly using the simple random sampling formula.</p>
+<p>Arguments mean the same thing everywhere:</p>
+<ul>
+<li>
+<strong><code>n</code> is always the total drawn</strong>, never a per-group figure. <code><a href="reference/design_temporal.html">design_temporal()</a></code> says <code>per_interval</code> precisely because that one <em>is</em> per group.</li>
+<li>
+<strong><code>allocation</code></strong> always says how a total is split across groups — <code>"proportional"</code> or <code>"equal"</code>.</li>
+<li>
+<strong><code>na_rm</code></strong> always decides whether missing keys are dropped or raise an error. It is never silently assumed.</li>
+<li>
+<strong><code>seed</code></strong> is local to the draw. <code>.Random.seed</code> is restored on exit, so sampling inside a simulation does not shift the simulation’s own stream.</li>
+<li>
+<strong>The result keeps the input’s class and column order.</strong> A tibble in, a tibble out.</li>
+</ul>
+<p>Allocation is exact. Splitting 60 across strata of 300/180/90/30 returns 60 rows, not 61 — the largest-remainder method is used rather than independent per-stratum rounding.</p>
 </div>
 <div class="section level2">
 <h2 id="weighted-sampling-choose-the-method-deliberately">Weighted sampling: choose the method deliberately<a class="anchor" aria-label="anchor" href="#weighted-sampling-choose-the-method-deliberately"></a>
 </h2>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<p>This is the one place where the obvious call is probably not the one you want.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"size"</span>, n <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>                          <span class="co"># successive (default)</span></span>
 <span><span class="fu"><a href="reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"size"</span>, n <span class="op">=</span> <span class="fl">100</span>, method <span class="op">=</span> <span class="st">"systematic"</span><span class="op">)</span>   <span class="co"># exact piPS, fixed n</span></span>
 <span><span class="fu"><a href="reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"size"</span>, n <span class="op">=</span> <span class="fl">100</span>, method <span class="op">=</span> <span class="st">"poisson"</span><span class="op">)</span>      <span class="co"># exact piPS, random n</span></span></code></pre></div>
-<p>The default is what <code>base::sample(prob = )</code> does — a fine way to bias selection toward heavy units, but the weights govern each sequential draw rather than the probability of ending up in the sample, so the result is not probability-proportional-to-size. Use <code>"systematic"</code> or <code>"poisson"</code> when you intend to estimate from the sample.</p>
+<table class="table">
+<colgroup>
+<col width="25%">
+<col width="25%">
+<col width="25%">
+<col width="25%">
+</colgroup>
+<thead><tr>
+<th><code>method</code></th>
+<th>Inclusion probabilities</th>
+<th>Sample size</th>
+<th>Estimable</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><code>"successive"</code></td>
+<td>not proportional to weight</td>
+<td>fixed</td>
+<td>no closed form</td>
+</tr>
+<tr>
+<td><code>"systematic"</code></td>
+<td>exactly <code>n * p_i</code>
+</td>
+<td>fixed</td>
+<td>yes, no variance</td>
+</tr>
+<tr>
+<td><code>"poisson"</code></td>
+<td>exactly <code>n * p_i</code>
+</td>
+<td>random, mean <code>n</code>
+</td>
+<td>yes, with variance</td>
+</tr>
+</tbody>
+</table>
+<p>The default is what <code>base::sample(prob = )</code> does. It biases selection toward heavy units, which is often all you want — but the weights govern each sequential <em>draw</em>, not the probability of ending up in the sample, so the result is not probability-proportional-to-size and has no closed-form inclusion probability. Use <code>"systematic"</code> or <code>"poisson"</code> if the sample will be estimated from.</p>
+<p>Units heavy enough that <code>n * p_i &gt; 1</code> are taken with certainty and the remainder rescaled, repeatedly, until every probability is valid.</p>
+</div>
+<div class="section level2">
+<h2 id="what-can-and-cannot-be-estimated">What can and cannot be estimated<a class="anchor" aria-label="anchor" href="#what-can-and-cannot-be-estimated"></a>
+</h2>
+<p><code><a href="reference/inclusion_prob.html">inclusion_prob()</a></code> gives first-order probabilities, <code><a href="reference/joint_prob.html">joint_prob()</a></code> gives second-order ones, and <code><a href="reference/ht_total.html">ht_total()</a></code> needs both to produce a standard error.</p>
+<table class="table">
+<colgroup>
+<col width="33%">
+<col width="33%">
+<col width="33%">
+</colgroup>
+<thead><tr>
+<th>Design</th>
+<th>Inclusion probability</th>
+<th>Variance</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>simple, stratified, cluster, reservoir, temporal, spatial</td>
+<td>exact</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>multistage, <code>allocation = "equal"</code>
+</td>
+<td>exact</td>
+<td>yes, when <code>n</code> divides by <code>n_clusters</code>
+</td>
+</tr>
+<tr>
+<td><code>design_weighted(method = "poisson")</code></td>
+<td>exact</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>design_weighted(method = "systematic")</code></td>
+<td>exact</td>
+<td>no — see <code>sampling::UPsystematicpi2()</code>
+</td>
+</tr>
+<tr>
+<td><code><a href="reference/design_systematic.html">design_systematic()</a></code></td>
+<td>exact</td>
+<td>no — most pairs can never co-occur</td>
+</tr>
+<tr>
+<td><code>design_cluster(balanced = TRUE)</code></td>
+<td>none</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>design_multistage(allocation = "proportional")</code></td>
+<td>none</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>design_weighted(method = "successive")</code></td>
+<td>none</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code><a href="reference/design_bootstrap.html">design_bootstrap()</a></code></td>
+<td>none</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>Where there is no closed form, <code>simulate = TRUE</code> estimates it by Monte Carlo:</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">data</span>, <span class="fu"><a href="reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"site"</span>, n_clusters <span class="op">=</span> <span class="fl">4</span>, balanced <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>               simulate <span class="op">=</span> <span class="cn">TRUE</span>, R <span class="op">=</span> <span class="fl">2000</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
+<p>Variances use the Sen-Yates-Grundy estimator for fixed-size designs and the independent-units form for Poisson sampling. Each was checked against the empirical sampling variance of its own estimator over 4,000 replications.</p>
+<p>One caveat worth knowing: cluster designs with few clusters have few effective degrees of freedom, so the normal-approximation interval undercovers. With 8 clusters drawn from 24, observed coverage of a nominal 95% interval is about 89%. Treat those intervals as indicative.</p>
+</div>
+<div class="section level2">
+<h2 id="spatial-sampling-and-the-antimeridian">Spatial sampling and the antimeridian<a class="anchor" aria-label="anchor" href="#spatial-sampling-and-the-antimeridian"></a>
+</h2>
+<p><code><a href="reference/design_spatial.html">design_spatial()</a></code> takes <code>coords = c(x, y)</code> — <strong>longitude first</strong>, matching <code><a href="https://r-spatial.github.io/sf/reference/st_as_sf.html" class="external-link">sf::st_as_sf()</a></code>.</p>
+<p>Under spherical geometry, consecutive polygon vertices are joined by the <em>shortest</em> great-circle path. An edge from longitude −179 to +179 therefore spans the 2 degrees across the antimeridian, not the 358 the coordinates suggest, so a “whole world” rectangle collapses to a narrow pole-to-pole strip of about 2.8 million km² against the globe’s 510 million. <code>drawn</code> warns when a region has an edge spanning more than 180 degrees. Split the region at the antimeridian, or use <code>sf::sf_use_s2(FALSE)</code>.</p>
 </div>
 <div class="section level2">
 <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a>
 </h2>
-<p><a href="https://cran.r-project.org/package=sampling" class="external-link"><code>sampling</code></a> is the deeper library for classical design-based sampling: a dozen unequal-probability algorithms, joint inclusion probabilities for several of them, calibration and balanced sampling. Reach for it when you need Brewer, Midzuno, Sampford, Tillé, pivotal or maximum-entropy sampling.</p>
-<p><a href="https://cran.r-project.org/package=survey" class="external-link"><code>survey</code></a> analyses complex survey data once you have it. A <code>drawn</code> sample carries the <code>.weight</code> column <code>svydesign()</code> expects.</p>
+<p><a href="https://cran.r-project.org/package=sampling" class="external-link"><code>sampling</code></a> is the deeper library for classical design-based sampling: a dozen unequal-probability algorithms, joint inclusion probabilities for several of them, calibration, and balanced sampling via the cube method. Reach for it when you need Brewer, Midzuno, Sampford, Tillé, pivotal or maximum-entropy sampling.</p>
+<p><a href="https://cran.r-project.org/package=survey" class="external-link"><code>survey</code></a> analyses complex survey data once you have it. A <code>drawn</code> sample carries the <code>.weight</code> column that <code>svydesign()</code> expects.</p>
+</div>
+<div class="section level2">
+<h2 id="learn-more">Learn more<a class="anchor" aria-label="anchor" href="#learn-more"></a>
+</h2>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/vignette.html" class="external-link">vignette</a></span><span class="op">(</span><span class="st">"choosing-a-design"</span>, package <span class="op">=</span> <span class="st">"drawn"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="credit">Credit<a class="anchor" aria-label="anchor" href="#credit"></a>

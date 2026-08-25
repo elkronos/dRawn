@@ -327,11 +327,92 @@ Monte Carlo error:</p>
 <span><span class="co">#&gt; 0.190 0.200 0.225 0.155 0.205</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="clusters-when-fieldwork-costs-more-than-precision">Clusters, when fieldwork costs more than precision<a class="anchor" aria-label="anchor" href="#clusters-when-fieldwork-costs-more-than-precision"></a>
+</h2>
+<p>Visiting five teams is cheaper than visiting twenty.
+<code><a href="../reference/design_cluster.html">design_cluster()</a></code> takes whole clusters, so the row count
+follows from which ones you get:</p>
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">by_team</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
+<span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">by_team</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>teams <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">res</span><span class="op">$</span><span class="va">team</span><span class="op">)</span><span class="op">)</span>, rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">res</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; teams  rows </span></span>
+<span><span class="co">#&gt;     4   120</span></span></code></pre></div>
+<p><code><a href="../reference/design_multistage.html">design_multistage()</a></code> adds a second stage when you need to
+control the total:</p>
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_multistage.html">design_multistage</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">6</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span></span>
+<span><span class="va">res_ms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">ms</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">res_ms</span><span class="op">$</span><span class="va">team</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;  t1 t13 t19  t2  t4  t7 </span></span>
+<span><span class="co">#&gt;  10  10  10  10  10  10</span></span></code></pre></div>
+<p>Both are estimable, but cluster designs pay for their convenience in
+precision — and in degrees of freedom. With only a handful of clusters
+the normal-approximation interval undercovers, so treat it as
+indicative:</p>
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">by_team</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, <span class="st">"value"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Horvitz-Thompson total  (cluster design, n = 120)</span></span>
+<span><span class="co">#&gt;   total    446,199.5</span></span>
+<span><span class="co">#&gt;   se       46,834.3</span></span>
+<span><span class="co">#&gt;   95% CI  354,406 to 537,993.1</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="streams-when-the-data-does-not-fit">Streams, when the data does not fit<a class="anchor" aria-label="anchor" href="#streams-when-the-data-does-not-fit"></a>
+</h2>
+<p>A data frame is not a stream: its length is already known, so
+<code><a href="../reference/design_reservoir.html">design_reservoir()</a></code> takes a direct vectorised path for one.
+The streaming path is for data you cannot hold — pass a connection, or a
+function that returns the next item and <code>NULL</code> when
+exhausted.</p>
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">i</span> <span class="op">&lt;-</span> <span class="fl">0</span></span>
+<span><span class="va">next_invoice</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">i</span> <span class="op">&lt;&lt;-</span> <span class="va">i</span> <span class="op">+</span> <span class="fl">1</span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="va">i</span> <span class="op">&gt;</span> <span class="fl">1e5</span><span class="op">)</span> <span class="cn">NULL</span> <span class="kw">else</span> <span class="va">i</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">drawn_ids</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/unlist.html" class="external-link">unlist</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">next_invoice</span>, <span class="fu"><a href="../reference/design_reservoir.html">design_reservoir</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">5</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">drawn_ids</span></span>
+<span><span class="co">#&gt; [1] 93918 86723 83503 32995 42017</span></span></code></pre></div>
+<p>One pass, five items held, a hundred thousand seen. Algorithm L skips
+ahead geometrically rather than drawing a random number per item.</p>
+</div>
+<div class="section level2">
+<h2 id="bootstrap-for-the-uncertainty-of-a-statistic">Bootstrap, for the uncertainty of a statistic<a class="anchor" aria-label="anchor" href="#bootstrap-for-the-uncertainty-of-a-statistic"></a>
+</h2>
+<p>The other designs estimate a population total. The bootstrap
+estimates the sampling distribution of whatever you like — here the
+median, which has no convenient closed form:</p>
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">reps</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="fu"><a href="../reference/design_bootstrap.html">design_bootstrap</a></span><span class="op">(</span>n_replicates <span class="op">=</span> <span class="fl">400</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">meds</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/split.html" class="external-link">split</a></span><span class="op">(</span><span class="va">reps</span>, <span class="va">reps</span><span class="op">$</span><span class="va">.replicate</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>,</span>
+<span>               <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>observed <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>,</span>
+<span>  boot_se  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">meds</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>,</span>
+<span>  lower    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unname.html" class="external-link">unname</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/quantile.html" class="external-link">quantile</a></span><span class="op">(</span><span class="va">meds</span>, <span class="fl">0.025</span><span class="op">)</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>,</span>
+<span>  upper    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unname.html" class="external-link">unname</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/quantile.html" class="external-link">quantile</a></span><span class="op">(</span><span class="va">meds</span>, <span class="fl">0.975</span><span class="op">)</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; observed  boot_se    lower    upper </span></span>
+<span><span class="co">#&gt;   387.41    16.60   351.60   420.70</span></span></code></pre></div>
+<p>Replicates come back in one frame with a leading
+<code>.replicate</code> column. For ordered data where neighbouring rows
+are correlated, <code>method = "block"</code> concatenates randomly
+chosen runs instead of independent rows:</p>
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/design_bootstrap.html">design_bootstrap</a></span><span class="op">(</span>n_replicates <span class="op">=</span> <span class="fl">100</span>, method <span class="op">=</span> <span class="st">"block"</span>, block_length <span class="op">=</span> <span class="fl">20</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;sampling design: bootstrap&gt;</span></span>
+<span><span class="co">#&gt;   n_replicates  100</span></span>
+<span><span class="co">#&gt;   method        "block"</span></span>
+<span><span class="co">#&gt;   block_length  20</span></span></code></pre></div>
+</div>
+<div class="section level2">
 <h2 id="reproducibility-without-side-effects">Reproducibility without side effects<a class="anchor" aria-label="anchor" href="#reproducibility-without-side-effects"></a>
 </h2>
 <p><code>seed</code> is local to the draw. Sampling inside a simulation
 does not shift the simulation’s own random stream:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">99</span><span class="op">)</span></span>
 <span><span class="va">before</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span></span>
 <span></span>

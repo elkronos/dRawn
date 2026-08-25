@@ -7,7 +7,7 @@ One verb, and the probabilities that make a sample usable.
 - [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) : Draw
   a sample
 - [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
-  [`design_weight()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+  [`sampling_weight()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
   : Inclusion probabilities and design weights
 - [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
   : Joint inclusion probabilities

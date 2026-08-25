@@ -328,6 +328,106 @@ round(tapply(sim, invoices$team, unique)[1:5], 3)
 #> 0.190 0.200 0.225 0.155 0.205
 ```
 
+## Clusters, when fieldwork costs more than precision
+
+Visiting five teams is cheaper than visiting twenty.
+[`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md)
+takes whole clusters, so the row count follows from which ones you get:
+
+``` r
+
+by_team <- design_cluster("team", n_clusters = 4)
+res <- draw(invoices, by_team, seed = 1)
+c(teams = length(unique(res$team)), rows = nrow(res))
+#> teams  rows 
+#>     4   120
+```
+
+[`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md)
+adds a second stage when you need to control the total:
+
+``` r
+
+ms <- design_multistage("team", n_clusters = 6, n = 60)
+res_ms <- draw(invoices, ms, seed = 1)
+table(res_ms$team)
+#> 
+#>  t1 t13 t19  t2  t4  t7 
+#>  10  10  10  10  10  10
+```
+
+Both are estimable, but cluster designs pay for their convenience in
+precision — and in degrees of freedom. With only a handful of clusters
+the normal-approximation interval undercovers, so treat it as
+indicative:
+
+``` r
+
+ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
+#> Horvitz-Thompson total  (cluster design, n = 120)
+#>   total    446,199.5
+#>   se       46,834.3
+#>   95% CI  354,406 to 537,993.1
+```
+
+## Streams, when the data does not fit
+
+A data frame is not a stream: its length is already known, so
+[`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md)
+takes a direct vectorised path for one. The streaming path is for data
+you cannot hold — pass a connection, or a function that returns the next
+item and `NULL` when exhausted.
+
+``` r
+
+i <- 0
+next_invoice <- function() {
+  i <<- i + 1
+  if (i > 1e5) NULL else i
+}
+
+drawn_ids <- unlist(draw(next_invoice, design_reservoir(n = 5), seed = 1))
+drawn_ids
+#> [1] 93918 86723 83503 32995 42017
+```
+
+One pass, five items held, a hundred thousand seen. Algorithm L skips
+ahead geometrically rather than drawing a random number per item.
+
+## Bootstrap, for the uncertainty of a statistic
+
+The other designs estimate a population total. The bootstrap estimates
+the sampling distribution of whatever you like — here the median, which
+has no convenient closed form:
+
+``` r
+
+reps <- draw(invoices, design_bootstrap(n_replicates = 400), seed = 1)
+meds <- vapply(split(reps, reps$.replicate), function(r) median(r$value),
+               numeric(1))
+
+c(observed = median(invoices$value),
+  boot_se  = round(stats::sd(meds), 1),
+  lower    = round(unname(stats::quantile(meds, 0.025)), 1),
+  upper    = round(unname(stats::quantile(meds, 0.975)), 1))
+#> observed  boot_se    lower    upper 
+#>   387.41    16.60   351.60   420.70
+```
+
+Replicates come back in one frame with a leading `.replicate` column.
+For ordered data where neighbouring rows are correlated,
+`method = "block"` concatenates randomly chosen runs instead of
+independent rows:
+
+``` r
+
+design_bootstrap(n_replicates = 100, method = "block", block_length = 20)
+#> <sampling design: bootstrap>
+#>   n_replicates  100
+#>   method        "block"
+#>   block_length  20
+```
+
 ## Reproducibility without side effects
 
 `seed` is local to the draw. Sampling inside a simulation does not shift

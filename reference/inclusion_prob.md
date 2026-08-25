@@ -2,16 +2,16 @@
 
 \`inclusion_prob()\` returns the first-order inclusion probability of
 every row of \`data\` under \`design\` — the probability that the row
-lands in a sample — without drawing one. \`design_weight()\` returns \`1
-/ inclusion_prob()\`, the number of population units each sampled row
-stands for.
+lands in a sample — without drawing one. \`sampling_weight()\` returns
+\`1 / inclusion_prob()\`, the number of population units each sampled
+row stands for.
 
 ## Usage
 
 ``` r
 inclusion_prob(data, design, simulate = FALSE, R = 5000, seed = NULL)
 
-design_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
+sampling_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
 ```
 
 ## Arguments
@@ -103,7 +103,7 @@ inclusion_prob(df, design_stratified("site", n = 8))
 #>  [1] 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4
 #> [20] 0.4
 
-design_weight(df, design_stratified("site", n = 8))
+sampling_weight(df, design_stratified("site", n = 8))
 #>  [1] 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5
 #> [20] 2.5
 
