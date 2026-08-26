@@ -1,9 +1,9 @@
 # Bootstrap sampling
 
-Generates bootstrap replicates. \`"simple"\` resamples rows
-independently; \`"block"\` is a moving-block bootstrap, which preserves
-the serial dependence in ordered data by concatenating \`ceiling(n /
-block_length)\` independently chosen blocks per replicate.
+Generates bootstrap replicates. `"simple"` resamples rows independently;
+`"block"` is a moving-block bootstrap, which preserves the serial
+dependence in ordered data by concatenating `ceiling(n / block_length)`
+independently chosen blocks per replicate.
 
 ## Usage
 
@@ -24,32 +24,36 @@ design_bootstrap(
 
 - n:
 
-  Rows per replicate. \`NULL\` uses \`nrow(data)\`, the standard
+  Rows per replicate. `NULL` uses `nrow(data)`, the standard
   nonparametric bootstrap.
 
 - method:
 
-  \`"simple"\` or \`"block"\`.
+  `"simple"` or `"block"`.
 
 - block_length:
 
-  Block length for \`method = "block"\`. \`NULL\` uses
-  \`floor(nrow(data)^(1/3))\`, a common rule of thumb.
+  Block length for `method = "block"`, and an error for
+  `method = "simple"`, where it would have no effect. `NULL` uses
+  `floor(nrow(data)^(1/3))`, a common rule of thumb.
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## Details
 
-\[draw()\] returns all replicates in one data frame with a leading
-\`.replicate\` column. Split them with \`split(out, out\$.replicate)\`.
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) returns
+all replicates in one data frame with a leading `.replicate` column.
+Split them with `split(out, out$.replicate)`.
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),

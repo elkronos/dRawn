@@ -18,28 +18,35 @@ design_reservoir(n, max_items = Inf)
 
 - max_items:
 
-  Stop after reading this many items. \`Inf\` reads the whole stream.
-  Warns when the cap actually truncates.
+  Stop after reading this many items. Rows past it are never read, so
+  [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+  gives them `0` and gives the rows before it `n / max_items` rather
+  than `n / N`. `Inf` reads the whole stream. Warns when the cap
+  actually truncates.
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## Details
 
 A data frame is not a stream: its length is already known and it already
-fits in memory, so \[draw()\] takes a direct vectorised path for one.
-Reach for the streaming path when the data genuinely does not fit — pass
-a connection, or a function that returns the next item and \`NULL\` at
-end of stream. For those, \[draw()\] returns a list rather than a data
-frame.
+fits in memory, so
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) takes a
+direct vectorised path for one. Reach for the streaming path when the
+data genuinely does not fit — pass a connection, or a function that
+returns the next item and `NULL` at end of stream. For those,
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) returns a
+list rather than a data frame.
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),

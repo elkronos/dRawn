@@ -1,8 +1,9 @@
 # Cluster sampling
 
 Selects whole clusters at random and returns all of their rows. The row
-count follows from which clusters were picked, so there is no \`n\`; use
-\[design_multistage()\] when you need to control it.
+count follows from which clusters were picked, so there is no `n`; use
+[`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md)
+when you need to control it.
 
 ## Usage
 
@@ -27,20 +28,22 @@ design_cluster(clusters, n_clusters, balanced = FALSE, na_rm = FALSE)
 
 - na_rm:
 
-  Drop rows whose cluster label is \`NA\` instead of raising an error.
-  When \`FALSE\`, missing labels are never treated as a cluster of their
+  Drop rows whose cluster label is `NA` instead of raising an error.
+  When `FALSE`, missing labels are never treated as a cluster of their
   own.
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),

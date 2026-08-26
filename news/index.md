@@ -19,18 +19,28 @@ A design can be printed, stored, reused across data sets, and — the part
 that matters for estimation — asked what it does before you draw
 anything.
 
-Ten designs ship:
+Eleven designs ship:
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md)
 and
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md).
+
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md)
+composes: rows at or above a threshold are all taken, and any other
+design is applied to what remains. That is the standard shape of an
+audit sample, and the cheapest way to cut variance when a few units
+dominate a total. Certainty rows have inclusion probability exactly 1,
+so they contribute their own value with a weight of 1 and add nothing to
+the variance; inclusion and joint probabilities compose exactly across
+the two parts.
 
 ### One contract across all of them
 
@@ -40,13 +50,25 @@ and
   uses `per_interval` precisely because that one *is* per group.
 - `allocation` always says how a total is split across groups.
 - `na_rm` always decides whether missing keys are dropped or raise an
-  error.
+  error, and means the same thing whether you are drawing or asking for
+  probabilities.
+- `replace` always rules out `weights = TRUE`: an inclusion probability
+  describes distinct units, and a sample holding duplicates cannot be
+  weighted by one.
 - [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
   restores the caller’s random number stream before returning, so
   sampling inside a simulation does not shift the simulation’s own
   draws.
 - What comes back has the same class and the same columns, in the same
-  order, as what went in.
+  order, as what went in — tibble in, tibble out, with or without
+  weights. Rows come back in frame order except where draw order is
+  meaningful:
+  [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md)
+  and
+  [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md)
+  return draw order, and
+  [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
+  returns replicates behind a leading `.replicate` column.
 
 ### Inclusion probabilities and estimation
 
@@ -60,24 +82,104 @@ probabilities and the corresponding design weights to a sample as
 [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
 gives second-order probabilities, and
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
-uses them to return a Horvitz-Thompson total with a standard error and
-confidence interval:
+and [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md)
+use them to return an estimate with a standard error and confidence
+interval:
 
 ``` r
 
 s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
 ht_total(s, "spend")
+ht_mean(s, "spend")
 ```
 
-Variances use the Sen-Yates-Grundy estimator for fixed-size designs and
-the independent-units form for Poisson sampling. Where a design has
-inclusion probabilities but no closed-form joint ones,
+[`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md)
+defaults to the Hajek estimator, `sum(y/pi) / sum(1/pi)`, which divides
+by the estimated population size rather than the known one;
+`estimator = "ht"` divides by the true `N`. The two coincide exactly
+whenever the weights of the drawn rows sum to `N` — every fixed-size
+equal-probability design, and every stratified design without
+replacement — and part company when the sample size is random or the
+weights vary within a fixed-size sample. Hajek is usually the steadier
+of the two, which is why it is the default;
+[`?ht_mean`](https://elkronos.github.io/dRawn/reference/ht_mean.md) sets
+out when it is not, and why `"ht"` is unbiased only where every row is
+reachable.
+
+[`deff()`](https://elkronos.github.io/dRawn/reference/deff.md) reports
+the design effect on either result — the design’s variance against
+simple random sampling of the same size, which reads as an exchange rate
+on sample size. Stratifying on a variable that matters can put it far
+below 1; clustering on the same variable puts it well above.
+
+The variance estimator matches how each design randomises:
+Sen-Yates-Grundy for fixed-size designs, the independent-units form for
+Poisson sampling, the cluster-level form for cluster designs — whose row
+count is random whenever clusters differ in size — and, for a certainty
+design, whatever `rest` uses, since certainty rows are in every possible
+sample and contribute nothing.
+
+Where a design has inclusion probabilities but no closed-form joint
+ones,
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
-falls back to a delete-a-group jackknife with a finite population
-correction, and reports which method it used. Each analytic estimator
-was checked against the empirical sampling variance of its own estimator
-over 4,000 replications; the jackknife reproduces the analytic value
-exactly for simple and cluster designs.
+falls back to a delete-a-group jackknife and reports which method it
+used, or `"none"` where neither could produce a figure. The jackknife is
+declined for systematic sampling, which has a single primary sampling
+unit, and for Poisson sampling, which has an exact variance already.
+
+Every analytic estimator is checked in the test suite against the
+empirical sampling variance of its own estimator, every inclusion and
+joint probability against the observed frequency over thousands of
+draws, and every design that `survey` can express against
+[`survey::svytotal()`](https://rdrr.io/pkg/survey/man/surveysummary.html).
+
+### Planning a sample, and checking one
+
+[`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md)
+solves for `n` given the precision wanted, rather than asking for a
+guess. It takes a margin of error and a measure of spread, and applies
+three corrections: a finite population correction from `N`, an inflation
+for the design from `deff`, and an inflation for non-response from
+`response`. It works for a mean, a proportion or a total, and says so
+plainly when the margin asked for is unreachable by sampling.
+
+``` r
+
+plan_size(margin = 5, sd = 40, N = 20000, deff = 2.5, response = 0.7)
+```
+
+[`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
+reports what was drawn against what was there: the sampling fraction,
+the range and coefficient of variation of the design weights, the
+per-stratum or per-cluster counts against the frame, and the number of
+rows the design could never have reached.
+
+### Handing off to the survey package
+
+[`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
+builds a
+[`survey::svydesign()`](https://rdrr.io/pkg/survey/man/svydesign.html)
+object from a drawn sample, so the analysis this package does not do —
+subpopulation estimates, regression, calibration, quantiles with proper
+standard errors — can be done by the package that does.
+
+The two packages compute variance from different starting points: this
+one from the design’s joint inclusion probabilities, `survey` from the
+design’s shape. Each design is therefore expressed in `survey`’s own
+terms — strata for a stratified or temporal design, cluster ids for a
+cluster design,
+[`survey::poisson_sampling()`](https://rdrr.io/pkg/survey/man/poisson_sampling.html)
+for Poisson, and a taken-whole stratum for the certainty rows. Totals
+and standard errors then agree to floating point for every design but
+two: `survey` uses the ultimate-cluster approximation for multistage
+designs, and returns the conservative simple-random figure for
+systematic sampling where
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+declines to return one.
+[`?as_svydesign`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
+has the table. Compositions with no single `survey` equivalent — a
+certainty design over a cluster, multistage or Poisson `rest` — are
+refused rather than approximated.
 
 ### Seeing a design
 
@@ -102,6 +204,11 @@ that don’t report that rather than returning an approximation:
   smallest *selected* cluster’s size, which is random.
 - `design_multistage(allocation = "proportional")` — the second-stage
   allocation depends on which clusters were selected.
+- [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md)
+  where the per-cluster take is not constant — `n` not divisible by
+  `n_clusters`, or a cluster smaller than `n / n_clusters`. The
+  allocation runs over the *selected* clusters, so a row’s probability
+  depends on which others were drawn.
 - `design_weighted(method = "successive")` — successive sampling has no
   closed form. This is the default, and the reason the other two methods
   exist.
@@ -109,9 +216,17 @@ that don’t report that rather than returning an approximation:
   — resampling a sample is not a probability sample of a finite
   population.
 
-`simulate = TRUE` estimates any of them by Monte Carlo. Systematic
-sampling has first-order probabilities but no design-unbiased variance,
-because most pairs of rows can never co-occur;
+`simulate = TRUE` estimates any of them by Monte Carlo, for first-order
+probabilities and, in
+[`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md),
+for second-order ones — which is the general answer where no formula
+exists, including `design_weighted(method = "systematic")`, whose joint
+probabilities depend on the order units are visited.
+[`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
+is the one exception, and simulating it is refused: every row appears in
+some replicate, so the count converges to 1 for all of them. Systematic
+sampling has first-order probabilities but no design-unbiased variance
+at all, because most pairs of rows can never co-occur;
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
 says so instead of returning a number.
 
@@ -136,8 +251,10 @@ remainder rescaled, iterating until every probability is valid.
 ### Notes
 
 - `sf` is a suggested dependency, needed only by
-  [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md).
-  The other nine designs have no geospatial requirement.
+  [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+  and `survey` only by
+  [`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md).
+  Nothing else requires either.
 - Under spherical geometry a longitude/latitude polygon whose edge spans
   more than 180 degrees is drawn the short way across the antimeridian,
   so a “whole world” rectangle collapses to a narrow strip.

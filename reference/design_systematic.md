@@ -1,8 +1,8 @@
 # Systematic sampling
 
-Takes every \`interval\`-th row, beginning at \`start\`. The number of
-rows drawn follows from the interval and the size of the data, so there
-is no \`n\`.
+Takes every `interval`-th row, beginning at `start`. The number of rows
+drawn follows from the interval and the size of the data, so there is no
+`n`.
 
 ## Usage
 
@@ -20,28 +20,35 @@ design_systematic(interval, start = NULL, order_by = NULL, na_rm = FALSE)
 
 - start:
 
-  Starting row, in \`1:interval\`. Drawn at random from that range when
-  \`NULL\`.
+  Starting row, in `1:interval`. Drawn at random from that range when
+  `NULL`.
 
 - order_by:
 
-  Optional column to sort by before walking the data.
+  Optional column to sort by before walking the data. It changes which
+  rows can appear together, so
+  [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+  and
+  [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
+  compute against the sorted order too.
 
 - na_rm:
 
-  When \`order_by\` is given, drop rows whose sort key is \`NA\` instead
-  of raising an error.
+  When `order_by` is given, drop rows whose sort key is `NA` instead of
+  raising an error.
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),

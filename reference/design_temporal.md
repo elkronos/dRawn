@@ -1,7 +1,7 @@
 # Temporal sampling
 
 Divides a time window into equal intervals and samples within each one.
-\`per_interval\` is named for what it is: unlike \`n\` elsewhere in the
+`per_interval` is named for what it is: unlike `n` elsewhere in the
 package, it is a per-group figure, not a total.
 
 ## Usage
@@ -23,17 +23,18 @@ design_temporal(
 
 - time:
 
-  Column of timestamps. \`POSIXct\` and \`Date\` columns are used as
-  they are; character columns are parsed with \[lubridate::ymd_hms()\].
+  Column of timestamps. `POSIXct` and `Date` columns are used as they
+  are; character columns are parsed with
+  [`lubridate::ymd_hms()`](https://lubridate.tidyverse.org/reference/ymd_hms.html).
 
 - from, to:
 
   Window bounds, as timestamps or strings. The window is half-open:
-  \`\[from, to)\`. Trailing partial intervals are dropped.
+  `[from, to)`. Trailing partial intervals are dropped.
 
 - interval:
 
-  Interval width, in units of \`unit\`.
+  Interval width, in units of `unit`.
 
 - per_interval:
 
@@ -42,15 +43,15 @@ design_temporal(
 
 - unit:
 
-  One of \`"seconds"\`, \`"minutes"\`, \`"hours"\`, \`"days"\`,
-  \`"weeks"\`, \`"months"\` or \`"years"\`. \`"months"\` and \`"years"\`
-  step by calendar units, not by fixed 30.44-day durations.
+  One of `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`,
+  `"months"` or `"years"`. `"months"` and `"years"` step by calendar
+  units, not by fixed 30.44-day durations.
 
 - tz:
 
   Time zone the timestamps are expressed in. Applied when the column
-  \*and\* both bounds are parsed, so it genuinely shifts the window
-  rather than relabelling the output.
+  *and* both bounds are parsed, so it genuinely shifts the window rather
+  than relabelling the output.
 
 - na_rm:
 
@@ -59,7 +60,8 @@ design_temporal(
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## Details
 
@@ -69,10 +71,11 @@ than with the number of intervals.
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),

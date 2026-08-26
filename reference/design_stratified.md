@@ -1,7 +1,7 @@
 # Stratified sampling
 
 Draws a sample from each stratum. Allocation uses the largest-remainder
-method, so the returned row count matches \`n\` exactly rather than
+method, so the returned row count matches `n` exactly rather than
 drifting with per-stratum rounding.
 
 ## Usage
@@ -31,23 +31,23 @@ design_stratified(
 
 - allocation:
 
-  How \`n\` is split across strata. \`"proportional"\` gives each
-  stratum a share of \`n\` in proportion to its size; \`"equal"\` splits
-  \`n\` evenly; \`"neyman"\` gives shares proportional to \`size \*
-  sd\`, using the column named by \`allocation_by\`. Neyman minimises
-  the variance of a total for a fixed \`n\` by putting more rows where
-  the values vary most, and is the right choice when you have a frame
-  variable correlated with what you are measuring.
+  How `n` is split across strata. `"proportional"` gives each stratum a
+  share of `n` in proportion to its size; `"equal"` splits `n` evenly;
+  `"neyman"` gives shares proportional to `size * sd`, using the column
+  named by `allocation_by`. Neyman minimises the variance of a total for
+  a fixed `n` by putting more rows where the values vary most, and is
+  the right choice when you have a frame variable correlated with what
+  you are measuring.
 
 - allocation_by:
 
-  Column whose within-stratum standard deviation drives \`allocation =
-  "neyman"\`. Ignored otherwise.
+  Column whose within-stratum standard deviation drives
+  `allocation = "neyman"`. Ignored otherwise.
 
 - min_per_stratum:
 
-  Minimum rows from each stratum. The default of \`0\` leaves allocation
-  unbiased; \`1\` guarantees coverage of rare strata at the cost of
+  Minimum rows from each stratum. The default of `0` leaves allocation
+  unbiased; `1` guarantees coverage of rare strata at the cost of
   over-representing them.
 
 - replace:
@@ -56,18 +56,20 @@ design_stratified(
 
 - na_rm:
 
-  Drop rows whose stratum key is \`NA\` instead of raising an error.
+  Drop rows whose stratum key is `NA` instead of raising an error.
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),

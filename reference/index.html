@@ -38,7 +38,7 @@
     <div class="section level2">
       <h2 id="drawing-a-sample">Drawing a sample<a class="anchor" aria-label="anchor" href="#drawing-a-sample"></a></h2>
 
-      <div class="section-desc"><p>One verb, and the probabilities that make a sample usable.</p></div>
+      <div class="section-desc"><p>One verb, and the designs it takes.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -54,6 +54,43 @@
 
         <dt>
 
+          <code><a href="designs.html">designs</a></code>
+
+        </dt>
+        <dd>Sampling designs</dd>
+
+        <dt>
+
+          <code><a href="plot.drawn_design.html">plot(<i>&lt;drawn_design&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Picture a sampling design</dd>
+
+        <dt>
+
+          <code><a href="is_design.html">is_design()</a></code>
+
+        </dt>
+        <dd>Is this a sampling design?</dd>
+
+        <dt>
+
+          <code><a href="draw_design.html">draw_design()</a></code>
+
+        </dt>
+        <dd>Design-specific draw method</dd>
+      </dl></div><div class="section level2">
+      <h2 id="what-a-design-knows-before-you-draw">What a design knows before you draw<a class="anchor" aria-label="anchor" href="#what-a-design-knows-before-you-draw"></a></h2>
+
+      <div class="section-desc"><p>The probabilities that make a sample estimable.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
           <code><a href="inclusion_prob.html">inclusion_prob()</a></code> <code><a href="inclusion_prob.html">sampling_weight()</a></code>
 
         </dt>
@@ -65,8 +102,17 @@
 
         </dt>
         <dd>Joint inclusion probabilities</dd>
+      </dl></div><div class="section level2">
+      <h2 id="estimating-from-a-sample">Estimating from a sample<a class="anchor" aria-label="anchor" href="#estimating-from-a-sample"></a></h2>
 
-        <dt>
+      <div class="section-desc"><p>A total or a mean, with a standard error and the design’s price.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
 
           <code><a href="ht_total.html">ht_total()</a></code>
 
@@ -75,24 +121,47 @@
 
         <dt>
 
-          <code><a href="plot.drawn_design.html">plot(<i>&lt;drawn_design&gt;</i>)</a></code>
+          <code><a href="ht_mean.html">ht_mean()</a></code>
 
         </dt>
-        <dd>Picture a sampling design</dd>
+        <dd>Estimate a population mean</dd>
 
         <dt>
 
-          <code><a href="designs.html">designs</a></code>
+          <code><a href="deff.html">deff()</a></code>
 
         </dt>
-        <dd>Sampling designs</dd>
+        <dd>Design effect</dd>
+      </dl></div><div class="section level2">
+      <h2 id="planning-and-checking">Planning and checking<a class="anchor" aria-label="anchor" href="#planning-and-checking"></a></h2>
+
+      <div class="section-desc"><p>How many rows to draw, what you actually got, and where to go next.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="plan_size.html">plan_size()</a></code>
+
+        </dt>
+        <dd>How large a sample do you need?</dd>
 
         <dt>
 
-          <code><a href="is_design.html">is_design()</a></code>
+          <code><a href="sample_summary.html">sample_summary()</a></code>
 
         </dt>
-        <dd>Is this a sampling design?</dd>
+        <dd>Describe a drawn sample</dd>
+
+        <dt>
+
+          <code><a href="as_svydesign.html">as_svydesign()</a></code>
+
+        </dt>
+        <dd>Hand a sample to the survey package</dd>
       </dl></div><div class="section level2">
       <h2 id="equal-probability-designs">Equal-probability designs<a class="anchor" aria-label="anchor" href="#equal-probability-designs"></a></h2>
 
@@ -199,6 +268,22 @@
 
         </dt>
         <dd>Bootstrap sampling</dd>
+      </dl></div><div class="section level2">
+      <h2 id="composite-designs">Composite designs<a class="anchor" aria-label="anchor" href="#composite-designs"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="design_certainty.html">design_certainty()</a></code>
+
+        </dt>
+        <dd>Take some rows with certainty, sample the rest</dd>
       </dl></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>

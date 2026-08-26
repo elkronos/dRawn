@@ -32,17 +32,17 @@ plot(
 
 - type:
 
-  \`"selection"\` or \`"probability"\`.
+  `"selection"` or `"probability"`.
 
 - seed:
 
-  Optional seed for the \`"selection"\` draw, so the picture is
+  Optional seed for the `"selection"` draw, so the picture is
   reproducible.
 
 - ncol:
 
-  Dots per row in the \`"selection"\` grid. Defaults to whatever fills
-  the panel at its current aspect ratio.
+  Dots per row in the `"selection"` grid. Defaults to whatever fills the
+  panel at its current aspect ratio.
 
 - max_dots:
 
@@ -55,8 +55,8 @@ plot(
 
 - palette:
 
-  Named list overriding any of \`surface\`, \`ink\`, \`secondary\`,
-  \`muted\`, \`recessive\`, \`accent\`, \`fill\`, \`rule\`.
+  Named list overriding any of `surface`, `ink`, `secondary`, `muted`,
+  `recessive`, `accent`, `fill`, `rule`.
 
 - ...:
 
@@ -64,11 +64,11 @@ plot(
 
 ## Value
 
-\`x\`, invisibly. Called for the plot.
+`x`, invisibly. Called for the plot.
 
 ## Details
 
-- \`"selection"\`:
+- `"selection"`:
 
   Every row of the frame as a dot, in frame order, with the selected
   ones filled in. Designs look distinct: simple random sampling
@@ -77,7 +77,7 @@ plot(
   wherever the weight is large. If your frame is sorted by something
   meaningful, an unintended pattern shows up immediately.
 
-- \`"probability"\`:
+- `"probability"`:
 
   Each row's inclusion probability across the frame, as a step. Flat
   means every row had the same chance; plateaus mean strata; a rise
@@ -88,7 +88,8 @@ Base graphics, so there is no plotting dependency to install.
 
 ## See also
 
-\[draw()\], \[inclusion_prob()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md),
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
 
 ## Examples
 

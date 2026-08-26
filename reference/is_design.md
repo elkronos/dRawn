@@ -16,7 +16,7 @@ is_design(x)
 
 ## Value
 
-\`TRUE\` if \`x\` was built by one of the \`design\_\*()\` constructors.
+`TRUE` if `x` was built by one of the `design_*()` constructors.
 
 ## Examples
 

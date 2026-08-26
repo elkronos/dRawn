@@ -59,27 +59,30 @@ result is never padded.</p></dd>
 
 
 <dt id="arg-max-items">max_items<a class="anchor" aria-label="anchor" href="#arg-max-items"></a></dt>
-<dd><p>Stop after reading this many items. `Inf` reads the whole
+<dd><p>Stop after reading this many items. Rows past it are never
+read, so <code><a href="inclusion_prob.html">inclusion_prob()</a></code> gives them <code>0</code> and gives the rows before it
+<code>n / max_items</code> rather than <code>n / N</code>. <code>Inf</code> reads the whole
 stream. Warns when the cap actually truncates.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A design object, for use with [draw()].</p>
+    <p>A design object, for use with <code><a href="draw.html">draw()</a></code>.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>A data frame is not a stream: its length is already known and it already fits
-in memory, so [draw()] takes a direct vectorised path for one. Reach for the
+in memory, so <code><a href="draw.html">draw()</a></code> takes a direct vectorised path for one. Reach for the
 streaming path when the data genuinely does not fit — pass a connection, or a
-function that returns the next item and `NULL` at end of stream. For those,
-[draw()] returns a list rather than a data frame.</p>
+function that returns the next item and <code>NULL</code> at end of stream. For those,
+<code><a href="draw.html">draw()</a></code> returns a list rather than a data frame.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p>[draw()]</p>
+    <div class="dont-index"><p><code><a href="draw.html">draw()</a></code></p>
 <p>Other designs:
 <code><a href="design_bootstrap.html">design_bootstrap()</a></code>,
+<code><a href="design_certainty.html">design_certainty()</a></code>,
 <code><a href="design_cluster.html">design_cluster()</a></code>,
 <code><a href="design_multistage.html">design_multistage()</a></code>,
 <code><a href="design_simple.html">design_simple()</a></code>,

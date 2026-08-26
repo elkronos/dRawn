@@ -2,23 +2,50 @@
 
 ## Drawing a sample
 
-One verb, and the probabilities that make a sample usable.
+One verb, and the designs it takes.
 
 - [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) : Draw
   a sample
+- [`designs`](https://elkronos.github.io/dRawn/reference/designs.md) :
+  Sampling designs
+- [`plot(`*`<drawn_design>`*`)`](https://elkronos.github.io/dRawn/reference/plot.drawn_design.md)
+  : Picture a sampling design
+- [`is_design()`](https://elkronos.github.io/dRawn/reference/is_design.md)
+  : Is this a sampling design?
+- [`draw_design()`](https://elkronos.github.io/dRawn/reference/draw_design.md)
+  : Design-specific draw method
+
+## What a design knows before you draw
+
+The probabilities that make a sample estimable.
+
 - [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
   [`sampling_weight()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
   : Inclusion probabilities and design weights
 - [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
   : Joint inclusion probabilities
+
+## Estimating from a sample
+
+A total or a mean, with a standard error and the design’s price.
+
 - [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
   : Estimate a population total from a sample
-- [`plot(`*`<drawn_design>`*`)`](https://elkronos.github.io/dRawn/reference/plot.drawn_design.md)
-  : Picture a sampling design
-- [`designs`](https://elkronos.github.io/dRawn/reference/designs.md) :
-  Sampling designs
-- [`is_design()`](https://elkronos.github.io/dRawn/reference/is_design.md)
-  : Is this a sampling design?
+- [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md) :
+  Estimate a population mean
+- [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md) :
+  Design effect
+
+## Planning and checking
+
+How many rows to draw, what you actually got, and where to go next.
+
+- [`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md)
+  : How large a sample do you need?
+- [`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
+  : Describe a drawn sample
+- [`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
+  : Hand a sample to the survey package
 
 ## Equal-probability designs
 
@@ -57,3 +84,8 @@ Selection driven by a weight, a time window, or a place.
 
 - [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
   : Bootstrap sampling
+
+## Composite designs
+
+- [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md)
+  : Take some rows with certainty, sample the rest

@@ -12,12 +12,12 @@ design_spatial(coords, region, n, crs = 4326, na_rm = FALSE)
 
 - coords:
 
-  Two column names, \`c(x, y)\` — longitude then latitude.
+  Two column names, `c(x, y)` — longitude then latitude.
 
 - region:
 
-  An \`sf\` or \`sfc\` geometry, or a list of them, which is unioned.
-  Reprojected to \`crs\` when it differs.
+  An `sf` or `sfc` geometry, or a list of them, which is unioned.
+  Reprojected to `crs` when it differs.
 
 - n:
 
@@ -34,40 +34,45 @@ design_spatial(coords, region, n, crs = 4326, na_rm = FALSE)
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## Coordinate order
 
-\`coords\` is \`c(x, y)\` — longitude first, then latitude — matching
-\[sf::st_as_sf()\]. Getting this backwards puts your points somewhere
-else entirely, so it is worth checking against a known landmark once.
+`coords` is `c(x, y)` — longitude first, then latitude — matching
+[`sf::st_as_sf()`](https://r-spatial.github.io/sf/reference/st_as_sf.html).
+Getting this backwards puts your points somewhere else entirely, so it
+is worth checking against a known landmark once.
 
 ## Regions that cross the antimeridian
 
-With spherical geometry enabled (\[sf::sf_use_s2()\], the default),
-consecutive polygon vertices are joined by the \*shortest\* great-circle
-path. An edge from longitude -179 to +179 therefore spans the 2 degrees
-across the antimeridian, not the 358 degrees the coordinates suggest. A
-"whole world" rectangle collapses into a 2-degree-wide pole-to-pole
-strip of 2.8 million km2 – against the roughly 510 million km2 of the
-globe – and contains almost nothing.
+With spherical geometry enabled
+([`sf::sf_use_s2()`](https://r-spatial.github.io/sf/reference/s2.html),
+the default), consecutive polygon vertices are joined by the *shortest*
+great-circle path. An edge from longitude -179 to +179 therefore spans
+the 2 degrees across the antimeridian, not the 358 degrees the
+coordinates suggest. A "whole world" rectangle collapses into a
+2-degree-wide pole-to-pole strip of 2.8 million km2 – against the
+roughly 510 million km2 of the globe – and contains almost nothing.
 
-Ring orientation is not the cause and reversing it does not help: \`sf\`
+Ring orientation is not the cause and reversing it does not help: `sf`
 normalises winding, so both directions give the same strip. Adding
 intermediate vertices does not reliably help either, because the
 intermediate edges still bow along geodesics.
 
-\[draw()\] warns whenever any edge of \`region\` spans more than 180
-degrees of longitude. If you hit it, either split the region at the
-antimeridian into two polygons, or switch to planar interpretation with
-\`sf::sf_use_s2(FALSE)\`.
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) warns
+whenever any edge of `region` spans more than 180 degrees of longitude.
+If you hit it, either split the region at the antimeridian into two
+polygons, or switch to planar interpretation with
+`sf::sf_use_s2(FALSE)`.
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),

@@ -1,8 +1,9 @@
 # Multi-stage sampling
 
 Selects clusters at the first stage, then draws rows within them at the
-second. \`n\` is the total across the selected clusters under both
-allocations, matching \[design_stratified()\].
+second. `n` is the total across the selected clusters under both
+allocations, matching
+[`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md).
 
 ## Usage
 
@@ -30,17 +31,22 @@ design_multistage(
 
 - n:
 
-  Total rows to draw across the selected clusters.
+  Total rows to draw across the selected clusters. Make it a multiple of
+  `n_clusters`, and no larger than `n_clusters` times the smallest
+  cluster, if you intend to estimate: otherwise the per-cluster take
+  depends on which clusters were selected and there is no closed-form
+  inclusion probability. See
+  [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md).
 
 - allocation:
 
-  \`"equal"\` splits \`n\` evenly across the selected clusters;
-  \`"proportional"\` splits it in proportion to their size.
+  `"equal"` splits `n` evenly across the selected clusters;
+  `"proportional"` splits it in proportion to their size.
 
 - min_per_cluster:
 
-  Minimum rows from each selected cluster. Defaults to \`0\`, which
-  leaves allocation unbiased.
+  Minimum rows from each selected cluster. Defaults to `0`, which leaves
+  allocation unbiased.
 
 - replace:
 
@@ -48,18 +54,20 @@ design_multistage(
 
 - na_rm:
 
-  Drop rows whose cluster label is \`NA\` instead of raising an error.
+  Drop rows whose cluster label is `NA` instead of raising an error.
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),

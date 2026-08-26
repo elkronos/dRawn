@@ -73,16 +73,16 @@ views, and each answers a question that a table answers slowly:</p>
 
 
 <dt id="arg-type">type<a class="anchor" aria-label="anchor" href="#arg-type"></a></dt>
-<dd><p>`"selection"` or `"probability"`.</p></dd>
+<dd><p><code>"selection"</code> or <code>"probability"</code>.</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>Optional seed for the `"selection"` draw, so the picture is
+<dd><p>Optional seed for the <code>"selection"</code> draw, so the picture is
 reproducible.</p></dd>
 
 
 <dt id="arg-ncol">ncol<a class="anchor" aria-label="anchor" href="#arg-ncol"></a></dt>
-<dd><p>Dots per row in the `"selection"` grid. Defaults to whatever
+<dd><p>Dots per row in the <code>"selection"</code> grid. Defaults to whatever
 fills the panel at its current aspect ratio.</p></dd>
 
 
@@ -96,8 +96,8 @@ subset, noted under the title. Keeps individual dots visible.</p></dd>
 
 
 <dt id="arg-palette">palette<a class="anchor" aria-label="anchor" href="#arg-palette"></a></dt>
-<dd><p>Named list overriding any of `surface`, `ink`, `secondary`,
-`muted`, `recessive`, `accent`, `fill`, `rule`.</p></dd>
+<dd><p>Named list overriding any of <code>surface</code>, <code>ink</code>, <code>secondary</code>,
+<code>muted</code>, <code>recessive</code>, <code>accent</code>, <code>fill</code>, <code>rule</code>.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -106,32 +106,32 @@ subset, noted under the title. Keeps individual dots visible.</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>`x`, invisibly. Called for the plot.</p>
+    <p><code>x</code>, invisibly. Called for the plot.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
 
-<dl><dt>`"selection"`</dt>
+<dl><dt><code>"selection"</code></dt>
 <dd><p>Every row of the frame as a dot, in frame order, with
-    the selected ones filled in. Designs look distinct: simple random
-    sampling scatters, systematic makes a lattice, cluster sampling takes
-    solid contiguous runs, and probability-proportional-to-size thickens
-    wherever the weight is large. If your frame is sorted by something
-    meaningful, an unintended pattern shows up immediately.</p></dd>
+the selected ones filled in. Designs look distinct: simple random
+sampling scatters, systematic makes a lattice, cluster sampling takes
+solid contiguous runs, and probability-proportional-to-size thickens
+wherever the weight is large. If your frame is sorted by something
+meaningful, an unintended pattern shows up immediately.</p></dd>
 
-  <dt>`"probability"`</dt>
+<dt><code>"probability"</code></dt>
 <dd><p>Each row's inclusion probability across the frame,
-    as a step. Flat means every row had the same chance; plateaus mean
-    strata; a rise means size-proportional selection. Rows the design can
-    never reach sit at zero and are marked, which is usually the thing worth
-    finding out.</p></dd>
+as a step. Flat means every row had the same chance; plateaus mean
+strata; a rise means size-proportional selection. Rows the design can
+never reach sit at zero and are marked, which is usually the thing worth
+finding out.</p></dd>
 
 
 </dl><p>Base graphics, so there is no plotting dependency to install.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p>[draw()], [inclusion_prob()]</p></div>
+    <div class="dont-index"><p><code><a href="draw.html">draw()</a></code>, <code><a href="inclusion_prob.html">inclusion_prob()</a></code></p></div>
     </div>
 
     <div class="section level2">

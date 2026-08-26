@@ -12,12 +12,16 @@ draw(data, design, seed = NULL, weights = FALSE)
 
 - data:
 
-  A data frame. \[design_reservoir()\] also accepts a list, a
-  connection, or a zero-argument generator function.
+  A data frame.
+  [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md)
+  also accepts a list, a connection, or a zero-argument generator
+  function.
 
 - design:
 
-  A design built by one of the \[design_simple()\] family.
+  A design built by one of the
+  [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md)
+  family.
 
 - seed:
 
@@ -25,7 +29,7 @@ draw(data, design, seed = NULL, weights = FALSE)
 
 - weights:
 
-  Attach \`.prob\` and \`.weight\` columns. See "Design weights".
+  Attach `.prob` and `.weight` columns. See "Design weights".
 
 ## Value
 
@@ -34,39 +38,51 @@ The sampled rows. See "What you get back".
 ## What you get back
 
 A data frame with the same class and the same columns, in the same
-order, as \`data\`. Two designs qualify that:
+order, as `data`. Two designs qualify that:
 
-\* \[design_bootstrap()\] prepends a \`.replicate\` column identifying
-which replicate each row belongs to, so all replicates come back in one
-frame. Split them with \`split(out, out\$.replicate)\` if you need a
-list. \* \[design_reservoir()\] returns a list when \`data\` is a stream
-rather than a data frame, because there is nothing to make a data frame
-out of.
+- [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
+  prepends a `.replicate` column identifying which replicate each row
+  belongs to, so all replicates come back in one frame. Split them with
+  `split(out, out$.replicate)` if you need a list.
+
+- [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md)
+  returns a list when `data` is a stream rather than a data frame,
+  because there is nothing to make a data frame out of.
 
 ## Design weights
 
-\`weights = TRUE\` prepends two columns: \`.prob\`, the probability that
-the row was included in the sample, and \`.weight\`, its reciprocal —
-the number of population units the row stands for. Those are what an
-unbiased estimate needs: a Horvitz-Thompson total is \`sum(y \*
-.weight)\`.
+`weights = TRUE` prepends two columns: `.prob`, the probability that the
+row was included in the sample, and `.weight`, its reciprocal — the
+number of population units the row stands for. Those are what an
+unbiased estimate needs: a Horvitz-Thompson total is `sum(y * .weight)`.
 
 They come from the design applied to the population, not from the drawn
-sample, and four designs have no closed form for them.
-\[inclusion_prob()\] documents which, why, and what to do instead.
+sample, and some designs have no closed form for them.
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+documents which, why, and what to do instead.
+
+`weights = TRUE` is not available for a design that samples **with
+replacement**. `.prob` there is the probability of being selected *at
+least once*, but the sample holds duplicates, so `sum(y * .weight)` over
+it counts each duplicate at the distinct-unit weight and comes out
+around 15% high. Use `replace = FALSE`, or the Hansen-Hurwitz form
+`N / n * sum(y)`.
 
 ## Seeding
 
-\`seed\` is saved, applied, and unwound: \`.Random.seed\` is restored on
+`seed` is saved, applied, and unwound: `.Random.seed` is restored on
 exit, so drawing a sample inside a simulation does not shift the
-simulation's own random number stream. Leave it \`NULL\` to draw from
-the current stream.
+simulation's own random number stream. Leave it `NULL` to draw from the
+current stream.
 
 ## See also
 
-\[designs\] for the full list of constructors, \[inclusion_prob()\] for
-the probabilities themselves, and \[ht_total()\] to estimate a
-population total with a standard error.
+[designs](https://elkronos.github.io/dRawn/reference/designs.md) for the
+full list of constructors,
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+for the probabilities themselves, and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+to estimate a population total with a standard error.
 
 ## Examples
 

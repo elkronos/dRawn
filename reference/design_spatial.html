@@ -51,12 +51,12 @@
 
 
 <dl><dt id="arg-coords">coords<a class="anchor" aria-label="anchor" href="#arg-coords"></a></dt>
-<dd><p>Two column names, `c(x, y)` — longitude then latitude.</p></dd>
+<dd><p>Two column names, <code>c(x, y)</code> — longitude then latitude.</p></dd>
 
 
 <dt id="arg-region">region<a class="anchor" aria-label="anchor" href="#arg-region"></a></dt>
-<dd><p>An `sf` or `sfc` geometry, or a list of them, which is unioned.
-Reprojected to `crs` when it differs.</p></dd>
+<dd><p>An <code>sf</code> or <code>sfc</code> geometry, or a list of them, which is unioned.
+Reprojected to <code>crs</code> when it differs.</p></dd>
 
 
 <dt id="arg-n">n<a class="anchor" aria-label="anchor" href="#arg-n"></a></dt>
@@ -74,40 +74,41 @@ EPSG:4326.</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A design object, for use with [draw()].</p>
+    <p>A design object, for use with <code><a href="draw.html">draw()</a></code>.</p>
     </div>
     <div class="section level2">
     <h2 id="coordinate-order">Coordinate order<a class="anchor" aria-label="anchor" href="#coordinate-order"></a></h2>
 
 
-<p>`coords` is `c(x, y)` — longitude first, then latitude — matching
-[sf::st_as_sf()]. Getting this backwards puts your points somewhere else
+<p><code>coords</code> is <code>c(x, y)</code> — longitude first, then latitude — matching
+<code><a href="https://r-spatial.github.io/sf/reference/st_as_sf.html" class="external-link">sf::st_as_sf()</a></code>. Getting this backwards puts your points somewhere else
 entirely, so it is worth checking against a known landmark once.</p>
     </div>
     <div class="section level2">
     <h2 id="regions-that-cross-the-antimeridian">Regions that cross the antimeridian<a class="anchor" aria-label="anchor" href="#regions-that-cross-the-antimeridian"></a></h2>
 
 
-<p>With spherical geometry enabled ([sf::sf_use_s2()], the default), consecutive
-polygon vertices are joined by the *shortest* great-circle path. An edge from
+<p>With spherical geometry enabled (<code><a href="https://r-spatial.github.io/sf/reference/s2.html" class="external-link">sf::sf_use_s2()</a></code>, the default), consecutive
+polygon vertices are joined by the <em>shortest</em> great-circle path. An edge from
 longitude -179 to +179 therefore spans the 2 degrees across the antimeridian,
 not the 358 degrees the coordinates suggest. A "whole world" rectangle
 collapses into a 2-degree-wide pole-to-pole strip of 2.8 million km2 –
 against the roughly 510 million km2 of the globe – and contains almost
 nothing.</p>
-<p>Ring orientation is not the cause and reversing it does not help: `sf`
+<p>Ring orientation is not the cause and reversing it does not help: <code>sf</code>
 normalises winding, so both directions give the same strip. Adding
 intermediate vertices does not reliably help either, because the intermediate
 edges still bow along geodesics.</p>
-<p>[draw()] warns whenever any edge of `region` spans more than 180 degrees of
+<p><code><a href="draw.html">draw()</a></code> warns whenever any edge of <code>region</code> spans more than 180 degrees of
 longitude. If you hit it, either split the region at the antimeridian into two
-polygons, or switch to planar interpretation with `sf::sf_use_s2(FALSE)`.</p>
+polygons, or switch to planar interpretation with <code>sf::sf_use_s2(FALSE)</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p>[draw()]</p>
+    <div class="dont-index"><p><code><a href="draw.html">draw()</a></code></p>
 <p>Other designs:
 <code><a href="design_bootstrap.html">design_bootstrap()</a></code>,
+<code><a href="design_certainty.html">design_certainty()</a></code>,
 <code><a href="design_cluster.html">design_cluster()</a></code>,
 <code><a href="design_multistage.html">design_multistage()</a></code>,
 <code><a href="design_reservoir.html">design_reservoir()</a></code>,

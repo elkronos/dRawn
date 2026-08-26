@@ -1,6 +1,6 @@
 # Simple random sampling
 
-Draws \`n\` rows uniformly at random.
+Draws `n` rows uniformly at random.
 
 ## Usage
 
@@ -16,18 +16,23 @@ design_simple(n, replace = FALSE)
 
 - replace:
 
-  Sample with replacement?
+  Sample with replacement? Note that `draw(weights = TRUE)` declines a
+  with-replacement design: `.prob` would be the chance of appearing at
+  least once, which does not weight a sample holding duplicates. See
+  [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## Value
 
-A design object, for use with \[draw()\].
+A design object, for use with
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 ## See also
 
-\[draw()\]
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
+[`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md),
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md),
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),

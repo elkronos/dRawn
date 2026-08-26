@@ -71,7 +71,7 @@
 do I look at?</em> — and the interesting part is what you can say
 afterwards about the rows you didn’t.</p>
 <div class="section level2">
-<h2 id="one-population-ten-questions">One population, ten questions<a class="anchor" aria-label="anchor" href="#one-population-ten-questions"></a>
+<h2 id="one-population-eleven-questions">One population, eleven questions<a class="anchor" aria-label="anchor" href="#one-population-eleven-questions"></a>
 </h2>
 <p>We’ll use a synthetic audit population throughout: invoices from a
 handful of sites, over a fortnight, with a value attached.</p>
@@ -87,17 +87,68 @@ handful of sites, over a fortnight, with a value attached.</p>
 <span>  value <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Lognormal.html" class="external-link">rlnorm</a></span><span class="op">(</span><span class="va">n</span>, meanlog <span class="op">=</span> <span class="fl">6</span>, sdlog <span class="op">=</span> <span class="fl">1.1</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
+<span><span class="co"># Two things we could only learn by opening the invoice: what the review cost</span></span>
+<span><span class="co"># (scales with size) and how many checks it needed (doesn't)</span></span>
+<span><span class="va">invoices</span><span class="op">$</span><span class="va">cost</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span> <span class="op">*</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">0.02</span>, <span class="fl">0.06</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="va">invoices</span><span class="op">$</span><span class="va">checks</span> <span class="op">&lt;-</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">rpois</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">3</span><span class="op">)</span> <span class="op">+</span> <span class="fl">1</span></span>
+<span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">)</span></span>
-<span><span class="co">#&gt; 'data.frame':    600 obs. of  5 variables:</span></span>
-<span><span class="co">#&gt;  $ id   : int  1 2 3 4 5 6 7 8 9 10 ...</span></span>
-<span><span class="co">#&gt;  $ site : chr  "north" "north" "north" "north" ...</span></span>
-<span><span class="co">#&gt;  $ team : chr  "t1" "t1" "t1" "t1" ...</span></span>
-<span><span class="co">#&gt;  $ when : POSIXct, format: "2024-03-01" "2024-03-01" ...</span></span>
-<span><span class="co">#&gt;  $ value: num  1823 217 602 809 629 ...</span></span>
+<span><span class="co">#&gt; 'data.frame':    600 obs. of  7 variables:</span></span>
+<span><span class="co">#&gt;  $ id    : int  1 2 3 4 5 6 7 8 9 10 ...</span></span>
+<span><span class="co">#&gt;  $ site  : chr  "north" "north" "north" "north" ...</span></span>
+<span><span class="co">#&gt;  $ team  : chr  "t1" "t1" "t1" "t1" ...</span></span>
+<span><span class="co">#&gt;  $ when  : POSIXct, format: "2024-03-01" "2024-03-01" ...</span></span>
+<span><span class="co">#&gt;  $ value : num  1823 217 602 809 629 ...</span></span>
+<span><span class="co">#&gt;  $ cost  : num  65.75 8.08 28 22.09 33.69 ...</span></span>
+<span><span class="co">#&gt;  $ checks: num  6 3 3 8 4 4 3 2 8 5 ...</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 428704.5</span></span></code></pre></div>
 <p>The population total is what we’ll try to recover from a sample of
 60.</p>
+</div>
+<div class="section level2">
+<h2 id="how-many-rows-ask-before-you-choose-a-design">How many rows? Ask before you choose a design<a class="anchor" aria-label="anchor" href="#how-many-rows-ask-before-you-choose-a-design"></a>
+</h2>
+<p>Sixty is a stand-in for a number you should really derive.
+<code><a href="../reference/plan_size.html">plan_size()</a></code> inverts the usual question: rather than
+guessing <code>n</code> and hoping, say what margin of error you can
+live with and let it solve for the size.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/plan_size.html">plan_size</a></span><span class="op">(</span>margin <span class="op">=</span> <span class="fl">100</span>, sd <span class="op">=</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>, N <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Sample size for a mean</span></span>
+<span><span class="co">#&gt;   draw           260</span></span>
+<span><span class="co">#&gt;   margin         +/- 100 at 95% confidence</span></span>
+<span><span class="co">#&gt;   assuming       sd 1091, N 600</span></span></code></pre></div>
+<p>The frame size matters — <code>N</code> applies a finite population
+correction, and 600 invoices is small enough that it bites hard. So do
+two other facts about the real world:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># A clustered design carries less information per row, and people don't respond</span></span>
+<span><span class="fu"><a href="../reference/plan_size.html">plan_size</a></span><span class="op">(</span>margin <span class="op">=</span> <span class="fl">100</span>, sd <span class="op">=</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>, N <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">)</span>,</span>
+<span>          deff <span class="op">=</span> <span class="fl">2.5</span>, response <span class="op">=</span> <span class="fl">0.7</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Sample size for a mean</span></span>
+<span><span class="co">#&gt;   draw           563</span></span>
+<span><span class="co">#&gt;   to analyse     394  (after 70% response)</span></span>
+<span><span class="co">#&gt;   margin         +/- 100 at 95% confidence</span></span>
+<span><span class="co">#&gt;   assuming       sd 1091, deff 2.5, N 600</span></span></code></pre></div>
+<p><code>deff</code> is not a guess you have to invent — it is
+measurable from a comparable past sample with <code><a href="../reference/deff.html">deff()</a></code>, which
+we come back to below. If the margin you ask for cannot be reached by
+sampling at all, <code><a href="../reference/plan_size.html">plan_size()</a></code> says so rather than returning
+a number bigger than your frame:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/plan_size.html">plan_size</a></span><span class="op">(</span>margin <span class="op">=</span> <span class="fl">2</span>, sd <span class="op">=</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>, N <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Sample size for a mean</span></span>
+<span><span class="co">#&gt;   draw           600</span></span>
+<span><span class="co">#&gt;   margin         +/- 2 at 95% confidence</span></span>
+<span><span class="co">#&gt;   assuming       sd 1091, N 600</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;   That is a census: the frame is not large enough to reach this margin</span></span>
+<span><span class="co">#&gt;   by sampling, so every row is needed. Widen `margin`, or accept the</span></span>
+<span><span class="co">#&gt;   precision a full count gives.</span></span></code></pre></div>
+<p>We’ll stay with 60 for the rest of this vignette, because it makes
+the comparisons between designs legible.</p>
 </div>
 <div class="section level2">
 <h2 id="a-design-is-a-value-not-a-function-call">A design is a value, not a function call<a class="anchor" aria-label="anchor" href="#a-design-is-a-value-not-a-function-call"></a>
@@ -105,7 +156,7 @@ handful of sites, over a fortnight, with a value attached.</p>
 <p>Designs are built, then applied. That separation is the point: the
 same design can be printed, stored, reused on next month’s data, and —
 the part that matters — asked what it does.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_stratified.html">design_stratified</a></span><span class="op">(</span>strata <span class="op">=</span> <span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span></span>
 <span><span class="va">plan</span></span>
 <span><span class="co">#&gt; &lt;sampling design: stratified&gt;</span></span>
@@ -123,7 +174,7 @@ the part that matters — asked what it does.</p>
 <span><span class="co">#&gt;     9    30    18     3</span></span></code></pre></div>
 <p>Proportional allocation splits 60 across sites in proportion to their
 size, and the total is exact — no rounding drift.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">sample_1</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 60</span></span></code></pre></div>
 </div>
@@ -132,7 +183,7 @@ size, and the total is exact — no rounding drift.</p>
 </h2>
 <p>A sample is only useful for estimation if you know how likely each
 row was to be in it. <code>weights = TRUE</code> attaches that.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">s</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">".prob"</span>, <span class="st">".weight"</span>, <span class="st">"site"</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">]</span>, <span class="fl">4</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   .prob .weight  site   value</span></span>
@@ -143,7 +194,7 @@ row was to be in it. <code>weights = TRUE</code> attaches that.</p>
 <p><code>.weight</code> is <code>1 / .prob</code>: the number of
 population rows each sampled row stands for. Multiply and add up, and
 you have a Horvitz–Thompson total.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ht</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">s</span><span class="op">$</span><span class="va">value</span> <span class="op">*</span> <span class="va">s</span><span class="op">$</span><span class="va">.weight</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>estimate <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">ht</span><span class="op">)</span>, truth <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; estimate    truth </span></span>
@@ -151,16 +202,17 @@ you have a Horvitz–Thompson total.</p>
 <p>One draw won’t land on the truth. <code><a href="../reference/ht_total.html">ht_total()</a></code> gives you
 the total <em>and</em> a standard error, so you know how far off it
 might be:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Horvitz-Thompson total  (stratified design, n = 60)</span></span>
-<span><span class="co">#&gt;   total    380,046.5</span></span>
+<span><span class="co">#&gt;   estimate 380,046.5</span></span>
 <span><span class="co">#&gt;   se       49,499.7  (analytic)</span></span>
-<span><span class="co">#&gt;   95% CI  283,028.9 to 477,064.1</span></span></code></pre></div>
+<span><span class="co">#&gt;   95% CI  283,028.9 to 477,064.1</span></span>
+<span><span class="co">#&gt;   deff     0.994  (about the same as simple random sampling)</span></span></code></pre></div>
 <p>That interval comes from second-order inclusion probabilities — the
 chance a <em>pair</em> of rows both land in the sample — which
 <code><a href="../reference/joint_prob.html">joint_prob()</a></code> computes:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="../reference/joint_prob.html">joint_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span>, rows <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        [,1]   [,2]   [,3]   [,4]</span></span>
 <span><span class="co">#&gt; [1,] 0.1000 0.0097 0.0097 0.0097</span></span>
@@ -169,7 +221,7 @@ chance a <em>pair</em> of rows both land in the sample — which
 <span><span class="co">#&gt; [4,] 0.0097 0.0097 0.0097 0.1000</span></span></code></pre></div>
 <p>The estimator is unbiased — the average over many draws
 converges.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ests</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">400</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">si</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span>, seed <span class="op">=</span> <span class="va">i</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">si</span><span class="op">$</span><span class="va">value</span> <span class="op">*</span> <span class="va">si</span><span class="op">$</span><span class="va">.weight</span><span class="op">)</span></span>
@@ -180,7 +232,7 @@ converges.</p>
 <span><span class="co">#&gt;      435056.0      428704.5</span></span></code></pre></div>
 <p>And the reported standard error tracks the estimator’s real
 spread:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ses</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">400</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span>, seed <span class="op">=</span> <span class="va">i</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">$</span><span class="va">se</span></span>
 <span><span class="op">}</span>, <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
@@ -191,7 +243,7 @@ spread:</p>
 <p>You can also ask the design about the population <em>before</em>
 drawing anything, which is a quick way to check a plan is doing what you
 meant:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">plan</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">p</span>, <span class="va">invoices</span><span class="op">$</span><span class="va">site</span>, <span class="va">unique</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  east north south  west </span></span>
@@ -200,12 +252,134 @@ meant:</p>
 allocation means.</p>
 </div>
 <div class="section level2">
+<h2 id="means-and-what-the-design-cost-you">Means, and what the design cost you<a class="anchor" aria-label="anchor" href="#means-and-what-the-design-cost-you"></a>
+</h2>
+<p><code><a href="../reference/ht_mean.html">ht_mean()</a></code> is the same machinery pointed at an average
+instead of a total:</p>
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Hajek mean  (stratified design, n = 60)</span></span>
+<span><span class="co">#&gt;   estimate 633.4108</span></span>
+<span><span class="co">#&gt;   se       82.49949  (analytic)</span></span>
+<span><span class="co">#&gt;   95% CI  471.7148 to 795.1069</span></span>
+<span><span class="co">#&gt;   deff     0.994  (about the same as simple random sampling)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 714.5076</span></span></code></pre></div>
+<p>It defaults to the Hájek estimator,
+<code>sum(y/pi) / sum(1/pi)</code>, which divides by the
+<em>estimated</em> population size rather than the known one.
+<code>estimator = "ht"</code> divides by the true <code>N</code>. The
+two agree exactly whenever the weights of the rows you drew sum to
+<code>N</code> — which includes the stratified design above, so here
+they are the same number:</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>hajek <span class="op">=</span> <span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span>, variance <span class="op">=</span> <span class="st">"none"</span><span class="op">)</span><span class="op">$</span><span class="va">mean</span>,</span>
+<span>  ht    <span class="op">=</span> <span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span>, <span class="st">"ht"</span>, variance <span class="op">=</span> <span class="st">"none"</span><span class="op">)</span><span class="op">$</span><span class="va">mean</span><span class="op">)</span></span>
+<span><span class="co">#&gt;    hajek       ht </span></span>
+<span><span class="co">#&gt; 633.4108 633.4108</span></span></code></pre></div>
+<p>They part company when the sample size is random. Poisson sampling is
+the clean case — and which of the two wins depends on what you are
+averaging:</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">pois</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"value"</span>, n <span class="op">=</span> <span class="fl">60</span>, method <span class="op">=</span> <span class="st">"poisson"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">spread_both</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">column</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">b</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">300</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="va">si</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pois</span>, seed <span class="op">=</span> <span class="va">i</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>hajek <span class="op">=</span> <span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">si</span>, <span class="va">column</span>, variance <span class="op">=</span> <span class="st">"none"</span><span class="op">)</span><span class="op">$</span><span class="va">mean</span>,</span>
+<span>      ht    <span class="op">=</span> <span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">si</span>, <span class="va">column</span>, <span class="st">"ht"</span>, variance <span class="op">=</span> <span class="st">"none"</span><span class="op">)</span><span class="op">$</span><span class="va">mean</span><span class="op">)</span></span>
+<span>  <span class="op">}</span>, <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">b</span>, <span class="fl">1</span>, <span class="fu">stats</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>checks <span class="op">=</span> <span class="st">"checks"</span>, cost <span class="op">=</span> <span class="st">"cost"</span>, value <span class="op">=</span> <span class="st">"value"</span><span class="op">)</span>,</span>
+<span>             <span class="va">spread_both</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       checks cost  value</span></span>
+<span><span class="co">#&gt; hajek   0.41 5.14 129.38</span></span>
+<span><span class="co">#&gt; ht      1.01 2.99  72.22</span></span></code></pre></div>
+<p>Selection here is driven by <code>value</code>. For
+<code>checks</code>, which has nothing to do with invoice size, Hájek is
+more than twice as steady — a draw that happens to catch too many
+low-probability rows inflates numerator and denominator together, and
+they partly cancel. For <code>cost</code>, which scales with size, and
+for <code>value</code> itself, that cancellation is exactly what you
+<em>don’t</em> want: <code>y / pi</code> is already nearly constant, so
+dividing by the known <code>N</code> wins.</p>
+<p>Hájek is the default because the first case is the common one — you
+usually select on size and measure something else. But it is a tendency,
+not a law, and this is how you check which side of it you are on.</p>
+<p>Every estimate also reports a <strong>design effect</strong>: the
+variance under this design against simple random sampling of the same
+size. Read it as an exchange rate on sample size — at
+<code>deff = 2</code>, a sample of 400 carries the information of
+200.</p>
+<p>To see it move, we need a frame where the grouping variable genuinely
+matters. Regions on very different value levels, and delivery routes
+that each sit inside one region:</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">11</span><span class="op">)</span></span>
+<span><span class="va">regions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  id     <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">400</span>,</span>
+<span>  region <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"north"</span>, <span class="st">"south"</span>, <span class="st">"east"</span>, <span class="st">"west"</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>  route  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"r"</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">40</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">regions</span><span class="op">$</span><span class="va">value</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">120</span>, <span class="fl">260</span>, <span class="fl">480</span>, <span class="fl">900</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">100</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">400</span>, <span class="fl">0</span>, <span class="fl">40</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">by_region</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">regions</span>, <span class="fu"><a href="../reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"region"</span>, n <span class="op">=</span> <span class="fl">40</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>                  weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="va">by_route</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">regions</span>, <span class="fu"><a href="../reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"route"</span>, n_clusters <span class="op">=</span> <span class="fl">4</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>                 weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>stratified <span class="op">=</span> <span class="fu"><a href="../reference/deff.html">deff</a></span><span class="op">(</span><span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">by_region</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  clustered  <span class="op">=</span> <span class="fu"><a href="../reference/deff.html">deff</a></span><span class="op">(</span><span class="fu"><a href="../reference/ht_mean.html">ht_mean</a></span><span class="op">(</span><span class="va">by_route</span>,  <span class="st">"value"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;  stratified   clustered </span></span>
+<span><span class="co">#&gt;  0.02207873 12.86168571</span></span></code></pre></div>
+<p>Same population, same forty rows. Stratifying on what varies removes
+nearly all the variance; clustering on it keeps nearly all of it. That
+is the range a design choice moves you across — and that number is
+exactly what <code>plan_size(deff = )</code> wants for the next study,
+which closes the loop.</p>
+</div>
+<div class="section level2">
+<h2 id="checking-what-you-actually-got">Checking what you actually got<a class="anchor" aria-label="anchor" href="#checking-what-you-actually-got"></a>
+</h2>
+<p>Before analysing, look at what came back against what was there:</p>
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/sample_summary.html">sample_summary</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Sample of 60 from 600  (stratified design)</span></span>
+<span><span class="co">#&gt;   sampling fraction  0.1</span></span>
+<span><span class="co">#&gt;   design weights     10 to 10   (cv 0)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;   by site:</span></span>
+<span><span class="co">#&gt;     group  drawn  in frame   rate</span></span>
+<span><span class="co">#&gt;     east       9       90  0.100</span></span>
+<span><span class="co">#&gt;     north     30      300  0.100</span></span>
+<span><span class="co">#&gt;     south     18      180  0.100</span></span>
+<span><span class="co">#&gt;     west       3       30  0.100</span></span></code></pre></div>
+<p>This one is healthy: every stratum came back at its intended 10%, and
+the weights are constant. That is what you want to confirm before
+analysing, because the three things that quietly ruin an estimate all
+show up here — strata that came up short, design weights that vary far
+more than expected, and rows the design could never have reached at all.
+Temporal designs are the usual source of that last one, since anything
+outside the sampling window has probability zero:</p>
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">window</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_temporal.html">design_temporal</a></span><span class="op">(</span><span class="st">"when"</span>, from <span class="op">=</span> <span class="st">"2024-03-01"</span>, to <span class="op">=</span> <span class="st">"2024-03-08"</span>,</span>
+<span>                          interval <span class="op">=</span> <span class="fl">1</span>, per_interval <span class="op">=</span> <span class="fl">4</span>, unit <span class="op">=</span> <span class="st">"days"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/sample_summary.html">sample_summary</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">window</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Sample of 28 from 600  (temporal design)</span></span>
+<span><span class="co">#&gt;   sampling fraction  0.0467</span></span>
+<span><span class="co">#&gt;   design weights     10 to 10   (cv 0)</span></span>
+<span><span class="co">#&gt;   unreachable rows   320  (probability 0 under this design)</span></span></code></pre></div>
+</div>
+<div class="section level2">
 <h2 id="when-you-want-the-rare-stratum-represented">When you want the rare stratum represented<a class="anchor" aria-label="anchor" href="#when-you-want-the-rare-stratum-represented"></a>
 </h2>
 <p><code>west</code> has only 30 invoices. Proportional allocation gives
 it three. If you need coverage rather than efficiency, ask for a floor —
 and note that this is a deliberate bias, not a free lunch:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">covered</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="fu"><a href="../reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">60</span>, min_per_stratum <span class="op">=</span> <span class="fl">8</span><span class="op">)</span>,</span>
 <span>                seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">covered</span><span class="op">$</span><span class="va">site</span><span class="op">)</span></span>
@@ -222,7 +396,7 @@ the total”.</p>
 </h2>
 <p>For an audit you usually want large invoices sampled more often. The
 obvious call is not quite the right one:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">naive</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"value"</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span></span>
 <span><span class="va">naive</span></span>
 <span><span class="co">#&gt; &lt;sampling design: weighted&gt;</span></span>
@@ -236,7 +410,7 @@ perfectly good way to bias selection toward large invoices, but the
 weights govern each sequential <em>draw</em>, not the probability of
 ending up in the sample — so it has no closed-form inclusion
 probability, and the package refuses to invent one:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">naive</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
 <span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> `design_weighted(method = "successive")` has no closed-form inclusion probability.</span></span>
@@ -246,14 +420,14 @@ probability, and the package refuses to invent one:</p>
 <span><span class="co">#&gt; Or pass simulate = TRUE to estimate it by Monte Carlo.</span></span></code></pre></div>
 <p>Ask for a design whose inclusion probabilities really are
 proportional to size:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pps</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"value"</span>, n <span class="op">=</span> <span class="fl">60</span>, method <span class="op">=</span> <span class="st">"systematic"</span><span class="op">)</span></span>
 <span><span class="va">pi</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pps</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">pi</span> <span class="op">/</span> <span class="va">invoices</span><span class="op">$</span><span class="va">value</span>, <span class="fl">5</span><span class="op">)</span>, <span class="fl">8</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 0.00014386 0.00014386 0.00014386 0.00014386 0.00014386</span></span></code></pre></div>
 <p>A constant ratio to <code>value</code> is what “proportional to size”
 means. And now the estimator works:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ests_pps</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">400</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">si</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pps</span>, seed <span class="op">=</span> <span class="va">i</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">si</span><span class="op">$</span><span class="va">value</span> <span class="op">*</span> <span class="va">si</span><span class="op">$</span><span class="va">.weight</span><span class="op">)</span></span>
@@ -262,18 +436,103 @@ means. And now the estimator works:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>mean_estimate <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">ests_pps</span><span class="op">)</span><span class="op">)</span>, truth <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">invoices</span><span class="op">$</span><span class="va">value</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; mean_estimate         truth </span></span>
 <span><span class="co">#&gt;      428705.0      428704.5</span></span></code></pre></div>
-<p>Because selection probability tracks the thing being totalled, the
-PPS estimator is also far more precise than the stratified one here:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<p>Compare its spread against the stratified estimator’s, and something
+surprising happens:</p>
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>stratified_sd <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">ests</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  pps_sd        <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">ests_pps</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; stratified_sd        pps_sd </span></span>
 <span><span class="co">#&gt;         80154             0</span></span></code></pre></div>
+<p>Zero. Not “very small” — exactly zero, in every sample. That is not a
+fluke, it is the limiting case, and it is worth understanding because it
+says exactly what PPS is for. Under systematic PPS the inclusion
+probability is <code>pi_i = n * value_i / sum(value)</code>, so each
+sampled row contributes <code>value_i / pi_i = sum(value) / n</code> —
+the same amount, whichever rows you happen to draw. Totalling the very
+variable that drove selection gives the answer back exactly.</p>
+<p>Real work is never that kind. You select on a size measure you
+already hold for the whole frame, and you total something you can only
+observe once you open the file. Whether PPS helps then depends entirely
+on whether the two are related:</p>
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">spread_of</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">design</span>, <span class="va">column</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">400</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="va">si</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">design</span>, seed <span class="op">=</span> <span class="va">i</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">si</span><span class="op">[[</span><span class="va">column</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">si</span><span class="op">$</span><span class="va">.weight</span><span class="op">)</span></span>
+<span>  <span class="op">}</span>, <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">rbind</a></span><span class="op">(</span></span>
+<span>  cost   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>stratified <span class="op">=</span> <span class="fu">spread_of</span><span class="op">(</span><span class="va">plan</span>, <span class="st">"cost"</span><span class="op">)</span>,</span>
+<span>             pps        <span class="op">=</span> <span class="fu">spread_of</span><span class="op">(</span><span class="va">pps</span>,  <span class="st">"cost"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  checks <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>stratified <span class="op">=</span> <span class="fu">spread_of</span><span class="op">(</span><span class="va">plan</span>, <span class="st">"checks"</span><span class="op">)</span>,</span>
+<span>             pps        <span class="op">=</span> <span class="fu">spread_of</span><span class="op">(</span><span class="va">pps</span>,  <span class="st">"checks"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        stratified   pps</span></span>
+<span><span class="co">#&gt; cost       3360.9 517.3</span></span>
+<span><span class="co">#&gt; checks      133.1 495.4</span></span></code></pre></div>
+<p>Review cost scales with invoice size, and PPS estimates its total
+several times more precisely than stratification does. The number of
+checks an invoice needs does not scale with size — and there PPS is
+markedly <em>worse</em>, because it spends most of the sample on large
+invoices that carry no more information about checks than small ones
+do.</p>
+<p>That is the trade PPS actually offers. It is a bet that your size
+measure predicts what you are measuring, and it is a bad bet when it
+doesn’t. <code><a href="../reference/deff.html">deff()</a></code>, below, puts a number on which way the bet
+went.</p>
+</div>
+<div class="section level2">
+<h2 id="the-units-too-big-to-leave-to-chance">The units too big to leave to chance<a class="anchor" aria-label="anchor" href="#the-units-too-big-to-leave-to-chance"></a>
+</h2>
+<p>PPS is one answer to dominant units. The blunter one is to stop
+sampling them at all: take every invoice above a threshold, and sample
+what is left.</p>
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">audit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_certainty.html">design_certainty</a></span><span class="op">(</span><span class="st">"value"</span>, threshold <span class="op">=</span> <span class="fl">2000</span>,</span>
+<span>                          rest <span class="op">=</span> <span class="fu"><a href="../reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">audit</span></span>
+<span><span class="co">#&gt; &lt;sampling design: certainty&gt;</span></span>
+<span><span class="co">#&gt;   above      "value"</span></span>
+<span><span class="co">#&gt;   threshold  2000</span></span>
+<span><span class="co">#&gt;   rest       &lt;drawn_design_stratified[7]&gt;</span></span>
+<span><span class="co">#&gt;   na_rm      FALSE</span></span>
+<span></span>
+<span><span class="va">s_audit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">audit</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span>certain <span class="op">=</span> <span class="va">s_audit</span><span class="op">$</span><span class="va">.prob</span> <span class="op">==</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="co">#&gt; certain</span></span>
+<span><span class="co">#&gt; FALSE  TRUE </span></span>
+<span><span class="co">#&gt;    60    36</span></span></code></pre></div>
+<p><code>rest</code> takes any design, and its <code>n</code> counts
+rows drawn from <em>below</em> the threshold, not the total. The rows
+above it have inclusion probability exactly 1 — so they carry a weight
+of 1, contribute their own value to the total, and add
+<strong>nothing</strong> to its variance:</p>
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s_audit</span>, <span class="st">"value"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Horvitz-Thompson total  (certainty design, n = 96)</span></span>
+<span><span class="co">#&gt;   estimate 458,373.7</span></span>
+<span><span class="co">#&gt;   se       34,691.5  (analytic)</span></span>
+<span><span class="co">#&gt;   95% CI  390,379.6 to 526,367.8</span></span>
+<span><span class="co">#&gt;   deff     0.314  (better than simple random sampling)</span></span></code></pre></div>
+<p>All the uncertainty comes from the part that was actually sampled.
+That is the whole point, and it is why this is the standard shape of an
+audit or financial sample. Compare it against stratifying alone on the
+same frame:</p>
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>stratified <span class="op">=</span> <span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">$</span><span class="va">se</span>,</span>
+<span>  certainty  <span class="op">=</span> <span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s_audit</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">$</span><span class="va">se</span><span class="op">)</span></span>
+<span><span class="co">#&gt; stratified  certainty </span></span>
+<span><span class="co">#&gt;    49499.7    34691.5</span></span></code></pre></div>
+<p>Inclusion and joint probabilities compose exactly across the two
+parts — a certainty row co-occurs with another row exactly when that row
+is drawn, and two certainty rows always co-occur — so that standard
+error is analytic, not an approximation.</p>
 </div>
 <div class="section level2">
 <h2 id="the-designs-at-a-glance">The designs at a glance<a class="anchor" aria-label="anchor" href="#the-designs-at-a-glance"></a>
 </h2>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">designs</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  simple      <span class="op">=</span> <span class="fu"><a href="../reference/design_simple.html">design_simple</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span>,</span>
 <span>  stratified  <span class="op">=</span> <span class="fu"><a href="../reference/design_stratified.html">design_stratified</a></span><span class="op">(</span><span class="st">"site"</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span>,</span>
@@ -281,13 +540,16 @@ PPS estimator is also far more precise than the stratified one here:</p>
 <span>  cluster     <span class="op">=</span> <span class="fu"><a href="../reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">4</span><span class="op">)</span>,</span>
 <span>  multistage  <span class="op">=</span> <span class="fu"><a href="../reference/design_multistage.html">design_multistage</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">6</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span>,</span>
 <span>  weighted    <span class="op">=</span> <span class="fu"><a href="../reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"value"</span>, n <span class="op">=</span> <span class="fl">60</span>, method <span class="op">=</span> <span class="st">"systematic"</span><span class="op">)</span>,</span>
+<span>  certainty   <span class="op">=</span> <span class="fu"><a href="../reference/design_certainty.html">design_certainty</a></span><span class="op">(</span><span class="st">"value"</span>, <span class="fl">2000</span>, <span class="fu"><a href="../reference/design_simple.html">design_simple</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  temporal    <span class="op">=</span> <span class="fu"><a href="../reference/design_temporal.html">design_temporal</a></span><span class="op">(</span><span class="st">"when"</span>, from <span class="op">=</span> <span class="st">"2024-03-01"</span>, to <span class="op">=</span> <span class="st">"2024-03-15"</span>,</span>
 <span>                                interval <span class="op">=</span> <span class="fl">1</span>, per_interval <span class="op">=</span> <span class="fl">4</span>, unit <span class="op">=</span> <span class="st">"days"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="va">designs</span>, <span class="kw">function</span><span class="op">(</span><span class="va">d</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">d</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     simple stratified systematic    cluster multistage   weighted   temporal </span></span>
-<span><span class="co">#&gt;         60         60         60        120         60         60         56</span></span></code></pre></div>
+<span><span class="co">#&gt;     simple stratified systematic    cluster multistage   weighted  certainty </span></span>
+<span><span class="co">#&gt;         60         60         60        120         60         60         96 </span></span>
+<span><span class="co">#&gt;   temporal </span></span>
+<span><span class="co">#&gt;         56</span></span></code></pre></div>
 <p><code><a href="../reference/design_cluster.html">design_cluster()</a></code> has no <code>n</code>: you choose how
 many clusters, and the row count follows from which ones you get. Use
 <code><a href="../reference/design_multistage.html">design_multistage()</a></code> when you need to control both.</p>
@@ -295,13 +557,14 @@ many clusters, and the row count follows from which ones you get. Use
 <div class="section level2">
 <h2 id="which-designs-can-be-estimated-from">Which designs can be estimated from<a class="anchor" aria-label="anchor" href="#which-designs-can-be-estimated-from"></a>
 </h2>
-<p>Nine of the ten have exact inclusion probabilities. Four situations
-do not, and the package says so rather than approximating:</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<p>Most designs have exact inclusion probabilities. Five situations do
+not, and the package says so rather than approximating:</p>
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">no_form</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  `balanced clusters`      <span class="op">=</span> <span class="fu"><a href="../reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">4</span>, balanced <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>  `proportional multistage`<span class="op">=</span> <span class="fu"><a href="../reference/design_multistage.html">design_multistage</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">6</span>, n <span class="op">=</span> <span class="fl">60</span>,</span>
 <span>                                               allocation <span class="op">=</span> <span class="st">"proportional"</span><span class="op">)</span>,</span>
+<span>  `uneven multistage`      <span class="op">=</span> <span class="fu"><a href="../reference/design_multistage.html">design_multistage</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">6</span>, n <span class="op">=</span> <span class="fl">61</span><span class="op">)</span>,</span>
 <span>  `successive weighting`   <span class="op">=</span> <span class="fu"><a href="../reference/design_weighted.html">design_weighted</a></span><span class="op">(</span><span class="st">"value"</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span>,</span>
 <span>  `bootstrap`              <span class="op">=</span> <span class="fu"><a href="../reference/design_bootstrap.html">design_bootstrap</a></span><span class="op">(</span>n_replicates <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
@@ -313,18 +576,65 @@ do not, and the package says so rather than approximating:</p>
 <span><span class="op">}</span></span>
 <span><span class="co">#&gt; balanced clusters -&gt; `design_cluster(balanced = TRUE)` has no closed-form inclusion probability. </span></span>
 <span><span class="co">#&gt; proportional multistage -&gt; `design_multistage(allocation = "proportional")` has no closed-form inclusion probability. </span></span>
+<span><span class="co">#&gt; uneven multistage -&gt; `design_multistage()` with n = 61 over 6 clusters has no closed-form inclusion probability. </span></span>
 <span><span class="co">#&gt; successive weighting -&gt; `design_weighted(method = "successive")` has no closed-form inclusion probability. </span></span>
 <span><span class="co">#&gt; bootstrap -&gt; A bootstrap resamples the sample; it is not a probability sample of a finite population, so it has no inclusion probability.</span></span></code></pre></div>
-<p>In each case the reason is that the probability depends on something
-random — which clusters were picked, or the order draws happened in.
-Where you need a number anyway, ask for a simulation and accept the
+<p>In each case the probability depends on something random — which
+clusters were picked, or the order draws happened in. The multistage
+pair is worth dwelling on, because the arithmetic looks innocent. The
+second-stage allocation runs over the clusters that were
+<em>selected</em>, so a leftover row goes to the largest of them, and a
+cluster smaller than its target is capped with the shortfall dealt to
+whichever clusters came with it. A row’s chance therefore depends on the
+company it keeps. Averaging over the possibilities is not a closed form,
+and the average is not the answer.</p>
+<p>Where you need a number anyway, ask for a simulation and accept the
 Monte Carlo error:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sim</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">no_form</span><span class="op">$</span><span class="va">`balanced clusters`</span>,</span>
 <span>                      simulate <span class="op">=</span> <span class="cn">TRUE</span>, R <span class="op">=</span> <span class="fl">200</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">sim</span>, <span class="va">invoices</span><span class="op">$</span><span class="va">team</span>, <span class="va">unique</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span><span class="op">]</span>, <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    t1   t10   t11   t12   t13 </span></span>
 <span><span class="co">#&gt; 0.190 0.200 0.225 0.155 0.205</span></span></code></pre></div>
+<p>The one thing simulation cannot rescue is the bootstrap, and it is
+refused rather than answered — every row turns up in some replicate, so
+the count would converge to 1 for all of them.</p>
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">no_form</span><span class="op">$</span><span class="va">bootstrap</span>, simulate <span class="op">=</span> <span class="cn">TRUE</span>, R <span class="op">=</span> <span class="fl">100</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> A bootstrap is not a probability sample of a finite population, so simulating it does not estimate an inclusion probability: every row appears in some replicate, and the count converges to 1 for all of them.</span></span>
+<span><span class="co">#&gt; If you want the expected number of times each row appears, that is n_replicates * n / nrow(data).</span></span></code></pre></div>
+<p>Second-order probabilities can be simulated too, which is the general
+answer where no formula exists. Systematic PPS is the case that needs
+it: it has exact first-order probabilities, but its joint ones depend on
+the order units are visited.</p>
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/joint_prob.html">joint_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pps</span>, rows <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> `design_weighted(method = "systematic")` has no closed-form joint inclusion probability.</span></span>
+<span><span class="co">#&gt; Its joint probabilities depend on the order units are visited and need a</span></span>
+<span><span class="co">#&gt; dedicated algorithm. `sampling::UPsystematicpi2()` computes them.</span></span></code></pre></div>
+<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="../reference/joint_prob.html">joint_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pps</span>, rows <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, simulate <span class="op">=</span> <span class="cn">TRUE</span>, R <span class="op">=</span> <span class="fl">2000</span>,</span>
+<span>                 seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        [,1]   [,2]   [,3]   [,4]</span></span>
+<span><span class="co">#&gt; [1,] 0.2520 0.0115 0.0225 0.0275</span></span>
+<span><span class="co">#&gt; [2,] 0.0115 0.0390 0.0035 0.0050</span></span>
+<span><span class="co">#&gt; [3,] 0.0225 0.0035 0.0795 0.0110</span></span>
+<span><span class="co">#&gt; [4,] 0.0275 0.0050 0.0110 0.1190</span></span></code></pre></div>
+<p>The diagonal holds the first-order probabilities, and simulating them
+is a useful check on the closed form:</p>
+<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span></span>
+<span>  simulated <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/diag.html" class="external-link">diag</a></span><span class="op">(</span><span class="fu"><a href="../reference/joint_prob.html">joint_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pps</span>, rows <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, simulate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>                              R <span class="op">=</span> <span class="fl">2000</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  exact     <span class="op">=</span> <span class="fu"><a href="../reference/inclusion_prob.html">inclusion_prob</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">pps</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
+<span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span></span>
+<span><span class="co">#&gt;      simulated  exact</span></span>
+<span><span class="co">#&gt; [1,]    0.2520 0.2622</span></span>
+<span><span class="co">#&gt; [2,]    0.0390 0.0312</span></span>
+<span><span class="co">#&gt; [3,]    0.0795 0.0865</span></span>
+<span><span class="co">#&gt; [4,]    0.1190 0.1164</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="clusters-when-fieldwork-costs-more-than-precision">Clusters, when fieldwork costs more than precision<a class="anchor" aria-label="anchor" href="#clusters-when-fieldwork-costs-more-than-precision"></a>
@@ -332,7 +642,7 @@ Monte Carlo error:</p>
 <p>Visiting five teams is cheaper than visiting twenty.
 <code><a href="../reference/design_cluster.html">design_cluster()</a></code> takes whole clusters, so the row count
 follows from which ones you get:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">by_team</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_cluster.html">design_cluster</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
 <span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">by_team</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>teams <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">res</span><span class="op">$</span><span class="va">team</span><span class="op">)</span><span class="op">)</span>, rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">res</span><span class="op">)</span><span class="op">)</span></span>
@@ -340,7 +650,7 @@ follows from which ones you get:</p>
 <span><span class="co">#&gt;     4   120</span></span></code></pre></div>
 <p><code><a href="../reference/design_multistage.html">design_multistage()</a></code> adds a second stage when you need to
 control the total:</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/design_multistage.html">design_multistage</a></span><span class="op">(</span><span class="st">"team"</span>, n_clusters <span class="op">=</span> <span class="fl">6</span>, n <span class="op">=</span> <span class="fl">60</span><span class="op">)</span></span>
 <span><span class="va">res_ms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">ms</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">res_ms</span><span class="op">$</span><span class="va">team</span><span class="op">)</span></span>
@@ -351,12 +661,13 @@ control the total:</p>
 precision — and in degrees of freedom. With only a handful of clusters
 the normal-approximation interval undercovers, so treat it as
 indicative:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="va">by_team</span>, seed <span class="op">=</span> <span class="fl">1</span>, weights <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, <span class="st">"value"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Horvitz-Thompson total  (cluster design, n = 120)</span></span>
-<span><span class="co">#&gt;   total    446,199.5</span></span>
+<span><span class="co">#&gt;   estimate 446,199.5</span></span>
 <span><span class="co">#&gt;   se       46,834.3  (analytic)</span></span>
-<span><span class="co">#&gt;   95% CI  354,406 to 537,993.1</span></span></code></pre></div>
+<span><span class="co">#&gt;   95% CI  354,406 to 537,993.1</span></span>
+<span><span class="co">#&gt;   deff     0.783  (better than simple random sampling)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="streams-when-the-data-does-not-fit">Streams, when the data does not fit<a class="anchor" aria-label="anchor" href="#streams-when-the-data-does-not-fit"></a>
@@ -366,7 +677,7 @@ indicative:</p>
 The streaming path is for data you cannot hold — pass a connection, or a
 function that returns the next item and <code>NULL</code> when
 exhausted.</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">i</span> <span class="op">&lt;-</span> <span class="fl">0</span></span>
 <span><span class="va">next_invoice</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">i</span> <span class="op">&lt;&lt;-</span> <span class="va">i</span> <span class="op">+</span> <span class="fl">1</span></span>
@@ -385,7 +696,7 @@ ahead geometrically rather than drawing a random number per item.</p>
 <p>The other designs estimate a population total. The bootstrap
 estimates the sampling distribution of whatever you like — here the
 median, which has no convenient closed form:</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb42"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">reps</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/draw.html">draw</a></span><span class="op">(</span><span class="va">invoices</span>, <span class="fu"><a href="../reference/design_bootstrap.html">design_bootstrap</a></span><span class="op">(</span>n_replicates <span class="op">=</span> <span class="fl">400</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">meds</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/split.html" class="external-link">split</a></span><span class="op">(</span><span class="va">reps</span>, <span class="va">reps</span><span class="op">$</span><span class="va">.replicate</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">r</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>,</span>
 <span>               <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
@@ -400,7 +711,7 @@ median, which has no convenient closed form:</p>
 <code>.replicate</code> column. For ordered data where neighbouring rows
 are correlated, <code>method = "block"</code> concatenates randomly
 chosen runs instead of independent rows:</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb43"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/design_bootstrap.html">design_bootstrap</a></span><span class="op">(</span>n_replicates <span class="op">=</span> <span class="fl">100</span>, method <span class="op">=</span> <span class="st">"block"</span>, block_length <span class="op">=</span> <span class="fl">20</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;sampling design: bootstrap&gt;</span></span>
 <span><span class="co">#&gt;   n_replicates  100</span></span>
@@ -412,7 +723,7 @@ chosen runs instead of independent rows:</p>
 </h2>
 <p><code>seed</code> is local to the draw. Sampling inside a simulation
 does not shift the simulation’s own random stream:</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb44"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">99</span><span class="op">)</span></span>
 <span><span class="va">before</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span></span>
 <span></span>
@@ -424,6 +735,41 @@ does not shift the simulation’s own random stream:</p>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
 <p>That is deliberate: a sampling call is not supposed to be visible to
 the code around it.</p>
+</div>
+<div class="section level2">
+<h2 id="where-this-package-stops">Where this package stops<a class="anchor" aria-label="anchor" href="#where-this-package-stops"></a>
+</h2>
+<p><code>drawn</code> draws samples and estimates totals and means from
+them. It does not do subpopulation estimates, regression, calibration,
+or quantiles with proper standard errors — <a href="https://cran.r-project.org/package=survey" class="external-link"><code>survey</code></a>
+does all of that, and <code><a href="../reference/as_svydesign.html">as_svydesign()</a></code> hands a sample
+straight over.</p>
+<div class="sourceCode" id="cb45"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="http://r-survey.r-forge.r-project.org/survey/" class="external-link">survey</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">des</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as_svydesign.html">as_svydesign</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/survey/man/surveysummary.html" class="external-link">svytotal</a></span><span class="op">(</span><span class="op">~</span><span class="va">value</span>, <span class="va">des</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        total    SE</span></span>
+<span><span class="co">#&gt; value 380046 49500</span></span></code></pre></div>
+<p>The mapping is direct: design weights become <code>weights</code>,
+the stratification or clustering column becomes <code>strata</code> or
+<code>ids</code>, and the population counts become <code>fpc</code> — so
+<code>survey</code> applies the same finite population correction this
+package does, and the two agree.</p>
+<div class="sourceCode" id="cb46"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>drawn  <span class="op">=</span> <span class="fu"><a href="../reference/ht_total.html">ht_total</a></span><span class="op">(</span><span class="va">s</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">$</span><span class="va">se</span>,</span>
+<span>  survey <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/pkg/survey/man/SE.html" class="external-link">SE</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/pkg/survey/man/surveysummary.html" class="external-link">svytotal</a></span><span class="op">(</span><span class="op">~</span><span class="va">value</span>, <span class="va">des</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   drawn  survey </span></span>
+<span><span class="co">#&gt; 49499.7 49499.7</span></span></code></pre></div>
+<p>From there it is <code>survey</code>’s vocabulary:</p>
+<div class="sourceCode" id="cb47"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/pkg/survey/man/svyby.html" class="external-link">svyby</a></span><span class="op">(</span><span class="op">~</span><span class="va">value</span>, <span class="op">~</span><span class="va">site</span>, <span class="va">des</span>, <span class="va">svymean</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        site    value       se</span></span>
+<span><span class="co">#&gt; east   east 853.5622 246.9130</span></span>
+<span><span class="co">#&gt; north north 577.2890 116.2225</span></span>
+<span><span class="co">#&gt; south south 693.3406 150.9955</span></span>
+<span><span class="co">#&gt; west   west 174.5967  47.0911</span></span></code></pre></div>
+<p>Draw here, analyse there.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
