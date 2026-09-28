@@ -102,6 +102,7 @@ draw_design.drawn_design_stratified <- function(design, data) {
   n_alloc <- allocate(design$n, sizes, design$allocation,
                       design$min_per_stratum, cap = !design$replace,
                       spread = stratum_spread(design, data, idx_by_stratum))
+  warn_empty_groups(n_alloc, sizes)
 
   if (!design$replace) {
     over <- n_alloc > sizes

@@ -9,7 +9,9 @@ ht_mean(
   y,
   estimator = c("hajek", "ht"),
   variance = c("auto", "analytic", "jackknife", "none"),
-  level = 0.95
+  level = 0.95,
+  by = NULL,
+  df = NULL
 )
 }
 \arguments{
@@ -20,21 +22,21 @@ as \code{sample}.}
 
 \item{estimator}{\code{"hajek"} or \code{"ht"}. See above.}
 
-\item{variance}{Passed to the underlying total. See \code{\link[=ht_total]{ht_total()}}.}
-
-\item{level}{Confidence level for the interval.}
+\item{variance, level, by, df}{As for \code{\link[=ht_total]{ht_total()}}.}
 }
 \value{
-A list with a \code{print()} method, holding \code{mean}, \code{variance}, \code{se},
-\code{ci}, \code{level}, \code{n}, \code{design}, \code{deff}, \code{method} and \code{note}. See \code{\link[=ht_total]{ht_total()}}
-for what \code{method} and \code{note} say, and \code{\link[=deff]{deff()}} for the design effect.
+A list with a \code{print()} method, holding \code{mean}, \code{estimator},
+\code{variance}, \code{se}, \code{ci}, \code{level}, \code{df}, \code{n}, \code{design}, \code{deff}, \code{method} and
+\code{note}. See \code{\link[=ht_total]{ht_total()}} for what \code{method}, \code{df} and \code{note} say, and
+\code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data frame with one row per
+domain.
 }
 \description{
 The Hajek estimator, \code{sum(y / pi) / sum(1 / pi)}, is the default. It divides
 by the \emph{estimated} population size rather than the known one, so a sample
 that happens to over-represent heavy-weight rows inflates numerator and
 denominator together and they partly cancel. \code{estimator = "ht"} divides by
-the true \code{N} instead.
+the true \code{N} instead. For a 0/1 variable either one estimates a proportion.
 }
 \section{When the two differ, and which to use}{
 
@@ -52,11 +54,12 @@ They differ when that sum is random or uneven:
 size selection.
 }
 
-Hajek is usually the steadier of the two and is the default for that reason.
-The exception is worth knowing: when \code{y} is close to proportional to the size
-measure that drove selection, \code{y / pi} is nearly constant, the
-Horvitz-Thompson numerator barely moves, and dividing it by the known \code{N}
-beats dividing by an estimate.
+Hajek is usually the steadier of the two and is the default for that reason
+(Särndal, Swensson and Wretman 1992, section 5.7). The exception is worth
+knowing: when \code{y} is close to proportional to the size measure that drove
+selection, \code{y / pi} is nearly constant, the Horvitz-Thompson numerator
+barely moves, and dividing it by the known \code{N} beats dividing by an
+estimate.
 
 One caveat on \code{"ht"}. It is unbiased for the frame mean \emph{provided every row
 could have been selected}. Rows with inclusion probability 0 — outside a time
@@ -65,6 +68,15 @@ can never enter the numerator, so the estimate is biased low by exactly their
 share of the frame. \code{\link[=sample_summary]{sample_summary()}} reports how many such rows there are.
 The Hajek mean is unaffected, because it estimates the mean of the part of
 the frame the design can actually reach.
+}
+
+\section{Variance and domains}{
+
+The Hajek mean is a ratio, and its variance is the variance of the total of
+the linearised residuals \code{(y - mean) / N_hat} (Deville 1999), computed with
+whichever estimator suits the design — see \code{\link[=ht_total]{ht_total()}}, which also explains
+the confidence interval's degrees of freedom and how \code{by} estimates domain
+means from the whole sample rather than a subset of it.
 }
 
 \examples{
@@ -79,8 +91,14 @@ s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
 ht_mean(s, "spend")
 mean(pop$spend)   # the truth
 
+# A mean for each site, estimated from the whole sample
+ht_mean(s, "spend", by = "site")
+
+# A proportion is the mean of a 0/1 variable
+ht_mean(s, s$spend > 250)
+
 # Stratified without replacement: the weights sum to N, so the two agree
-ht_mean(s, "spend", estimator = "ht")$mean == ht_mean(s, "spend")$mean
+all.equal(ht_mean(s, "spend", estimator = "ht")$mean, ht_mean(s, "spend")$mean)
 
 # Poisson sampling has a random size, so they part company
 p <- draw(pop, design_weighted("spend", n = 40, method = "poisson"),
@@ -88,6 +106,18 @@ p <- draw(pop, design_weighted("spend", n = 40, method = "poisson"),
 c(hajek = ht_mean(p, "spend", variance = "none")$mean,
   ht    = ht_mean(p, "spend", "ht", variance = "none")$mean)
 
+}
+\references{
+Hájek, J. (1971). Comment on "An essay on the logical foundations of survey
+sampling, part one" by D. Basu. In V. P. Godambe and D. A. Sprott (eds.),
+\emph{Foundations of Statistical Inference}, p. 236. Holt, Rinehart and Winston.
+
+Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Survey
+Sampling}. Springer.
+
+Deville, J.-C. (1999). Variance estimation for complex statistics and
+estimators: linearization and residual techniques. \emph{Survey Methodology},
+25, 193–203.
 }
 \seealso{
 \code{\link[=ht_total]{ht_total()}}, \code{\link[=deff]{deff()}}, \code{\link[=sample_summary]{sample_summary()}}

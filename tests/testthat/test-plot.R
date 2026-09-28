@@ -30,7 +30,8 @@ test_that("plot does not disturb the caller's graphics layout", {
   f <- tempfile(fileext = ".png")
   grDevices::png(f); on.exit({grDevices::dev.off(); unlink(f)}, add = TRUE)
   op <- graphics::par(mfrow = c(2, 2))
-  on.exit(graphics::par(op), add = TRUE)
+  # Restore before the device closes, or restoring opens a fresh Rplots.pdf
+  on.exit(graphics::par(op), add = TRUE, after = FALSE)
   before <- graphics::par("mfrow")
   plot(design_simple(n = 10), pop, seed = 1)
   expect_equal(graphics::par("mfrow"), before)
@@ -67,6 +68,8 @@ test_that("plot leaves graphical parameters as it found them", {
 
 test_that("plot reports the real reason it cannot draw probabilities", {
   pop <- data.frame(id = 1:50, site = rep(c("a", "b"), each = 25))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
   expect_error(plot(design_stratified("nope", n = 10), pop,
                     type = "probability"),
                "missing column")

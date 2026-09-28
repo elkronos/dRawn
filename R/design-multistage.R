@@ -109,13 +109,10 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
     no_closed_form(
       paste0("`design_multistage()` with n = ", design$n, " over ",
              design$n_clusters, " clusters"),
-      paste0("The remainder goes to the largest clusters selected, so a row's
-",
-             "probability depends on which other clusters were drawn. Choose an
-",
-             "`n` that divides by `n_clusters` (here, a multiple of ",
-             design$n_clusters, "),
-or pass simulate = TRUE.")
+      paste0("The remainder goes to the largest clusters selected, so a row's ",
+             "probability\ndepends on which other clusters were drawn. Choose ",
+             "an `n` that divides by\n`n_clusters` (here, a multiple of ",
+             design$n_clusters, ").")
     )
   }
   small <- names(sizes)[sizes < m]
@@ -123,20 +120,17 @@ or pass simulate = TRUE.")
     no_closed_form(
       paste0("`design_multistage()` where ", length(small), " cluster(s) hold ",
              "fewer than ", m, " rows"),
-      paste0("A cluster smaller than the per-cluster take is capped at its own
-",
-             "size and the shortfall is spread over whichever clusters came with
-",
-             "it, so there is no single answer. Lower `n`, drop the small
-",
-             "clusters, or pass simulate = TRUE.")
+      paste0("A cluster smaller than the per-cluster take is capped at its own ",
+             "size and the\nshortfall is spread over whichever clusters came ",
+             "with it, so there is no single\nanswer. Lower `n`, or drop the ",
+             "small clusters.")
     )
   }
   if (design$min_per_cluster > m) {
     no_closed_form(
       paste0("`design_multistage(min_per_cluster = ", design$min_per_cluster,
              ")` above the per-cluster take of ", m),
-      "Lower `min_per_cluster`, or pass simulate = TRUE."
+      "Lower `min_per_cluster`."
     )
   }
 

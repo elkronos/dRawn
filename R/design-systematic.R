@@ -46,6 +46,9 @@ design_systematic <- function(interval, start = NULL, order_by = NULL,
 draw_design.drawn_design_systematic <- function(design, data) {
   validate_data(data, required_columns = design$order_by)
 
+  # The walk visits rows in `walk` order; the result comes back in frame order
+  # like every other design that selects a set of rows.
+  walk <- seq_len(nrow(data))
   if (!is.null(design$order_by)) {
     check_key_columns(data, design$order_by, "order_by")
     key <- data[[design$order_by]]
@@ -54,7 +57,7 @@ draw_design.drawn_design_systematic <- function(design, data) {
                            paste0("a missing `", design$order_by, "`"))
       key <- data[[design$order_by]]
     }
-    data <- data[order(key), , drop = FALSE]
+    walk <- order(key)
   }
 
   start <- design$start %||% sample.int(design$interval, 1L)
@@ -65,7 +68,8 @@ draw_design.drawn_design_systematic <- function(design, data) {
     return(empty_like(data))
   }
 
-  reindex(data, seq.int(from = start, to = nrow(data), by = design$interval))
+  picked <- walk[seq.int(from = start, to = nrow(data), by = design$interval)]
+  reindex(data, picked, sort = TRUE)
 }
 
 # ---- inclusion probability ------------------------------------------------

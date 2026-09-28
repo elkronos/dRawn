@@ -35,13 +35,18 @@ drawn_pal <- function() {
 #'     strata; a rise means size-proportional selection. Rows the design can
 #'     never reach sit at zero and are marked, which is usually the thing worth
 #'     finding out.}
+#'   \item{`"map"`}{Every row placed by two columns — coordinates, or any
+#'     two numeric variables — with the selected ones filled in. This is the
+#'     view for [design_spread()] and [design_spatial()], where what matters is
+#'     how evenly the sample covers the space: compare a simple random sample's
+#'     clumps and gaps against a spread one.}
 #' }
 #'
 #' Base graphics, so there is no plotting dependency to install.
 #'
 #' @param x A design object.
 #' @param y The population data frame to draw against.
-#' @param type `"selection"` or `"probability"`.
+#' @param type `"selection"`, `"probability"` or `"map"`.
 #' @param seed Optional seed for the `"selection"` draw, so the picture is
 #'   reproducible.
 #' @param ncol Dots per row in the `"selection"` grid. Defaults to whatever
@@ -51,6 +56,9 @@ drawn_pal <- function() {
 #' @param main Title. Defaults to a description of the design.
 #' @param palette Named list overriding any of `surface`, `ink`, `secondary`,
 #'   `muted`, `recessive`, `accent`, `fill`, `rule`.
+#' @param coords For `type = "map"`, the two columns to place rows by, `c(x,
+#'   y)`. Defaults to the design's own `across` ([design_spread()]) or
+#'   `coords` ([design_spatial()]); required for any other design.
 #' @param ... Passed to the underlying plot call.
 #'
 #' @return `x`, invisibly. Called for the plot.
@@ -75,9 +83,9 @@ drawn_pal <- function() {
 #'
 #' @seealso [draw()], [inclusion_prob()]
 #' @export
-plot.drawn_design <- function(x, y, type = c("selection", "probability"),
+plot.drawn_design <- function(x, y, type = c("selection", "probability", "map"),
                               seed = NULL, ncol = NULL, max_dots = 4000,
-                              main = NULL, palette = NULL, ...) {
+                              main = NULL, palette = NULL, coords = NULL, ...) {
   type <- match.arg(type)
   if (missing(y)) {
     stop("Pass the population data frame as the second argument: ",
@@ -104,6 +112,9 @@ plot.drawn_design <- function(x, y, type = c("selection", "probability"),
   if (type == "probability") {
     return(plot_probability(x, y, shown, main, sub, pal, ...))
   }
+  if (type == "map") {
+    return(plot_map(x, y, coords, shown, seed, main, sub, pal, ...))
+  }
   plot_selection(x, y, shown, seed, ncol, main, sub, pal, ...)
 }
 
@@ -116,7 +127,8 @@ design_label <- function(x) {
   p <- unclass(x)
   p <- p[!vapply(p, function(v) is.null(v) || inherits(v, c("sf", "sfc")),
                  logical(1))]
-  keep <- intersect(c("strata", "clusters", "weights", "time", "n",
+  keep <- intersect(c("strata", "clusters", "weights", "across", "size",
+                      "time", "n",
                       "n_clusters", "interval", "per_interval", "n_replicates",
                       "allocation", "method", "balanced"), names(p))
   bits <- vapply(keep, function(k) paste0(k, " = ", fmt_param(p[[k]])),
@@ -254,5 +266,64 @@ plot_probability <- function(x, y, shown, main, sub, pal, ...) {
     } else "",
     "range ", signif(min(pv, na.rm = TRUE), 3), " to ", signif(top, 3),
     if (!is.null(sub)) paste0("   |   ", sub) else ""), pal)
+  invisible(x)
+}
+
+#' @noRd
+plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
+  coords <- coords %||% x$across %||% x$coords
+  if (is.null(coords) || length(coords) < 2L) {
+    stop("type = \"map\" needs two columns to place rows by. Pass ",
+         "`coords = c(\"x\", \"y\")`.", call. = FALSE)
+  }
+  coords <- coords[1:2]
+  validate_data(y, required_columns = coords)
+  if (!is.numeric(y[[coords[1]]]) || !is.numeric(y[[coords[2]]])) {
+    stop("`", coords[1], "` and `", coords[2], "` must both be numeric.",
+         call. = FALSE)
+  }
+
+  key <- ".drawn_plot_id"
+  if (key %in% names(y)) {
+    stop("`y` already has a column called `", key, "`. Rename it.",
+         call. = FALSE)
+  }
+  tagged <- y
+  tagged[[key]] <- seq_len(nrow(y))
+  picked <- tryCatch({
+    s <- draw(tagged, x, seed = seed)
+    if (is.data.frame(s)) s[[key]] else unlist(s)
+  }, error = function(e) {
+    stop("Could not draw this design against `y`: ", conditionMessage(e),
+         call. = FALSE)
+  })
+  sel <- rep(FALSE, nrow(y))
+  sel[picked[!is.na(picked)]] <- TRUE
+
+  # Thinning a map would hide exactly the gaps it exists to show, so every
+  # selected row is drawn and only the unselected background is thinned.
+  bg <- setdiff(shown, which(sel))
+  px <- y[[coords[1]]]
+  py <- y[[coords[2]]]
+
+  op <- graphics::par(mar = c(3.6, 3.8, 3.6, 1.4), bg = pal$surface)
+  on.exit(graphics::par(op), add = TRUE)
+  graphics::plot(px, py, type = "n", axes = FALSE, ann = FALSE, asp = NA, ...)
+  graphics::box(col = pal$rule)
+  graphics::axis(1, cex.axis = 0.7, col = NA, col.ticks = pal$rule,
+                 col.axis = pal$secondary, tck = -0.016)
+  graphics::axis(2, cex.axis = 0.7, col = NA, col.ticks = pal$rule,
+                 col.axis = pal$secondary, las = 1, tck = -0.016)
+  graphics::points(px[bg], py[bg], pch = 19, cex = 0.45, col = pal$recessive)
+  graphics::points(px[sel], py[sel], pch = 21, cex = 1.05, lwd = 1.5,
+                   col = pal$surface, bg = pal$accent)
+  graphics::mtext(coords[1], side = 1, line = 2.1, cex = 0.72,
+                  col = pal$secondary)
+  graphics::mtext(coords[2], side = 2, line = 2.6, cex = 0.72,
+                  col = pal$secondary)
+  draw_titles(main, paste0(fmt_n(sum(sel)), " of ", fmt_n(nrow(y)),
+                           " rows selected",
+                           if (!is.null(sub)) paste0("   |   ", sub) else ""),
+              pal)
   invisible(x)
 }

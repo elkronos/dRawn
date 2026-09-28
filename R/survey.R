@@ -88,9 +88,17 @@ as_svydesign <- function(sample, ...) {
   dat <- as.data.frame(sample)
   parts <- survey_parts(design, dat, pop, rows = attr(sample, "drawn_rows"))
   dat$.fpc <- parts$fpc
+  fpc <- stats::as.formula("~.fpc")
+  if (!is.null(parts$fpc2)) {
+    # Two stages: clusters, then rows within them, each with its own
+    # population count, so `survey` computes the full two-stage variance.
+    dat$.fpc2 <- parts$fpc2
+    dat$.unit <- seq_len(nrow(dat))
+    fpc <- stats::as.formula("~.fpc + .fpc2")
+  }
   if (!is.null(parts$stratum)) dat$.stratum <- parts$stratum
   args <- c(list(data = dat, weights = stats::as.formula("~.weight"),
-                 ids = parts$ids, fpc = stats::as.formula("~.fpc")),
+                 ids = parts$ids, fpc = fpc),
             parts$extra)
   if (!is.null(parts$stratum)) {
     args$strata <- stats::as.formula("~.stratum")
@@ -137,7 +145,12 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
     },
     weighted = {
       if (design$method != "poisson") {
-        return(list(stratum = NULL, fpc = rep(nrow(pop), nrow(dat)), ids = one))
+        # Neither package has the joint probabilities of systematic PPS.
+        # `survey`'s Brewer approximation and this package's Deville
+        # approximation are close relatives, and agree to a fraction of a
+        # percent.
+        return(list(stratum = NULL, fpc = dat$.prob, ids = one,
+                    extra = list(pps = "brewer")))
       }
       # Poisson sampling has a random size, so no finite population correction
       # over a fixed n describes it. `survey` models it directly.
@@ -151,9 +164,34 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
       refuse_nested(prefix, "a cluster or multistage `rest`",
                     paste0("the certainty rows and the clusters are different ",
                            "kinds of sampling unit"))
-      list(stratum = NULL,
-           fpc = rep(length(unique(pop[[design$clusters]])), nrow(dat)),
-           ids = stats::as.formula(paste0("~", design$clusters)))
+      labels <- pop[[design$clusters]]
+      n_clusters <- length(unique(labels[!is.na(labels)]))
+      if (design_type(design) == "cluster") {
+        return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
+                    ids = stats::as.formula(paste0("~", design$clusters))))
+      }
+      sizes <- table(labels[!is.na(labels)])
+      list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
+           fpc2 = as.integer(sizes[as.character(dat[[design$clusters]])]),
+           ids = stats::as.formula(paste0("~", design$clusters, " + .unit")))
+    },
+    reservoir = {
+      # Rows past `max_items` are never read, so the population is the rows
+      # the stream reached, not the whole frame.
+      list(stratum = NULL, fpc = rep(reservoir_reach(design, nrow(pop)),
+                                     nrow(dat)), ids = one)
+    },
+    spread = {
+      # Neither package has the pivotal method's joint probabilities. Handed
+      # to `survey` as the unequal- or equal-probability draw it is at first
+      # order, which does not credit the spreading and so errs conservative.
+      fr <- spread_frame(design, pop)
+      if (is.null(design$size)) {
+        list(stratum = NULL, fpc = rep(length(fr$keep), nrow(dat)), ids = one)
+      } else {
+        list(stratum = NULL, fpc = dat$.prob, ids = one,
+             extra = list(pps = "brewer"))
+      }
     },
     spatial = {
       # The design's population is the rows inside the region, not the frame.
@@ -184,6 +222,12 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
         out$stratum[!is_certain] <- rest$stratum %||%
           paste0(prefix, "(rest)")
         out$fpc[!is_certain] <- rest$fpc
+        if (!is.null(rest$extra$pps)) {
+          # A PPS `rest` states its fpc as probabilities, and `survey` needs
+          # the whole design in the same terms: certainty rows are probability 1.
+          out$fpc[is_certain] <- 1
+          out$extra <- rest$extra
+        }
       }
       out
     },

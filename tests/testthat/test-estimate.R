@@ -77,7 +77,8 @@ test_that("ht_mean accepts a vector as well as a column name", {
 
 test_that("ht_mean reports why it has no variance rather than inventing one", {
   d <- est_pop()
-  s <- draw(d, design_systematic(interval = 5), seed = 1, weights = TRUE)
+  # One cluster: nothing to compare it with, analytically or by jackknife
+  s <- draw(d, design_cluster("cl", n_clusters = 1), seed = 1, weights = TRUE)
   e <- ht_mean(s, "y")
   expect_true(is.finite(e$mean))
   expect_true(is.na(e$se))
@@ -151,7 +152,9 @@ test_that("the jackknife deletes clusters, not rows", {
 
 test_that("ht_mean falls back to the jackknife and says it did", {
   d <- est_pop()
-  s <- draw(d, design_weighted("w", n = 60, method = "systematic"), seed = 1,
+  # One row per cluster: the exact two-stage form cannot see within-cluster
+  # variation, so it declines and the delete-a-cluster jackknife steps in.
+  s <- draw(d, design_multistage("cl", n_clusters = 10, n = 10), seed = 1,
             weights = TRUE)
   e <- ht_mean(s, "y")
   expect_equal(e$method, "jackknife")
@@ -187,8 +190,8 @@ test_that("deff is exactly 1 for a simple random sample", {
 
 test_that("deff is NA rather than negative when there is no variance", {
   set.seed(5)
-  pop <- data.frame(y = stats::rnorm(60, 10, 3))
-  r <- ht_total(draw(pop, design_systematic(interval = 5), seed = 1,
+  pop <- data.frame(y = stats::rnorm(60, 10, 3), cl = rep(1:6, each = 10))
+  r <- ht_total(draw(pop, design_cluster("cl", n_clusters = 1), seed = 1,
                      weights = TRUE), "y")
   expect_true(is.na(deff(r)))
   expect_true(is.na(drawn:::deff_value(-5, 1:10, rep(0.5, 10), 100, 10,

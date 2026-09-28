@@ -135,14 +135,14 @@ simulate_inclusion <- function(data, design, R, seed) {
   tagged[[key]] <- seq_len(n_rows)
 
   hits <- integer(n_rows)
-  with_seed(seed, {
+  with_seed(seed, quietly_empty({
     for (i in seq_len(R)) {
       s <- draw_design(design, tagged)
       ids <- s[[key]]
       # A row drawn twice in one replicate is still one inclusion.
       hits[unique(ids)] <- hits[unique(ids)] + 1L
     }
-  })
+  }))
   hits / R
 }
 

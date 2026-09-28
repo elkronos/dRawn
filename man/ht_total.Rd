@@ -8,7 +8,9 @@ ht_total(
   sample,
   y,
   variance = c("auto", "analytic", "jackknife", "none"),
-  level = 0.95
+  level = 0.95,
+  by = NULL,
+  df = NULL
 )
 }
 \arguments{
@@ -17,61 +19,122 @@ ht_total(
 \item{y}{The variable to total: a column name, or a numeric vector as long as
 \code{sample}.}
 
-\item{variance}{How to compute it. \code{"auto"} uses the analytic estimator when
-the design has one and falls back to the jackknife when it does not;
-\code{"analytic"} insists on the analytic form, returning \code{NA} with the reason
-in \code{note} rather than falling back; \code{"jackknife"} always resamples;
-\code{"none"} skips it. The result reports which was used in \code{method} — and
-reports \code{"none"} when neither could produce a figure, rather than naming a
-method that declined.}
+\item{variance}{How to compute it. \code{"auto"} uses the design's own estimator
+(see "Variance") and falls back to the jackknife when that declines;
+\code{"analytic"} insists on the design's own estimator, returning \code{NA} with
+the reason in \code{note} rather than falling back; \code{"jackknife"} always
+resamples; \code{"none"} skips it. The result reports which was used in
+\code{method}, and \code{"none"} when nothing could produce a figure.}
 
 \item{level}{Confidence level for the interval.}
+
+\item{by}{Optional column name(s) in \code{sample} defining domains. When given,
+the result is one row per domain. See "Domains".}
+
+\item{df}{Degrees of freedom for the interval. \code{NULL} uses the design's
+(see "Confidence intervals"); \code{Inf} gives a normal interval.}
 }
 \value{
 A list with a \code{print()} method, holding:
 \describe{
 \item{\code{total}}{The Horvitz-Thompson total, \code{sum(y / pi)}.}
-\item{\code{variance}, \code{se}, \code{ci}, \code{level}}{Its estimated variance, standard
-error and confidence interval. \code{NA} where the design supports none.}
+\item{\code{variance}, \code{se}, \code{ci}, \code{level}, \code{df}}{Its estimated variance,
+standard error, confidence interval, and the degrees of freedom the
+interval used. \code{NA} where the design supports no variance.}
 \item{\code{n}, \code{design}}{Rows used, and the design's type.}
 \item{\code{deff}}{The design effect — see \code{\link[=deff]{deff()}}.}
-\item{\code{method}}{\code{"analytic"}, \code{"jackknife"} or \code{"none"}.}
-\item{\code{note}}{Why a variance is missing, or which fallback was taken.
-\code{NULL} when the analytic estimator applied cleanly.}
+\item{\code{method}}{Which estimator produced the variance. See "Variance".}
+\item{\code{note}}{Why a variance is missing, what approximation was used,
+or which fallback was taken. \code{NULL} when an exact estimator applied
+cleanly.}
 }
+With \code{by}, a data frame of class \code{drawn_by} instead: one row per domain,
+with the domain columns, \code{n}, \code{total}, \code{se}, \code{ci_lower}, \code{ci_upper} and
+\code{method}.
 }
 \description{
-Forms the Horvitz-Thompson total \code{sum(y / pi)} and, where the design allows
-it, a design-unbiased variance and confidence interval.
+Forms the Horvitz-Thompson total \code{sum(y / pi)} with a standard error, a
+confidence interval and a design effect, using a variance estimator matched
+to how the design actually randomised.
 }
 \section{Variance}{
 
-The estimator is chosen to match how the design actually randomises:
-\itemize{
-\item \strong{Fixed-size designs} use the Sen-Yates-Grundy estimator, which is
-non-negative more often than the general Horvitz-Thompson form and is the
-usual choice.
-\item \strong{Poisson sampling} has a random size and independent rows, so the
-independent-units form \code{sum((1 - pi) / pi^2 * y^2)} is used instead.
-\item \strong{Cluster designs} take whole clusters, so the number of \emph{rows} is random
-whenever the clusters differ in size. The cluster is the sampling unit, and
-the estimator is applied at that level — algebraically the same thing as
-the delete-a-cluster jackknife.
-\item \strong{Certainty designs} hand the problem to \code{rest} over the rows below the
-threshold, since the certainty rows are in every possible sample and
-contribute nothing to the variance.
+Each design gets the estimator the survey-sampling literature recommends for
+it, and \code{method} in the result says which one was used:
+
+\describe{
+\item{\code{"analytic"}}{Exact and design-unbiased. Fixed-size designs with
+known joint probabilities use the Sen-Yates-Grundy estimator; Poisson
+sampling, whose rows are independent, uses \code{sum((1 - pi) / pi^2 * y^2)};
+cluster designs apply the estimator at the cluster level, because taking
+whole clusters makes the row count random; certainty designs hand the
+problem to \code{rest}, since certainty rows are in every sample and add
+nothing.}
+\item{\code{"deville"}}{Systematic probability-proportional-to-size
+(\code{\link[=design_weighted]{design_weighted()}} with \code{method = "systematic"}). Its joint
+probabilities have no closed form, so this uses Deville's (1999)
+approximation, which needs only the first-order probabilities and is the
+best-performing of the standard approximations for high-entropy designs
+(Matei and Tillé 2005). Randomised systematic selection is close to high
+entropy (Hartley and Rao 1962). Unlike a plain jackknife, each row's
+contribution is scaled by its own \code{1 - pi}, so rows near certainty stop
+adding variance they do not have.}
+\item{\code{"successive difference"}}{\code{\link[=design_systematic]{design_systematic()}}. No
+design-unbiased estimator exists — the design has one random start, and
+most pairs of rows can never be drawn together — so this uses the
+successive-difference approximation, which compares each sampled row with
+its neighbour in the order the design walked (Wolter 2007). It removes a
+trend along that order rather than counting it as noise, which is why it
+beats treating the sample as simple random. It is understated if the
+frame has a cycle whose period matches \code{interval}, which no estimator
+from a single systematic sample can detect.}
+\item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
+well spread precisely because neighbours are rarely taken together, so
+this compares each sampled row with the local mean of its nearest
+sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).}
+\item{\code{"jackknife"}}{The delete-one-unit jackknife, by stratum (JKn) where
+the design has strata, and deleting whole clusters where it has them.
+Used when requested, and as the fallback under \code{variance = "auto"}.}
 }
 
-Sen-Yates-Grundy can still return a negative number on an unlucky sample.
-That is a failure of the estimator rather than a variance, so it is reported
-as one: \code{variance} is \code{NA}, \code{note} says what happened, and \code{variance = "auto"}
-falls through to the jackknife.
+The analytic estimator declines — returning \code{NA} with the reason in \code{note}
+— rather than understate. Two cases matter in practice:
+\itemize{
+\item \strong{A stratum or interval with a single sampled row.} There is no
+variation inside it to measure, and simply leaving it out, as the
+Sen-Yates-Grundy sum does, reports a standard error that is too small —
+zero, if every stratum is like that. Draw at least two per stratum
+(\code{min_per_stratum = 2}, \code{per_interval = 2}).
+\item \strong{One row per cluster in a multistage design.} The within-cluster
+variation is unmeasurable and the exact estimator understates by around
+a third. \code{variance = "auto"} falls back to the delete-a-cluster jackknife,
+which is the ultimate-cluster approximation standard in survey practice.
+}
 
-A variance needs joint inclusion probabilities, and not every design has
-them — see \code{\link[=joint_prob]{joint_prob()}}. Where they are unavailable the estimate is still
-returned, with \code{variance} as \code{NA} and a note saying why. Systematic sampling
-is the notable case: most pairs of rows can never co-occur, so no
-design-unbiased variance estimator exists at all.
+A Sen-Yates-Grundy estimate that comes out negative is treated the same way:
+a failure of the estimator on an unlucky sample, not a variance.
+}
+
+\section{Confidence intervals}{
+
+Intervals use Student's t with the design's degrees of freedom — the number
+of primary sampling units minus the number of strata — rather than the
+normal distribution (Korn and Graubard 1999). The difference is negligible
+with hundreds of units and decisive with a handful: at four clusters a
+normal interval covers about 87\% where it claims 95\%, and the t interval
+restores most of that. The degrees of freedom used are reported as \code{df};
+pass \code{df = Inf} for the normal interval.
+}
+
+\section{Domains}{
+
+\code{by} estimates for each level of one or more columns — sites, regions,
+months — without subsetting the sample first. Subsetting a sample and
+treating the piece as its own sample gets the variance wrong, because the
+number of rows that happen to fall in a domain is itself random. Here each
+domain's total is estimated from \verb{y * (row in domain)} over the whole sample,
+so the same design and the same variance machinery apply (Särndal, Swensson
+and Wretman 1992, section 10.3).
 }
 
 \examples{
@@ -87,7 +150,45 @@ ht_total(s, "spend")
 
 sum(pop$spend)   # the truth
 
+# One estimate per site, from the same sample
+ht_total(s, "spend", by = "site")
+tapply(pop$spend, pop$site, sum)
+
+}
+\references{
+Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
+without replacement from a finite universe. \emph{Journal of the American
+Statistical Association}, 47, 663–685.
+
+Sen, A. R. (1953). On the estimate of the variance in sampling with varying
+probabilities. \emph{Journal of the Indian Society of Agricultural Statistics},
+5, 119–127.
+
+Yates, F. and Grundy, P. M. (1953). Selection without replacement from
+within strata with probability proportional to size. \emph{Journal of the Royal
+Statistical Society B}, 15, 253–261.
+
+Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal
+probabilities and without replacement. \emph{Annals of Mathematical Statistics},
+33, 350–374.
+
+Deville, J.-C. (1999). Variance estimation for complex statistics and
+estimators: linearization and residual techniques. \emph{Survey Methodology},
+25, 193–203.
+
+Matei, A. and Tillé, Y. (2005). Evaluation of variance approximations and
+estimators in maximum entropy sampling with unequal probability and fixed
+sample size. \emph{Journal of Official Statistics}, 21, 543–570.
+
+Wolter, K. M. (2007). \emph{Introduction to Variance Estimation}, 2nd ed.
+Springer.
+
+Korn, E. L. and Graubard, B. I. (1999). \emph{Analysis of Health Surveys}.
+Wiley.
+
+Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Survey
+Sampling}. Springer.
 }
 \seealso{
-\code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
+\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=deff]{deff()}}, \code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
 }

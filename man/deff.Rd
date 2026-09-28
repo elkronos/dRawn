@@ -14,9 +14,9 @@ A single number, or \code{NA} when the design has no variance estimate.
 }
 \description{
 How much precision the design costs against simple random sampling of the
-same size. \code{deff = 1} means the design is doing as well as a coin flip over
-the frame; above 1 it is doing worse, which is the usual price of clustering;
-below 1 it is doing better, which is what stratification and
+same size (Kish 1965). \code{deff = 1} means the design is doing as well as a
+coin flip over the frame; above 1 it is doing worse, which is the usual price
+of clustering; below 1 it is doing better, which is what stratification and
 probability-proportional-to-size buy you.
 }
 \details{
@@ -43,6 +43,10 @@ deff(ht_total(draw(pop, design_cluster("cl", n_clusters = 4), seed = 1,
                    weights = TRUE), "y"))
 
 }
+\references{
+Kish, L. (1965). \emph{Survey Sampling}. Wiley.
+}
 \seealso{
-\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}
+\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=plan_size]{plan_size()}}, which takes a design
+effect as an input.
 }

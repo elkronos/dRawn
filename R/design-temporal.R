@@ -167,7 +167,8 @@ exact_inclusion.drawn_design_temporal <- function(design, data) {
   to_dt <- parse_time(design$to, tz, "to")
   check_window(from_dt, to_dt)
   check_na_policy(is.na(tv), design$na_rm,
-                  paste0("an unparseable `", design$time, "`"))
+                  paste0("a missing or unparseable timestamp in `",
+                         design$time, "`"))
   breaks <- make_breaks(from_dt, to_dt, design$interval, design$unit)
 
   out <- numeric(nrow(data))

@@ -193,25 +193,32 @@ test_that("the variance defers to `rest` instead of assuming a fixed size", {
   expect_lt(ratio, 1.35)
 })
 
-test_that("a systematic `rest` refuses a variance rather than returning one", {
+test_that("a systematic `rest` gets the successive-difference approximation", {
   d <- cert_pop(300)
   des <- design_certainty("value", 2500, design_systematic(interval = 8))
   s <- draw(d, des, seed = 1, weights = TRUE)
 
-  # Analytic is impossible here; taken flat it would return a negative number.
+  # No design-unbiased estimator exists for the systematic part, so the
+  # variance is the rest's successive-difference approximation -- and says so.
   strict <- ht_total(s, "value", variance = "analytic")
-  expect_true(is.na(strict$variance))
+  expect_equal(strict$method, "successive difference")
+  expect_true(strict$variance >= 0)
   expect_match(strict$note, "no design-unbiased variance")
 
-  # The jackknife cannot rescue it either: a systematic `rest` has a single
-  # primary sampling unit. Saying so beats reporting a number from a method
-  # that declined.
-  auto <- ht_total(s, "value")
-  expect_true(is.na(auto$variance))
-  expect_equal(auto$method, "none")
-  expect_match(auto$note, "one primary sampling unit")
-  expect_match(auto$note, "no design-unbiased variance")
-  expect_true(is.na(deff(auto)))
+  # Certainty rows contribute nothing: the figure is the rest's own, computed
+  # over the rows below the threshold in the order the design walked them.
+  below <- s$.prob < 1
+  u <- s$value[below] / s$.prob[below]
+  u <- u[order(attr(s, "drawn_rows")[below])]
+  n <- sum(below)
+  expect_equal(strict$variance,
+               (1 - 1 / 8) * n / (2 * (n - 1)) * sum(diff(u)^2))
+
+  # The jackknife still cannot: a systematic `rest` has a single primary
+  # sampling unit, and saying so beats deleting rows as though it had many.
+  jk <- ht_total(s, "value", variance = "jackknife")
+  expect_true(is.na(jk$variance))
+  expect_match(jk$note, "one primary sampling unit")
 })
 
 test_that("every sampled row certain means an exact total, variance 0", {
