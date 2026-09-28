@@ -9,7 +9,7 @@ Every function in this package answers one question — *which rows do I
 look at?* — and the interesting part is what you can say afterwards
 about the rows you didn’t.
 
-## One population, eleven questions
+## One population, twelve designs
 
 We’ll use a synthetic audit population throughout: invoices from a
 handful of sites, over a fortnight, with a value attached.
@@ -95,7 +95,6 @@ plan_size(margin = 2, sd = stats::sd(invoices$value), N = nrow(invoices))
 #>   margin         +/- 2 at 95% confidence
 #>   assuming       sd 1091, N 600
 #> 
-#> 
 #>   That is a census: the frame is not large enough to reach this margin
 #>   by sampling, so every row is needed. Widen `margin`, or accept the
 #>   precision a full count gives.
@@ -176,7 +175,7 @@ ht_total(s, "value")
 #> Horvitz-Thompson total  (stratified design, n = 60)
 #>   estimate 380,046.5
 #>   se       49,499.7  (analytic)
-#>   95% CI  283,028.9 to 477,064.1
+#>   95% CI  280,886.7 to 479,206.3  (t, 56 df)
 #>   deff     0.994  (about the same as simple random sampling)
 ```
 
@@ -247,7 +246,7 @@ ht_mean(s, "value")
 #> Hajek mean  (stratified design, n = 60)
 #>   estimate 633.4108
 #>   se       82.49949  (analytic)
-#>   95% CI  471.7148 to 795.1069
+#>   95% CI  468.1445 to 798.6772  (t, 56 df)
 #>   deff     0.994  (about the same as simple random sampling)
 mean(invoices$value)
 #> [1] 714.5076
@@ -380,23 +379,45 @@ sample_summary(draw(invoices, window, seed = 1, weights = TRUE))
 
 ## When you want the rare stratum represented
 
-`west` has only 30 invoices. Proportional allocation gives it three. If
-you need coverage rather than efficiency, ask for a floor — and note
-that this is a deliberate bias, not a free lunch:
+`west` has only 30 invoices. Proportional allocation gives it three at
+`n = 60` — and at a smaller `n` it can give it none at all, which is
+worse than it sounds: a stratum allocated no rows can never be drawn, so
+every estimate made from the sample silently leaves it out.
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) warns
+when that happens:
+
+``` r
+
+small <- draw(invoices, design_stratified("site", n = 12), seed = 1,
+              weights = TRUE)
+#> Warning: 1 stratum (`west`) is allocated no rows, so its 30 frame row(s) can
+#> never be drawn. A total estimated from this sample leaves them out entirely.
+#> Raise `n`, or set min_per_stratum = 1 (or 2, so each stratum also supports a
+#> variance).
+```
+
+A floor fixes it, and it does *not* bias anything. The design weights
+know that `west` was over-sampled and scale each of its rows down
+accordingly:
 
 ``` r
 
 covered <- draw(invoices, design_stratified("site", n = 60, min_per_stratum = 8),
-                seed = 1)
+                seed = 1, weights = TRUE)
 table(covered$site)
 #> 
 #>  east north south  west 
 #>     8    28    16     8
+tapply(covered$.weight, covered$site, unique)
+#>     east    north    south     west 
+#> 11.25000 10.71429 11.25000  3.75000
 ```
 
-The default of `min_per_stratum = 0` leaves allocation unbiased. Setting
-it over-represents small strata, which is fine when the goal is “look at
-every site” and wrong when the goal is “estimate the total”.
+What a floor changes is precision, and usually only a little. Take at
+least two per stratum if you want a variance: with one, the variation
+inside that stratum cannot be measured, and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+declines rather than report a standard error that is too small.
 
 ## Sampling proportional to size
 
@@ -426,8 +447,8 @@ invent one:
 inclusion_prob(invoices, naive)
 #> Error:
 #> ! `design_weighted(method = "successive")` has no closed-form inclusion probability.
-#> Successive sampling has no closed-form inclusion probability.
-#> Use method = "systematic" or "poisson" for a design whose inclusion
+#> Its weights govern each successive draw, not each row's chance of ending up in
+#> the sample. Use method = "systematic" or "poisson" for a design whose inclusion
 #> probabilities really are proportional to the weights.
 #> Or pass simulate = TRUE to estimate it by Monte Carlo.
 ```
@@ -491,12 +512,13 @@ spread_of <- function(design, column) {
   }, numeric(1)))
 }
 
-round(rbind(
+bet <- rbind(
   cost   = c(stratified = spread_of(plan, "cost"),
              pps        = spread_of(pps,  "cost")),
   checks = c(stratified = spread_of(plan, "checks"),
              pps        = spread_of(pps,  "checks"))
-), 1)
+)
+round(bet, 1)
 #>        stratified   pps
 #> cost       3360.9 517.3
 #> checks      133.1 495.4
@@ -513,6 +535,29 @@ measure predicts what you are measuring, and it is a bad bet when it
 doesn’t. [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md),
 below, puts a number on which way the bet went.
 
+There is a way to use the size measure without betting on it.
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md)
+keeps every invoice’s chance equal but spreads the sample evenly along
+`value`, so small, middling and large invoices are all represented in
+their proper proportion — a very fine stratification on size, without
+choosing the boundaries:
+
+``` r
+
+by_value <- design_spread("value", n = 60)
+spread_sd <- c(cost   = spread_of(by_value, "cost"),
+               checks = spread_of(by_value, "checks"))
+round(cbind(bet, spread = spread_sd), 1)
+#>        stratified   pps spread
+#> cost       3360.9 517.3 1893.9
+#> checks      133.1 495.4  133.5
+```
+
+On `cost` it goes 52% of the way from stratification to PPS, and on
+`checks` it gives up nothing against stratifying by site, where PPS lost
+badly. When you are not sure the size measure predicts what you will
+measure, that is the safer use of it.
+
 ## The units too big to leave to chance
 
 PPS is one answer to dominant units. The blunter one is to stop sampling
@@ -527,7 +572,7 @@ audit
 #> <sampling design: certainty>
 #>   above      "value"
 #>   threshold  2000
-#>   rest       <drawn_design_stratified[7]>
+#>   rest       design_stratified(strata = "site", n = 60, allocation = "proportional")
 #>   na_rm      FALSE
 
 s_audit <- draw(invoices, audit, seed = 1, weights = TRUE)
@@ -548,7 +593,7 @@ ht_total(s_audit, "value")
 #> Horvitz-Thompson total  (certainty design, n = 96)
 #>   estimate 458,373.7
 #>   se       34,691.5  (analytic)
-#>   95% CI  390,379.6 to 526,367.8
+#>   95% CI  388,878.3 to 527,869.1  (t, 56 df)
 #>   deff     0.314  (better than simple random sampling)
 ```
 
@@ -581,16 +626,17 @@ designs <- list(
   cluster     = design_cluster("team", n_clusters = 4),
   multistage  = design_multistage("team", n_clusters = 6, n = 60),
   weighted    = design_weighted("value", n = 60, method = "systematic"),
+  spread      = design_spread("value", n = 60),
   certainty   = design_certainty("value", 2000, design_simple(n = 60)),
   temporal    = design_temporal("when", from = "2024-03-01", to = "2024-03-15",
                                 interval = 1, per_interval = 4, unit = "days")
 )
 
 vapply(designs, function(d) nrow(draw(invoices, d, seed = 1)), numeric(1))
-#>     simple stratified systematic    cluster multistage   weighted  certainty 
-#>         60         60         60        120         60         60         96 
-#>   temporal 
-#>         56
+#>     simple stratified systematic    cluster multistage   weighted     spread 
+#>         60         60         60        120         60         60         60 
+#>  certainty   temporal 
+#>         96         56
 ```
 
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md)
@@ -662,17 +708,22 @@ inclusion_prob(invoices, no_form$bootstrap, simulate = TRUE, R = 100)
 ```
 
 Second-order probabilities can be simulated too, which is the general
-answer where no formula exists. Systematic PPS is the case that needs
-it: it has exact first-order probabilities, but its joint ones depend on
-the order units are visited.
+answer where no formula exists. Systematic PPS is a case that needs it:
+it has exact first-order probabilities, but it shuffles the rows before
+walking them, so its joint probabilities are an average over every
+ordering and have no closed form. (For its *variance*,
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+does not need them: it uses Deville’s approximation, which works from
+the first-order probabilities alone.)
 
 ``` r
 
 joint_prob(invoices, pps, rows = 1:4)
 #> Error:
 #> ! `design_weighted(method = "systematic")` has no closed-form joint inclusion probability.
-#> Its joint probabilities depend on the order units are visited and need a
-#> dedicated algorithm. `sampling::UPsystematicpi2()` computes them.
+#> The rows are shuffled before the systematic walk, so every pair can co-occur,
+#> but the joint probabilities average over every ordering and have no closed form.
+#> Pass simulate = TRUE to estimate them; ht_total() uses Deville's approximation.
 ```
 
 ``` r
@@ -732,9 +783,11 @@ table(res_ms$team)
 ```
 
 Both are estimable, but cluster designs pay for their convenience in
-precision — and in degrees of freedom. With only a handful of clusters
-the normal-approximation interval undercovers, so treat it as
-indicative:
+precision — and in degrees of freedom. With four clusters there are
+three degrees of freedom, and the interval uses t on three rather than
+the normal distribution. That is why it is so wide, and it is right to
+be: a normal interval here covers about 87% of the time where it claims
+95%.
 
 ``` r
 
@@ -742,7 +795,7 @@ ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
 #> Horvitz-Thompson total  (cluster design, n = 120)
 #>   estimate 446,199.5
 #>   se       46,834.3  (analytic)
-#>   95% CI  354,406 to 537,993.1
+#>   95% CI  297,151.9 to 595,247.2  (t, 3 df)
 #>   deff     0.783  (better than simple random sampling)
 ```
 
@@ -825,11 +878,29 @@ identical(before, after)
 That is deliberate: a sampling call is not supposed to be visible to the
 code around it.
 
+## Estimates by group
+
+A total or mean for each site comes from the whole sample, not from
+cutting it up. `by` does that, and its standard errors account for the
+fact that the number of sampled rows landing in each group was itself
+random:
+
+``` r
+
+ht_total(s, "value", by = "site")
+#> Horvitz-Thompson total by domain  (stratified design, 95% CI, t, 56 df)
+#>   site  n  total    se ci_lower ci_upper   method
+#>   east  9  76821 22222    32304   121337 analytic
+#>  north 30 173187 34867   103340   243033 analytic
+#>  south 18 124801 27179    70355   179248 analytic
+#>   west  3   5238  1413     2408     8068 analytic
+```
+
 ## Where this package stops
 
-`drawn` draws samples and estimates totals and means from them. It does
-not do subpopulation estimates, regression, calibration, or quantiles
-with proper standard errors —
+`drawn` draws samples and estimates totals, means and proportions from
+them, overall or by group. It does not do regression, calibration, or
+quantiles with proper standard errors —
 [`survey`](https://cran.r-project.org/package=survey) does all of that,
 and
 [`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
@@ -862,12 +933,17 @@ From there it is `survey`’s vocabulary:
 
 ``` r
 
-svyby(~value, ~site, des, svymean)
-#>        site    value       se
-#> east   east 853.5622 246.9130
-#> north north 577.2890 116.2225
-#> south south 693.3406 150.9955
-#> west   west 174.5967  47.0911
+svyquantile(~value, des, quantiles = c(0.25, 0.5, 0.75))
+#> $value
+#>      quantile ci.2.5 ci.97.5        se
+#> 0.25   171.56 108.44  271.19  40.62168
+#> 0.5    392.45 284.07  491.50  51.77361
+#> 0.75   769.03 545.15 1663.11 279.03786
+#> 
+#> attr(,"hasci")
+#> [1] TRUE
+#> attr(,"class")
+#> [1] "newsvyquantile"
 ```
 
 Draw here, analyse there.

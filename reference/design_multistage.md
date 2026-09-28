@@ -45,8 +45,11 @@ design_multistage(
 
 - min_per_cluster:
 
-  Minimum rows from each selected cluster. Defaults to `0`, which leaves
-  allocation unbiased.
+  Minimum rows from each selected cluster. Defaults to `0`. Take at
+  least two rows per cluster if you intend to estimate a variance: with
+  one, the variation within clusters cannot be measured and
+  [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+  falls back to the ultimate-cluster jackknife.
 
 - replace:
 
@@ -72,6 +75,7 @@ Other designs:
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),

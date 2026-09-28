@@ -42,6 +42,27 @@ design_systematic(interval, start = NULL, order_by = NULL, na_rm = FALSE)
 A design object, for use with
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
+## Variance
+
+A systematic sample has a single random start, so no design-unbiased
+variance estimator exists.
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+uses the successive-difference approximation (Wolter 2007), which
+compares neighbouring sampled rows in the order the design walked.
+Sorting on a variable related to what you measure (`order_by`) is what
+makes systematic sampling efficient, and this estimator is the one that
+can see it; see
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+for its limits.
+
+## References
+
+Madow, W. G. and Madow, L. H. (1944). On the theory of systematic
+sampling, I. *Annals of Mathematical Statistics*, 15, 1–24.
+
+Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
+Springer.
+
 ## See also
 
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
@@ -54,6 +75,7 @@ Other designs:
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),
 [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md)

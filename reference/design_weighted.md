@@ -70,13 +70,16 @@ decides whether the sample can be used for estimation.
 
 - `"systematic"`:
 
-  Systematic probability-proportional-to-size. Walks the cumulative
+  Randomised systematic probability-proportional-to- size (Madow 1949;
+  Hartley and Rao 1962). Shuffles the rows, then walks the cumulative
   weights with a fixed step from a random start, giving `pi_i = n * p_i`
   exactly. Rows heavy enough that `n * p_i > 1` are taken with certainty
   and the rest rescaled, repeatedly, until every probability is valid.
-  Fixed sample size. Some pairs of rows can never appear together, so
-  joint inclusion probabilities are zero for them and variance
-  estimation needs care.
+  Fixed sample size. The shuffle means every pair of rows can appear
+  together, but their joint probabilities have no closed form, so
+  [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+  uses Deville's approximation for the variance, which needs only the
+  first-order probabilities.
 
 - `"poisson"`:
 
@@ -88,10 +91,29 @@ decides whether the sample can be used for estimation.
 `replace = TRUE` is with-replacement PPS and applies only to
 `method = "successive"`.
 
+## References
+
+Madow, W. G. (1949). On the theory of systematic sampling, II. *Annals
+of Mathematical Statistics*, 20, 333–354.
+
+Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal
+probabilities and without replacement. *Annals of Mathematical
+Statistics*, 33, 350–374.
+
+Brewer, K. R. W. and Hanif, M. (1983). *Sampling with Unequal
+Probabilities*. Springer.
+
+Tillé, Y. (2006). *Sampling Algorithms*. Springer.
+
 ## See also
 
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md),
-[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md)
+to select in proportion to size *and* spread the sample across a map.
+The `sampling` package implements further fixed-size unequal-probability
+algorithms (Brewer, Sampford, Tillé, maximum entropy) as vector
+functions.
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
@@ -101,6 +123,7 @@ Other designs:
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md)

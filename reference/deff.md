@@ -1,10 +1,10 @@
 # Design effect
 
 How much precision the design costs against simple random sampling of
-the same size. `deff = 1` means the design is doing as well as a coin
-flip over the frame; above 1 it is doing worse, which is the usual price
-of clustering; below 1 it is doing better, which is what stratification
-and probability-proportional-to-size buy you.
+the same size (Kish 1965). `deff = 1` means the design is doing as well
+as a coin flip over the frame; above 1 it is doing worse, which is the
+usual price of clustering; below 1 it is doing better, which is what
+stratification and probability-proportional-to-size buy you.
 
 ## Usage
 
@@ -30,10 +30,22 @@ A single number, or `NA` when the design has no variance estimate.
 Read it as an exchange rate on sample size: at `deff = 2`, a sample of
 400 carries about as much information as 200 drawn at random.
 
+`survey` has a `deff()` of its own, and attaching `survey` after this
+package masks this one. Both work on an estimate from
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+or [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md),
+so the masking is harmless.
+
+## References
+
+Kish, L. (1965). *Survey Sampling*. Wiley.
+
 ## See also
 
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md),
-[`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md)
+[`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md),
+[`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md),
+which takes a design effect as an input.
 
 ## Examples
 

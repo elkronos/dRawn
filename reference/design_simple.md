@@ -37,6 +37,7 @@ Other designs:
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),

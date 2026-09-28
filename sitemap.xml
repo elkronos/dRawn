@@ -1,8 +1,12 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://elkronos.github.io/dRawn/404.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/LICENSE.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/articles/audit-sampling.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/articles/choosing-a-design.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/articles/drawn.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/articles/estimation.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/articles/index.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/articles/spatial-sampling.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/authors.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/index.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/news/index.html</loc></url>
@@ -15,6 +19,7 @@
 <url><loc>https://elkronos.github.io/dRawn/reference/design_reservoir.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_simple.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_spatial.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/design_spread.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_stratified.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_systematic.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_temporal.html</loc></url>

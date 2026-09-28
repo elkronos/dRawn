@@ -52,6 +52,10 @@ and passed around.
 
   Rows inside a region.
 
+- [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md):
+
+  A sample spread evenly across a map or across auxiliary variables.
+
 ## What every design guarantees
 
 Arguments mean the same thing everywhere they appear:
@@ -83,7 +87,10 @@ Arguments mean the same thing everywhere they appear:
   order.
 
 - Rows come back in frame order for every design that selects a set of
-  rows. The two exceptions are the ones where draw order is meaningful:
+  rows, including
+  [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md)
+  with `order_by`. The two exceptions are the ones where draw order is
+  meaningful:
   [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md)
   and
   [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md)
@@ -104,7 +111,9 @@ stands for.
 gives second-order probabilities, and
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
 and [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md)
-combine them into a population total or mean with a standard error.
+turn a sample into a population total, mean or proportion — overall or
+by domain — with a standard error from the variance estimator suited to
+the design and a confidence interval on the design's degrees of freedom.
 [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md) reports
 what the design cost in precision against simple random sampling, and
 [`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
@@ -159,8 +168,19 @@ than returning an approximation.
 
 - Coverage across time or space:
 
-  [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),
-  [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md).
+  [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md)
+  for time;
+  [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md)
+  for an even spread over a map, which is usually far more precise than
+  a simple random sample when what you measure varies smoothly over
+  space;
+  [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md)
+  to restrict sampling to a region.
+
+- Balance on known covariates without choosing strata:
+
+  [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md)
+  across those covariates.
 
 - Uncertainty of a statistic, not a population total:
 

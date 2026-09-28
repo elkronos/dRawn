@@ -73,6 +73,7 @@ Most do, and those are computed exactly:
 | [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | `n / min(N, max_items)`, and `0` past `max_items` |
 | [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | `per_interval / N_bucket` within each interval |
 | [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | `n / N_in_region` |
+| [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md) | `n / N`, or `n * p_i` with a `size` column |
 
 Five cases have no closed form, and the package refuses to invent one:
 

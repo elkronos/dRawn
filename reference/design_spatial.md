@@ -1,6 +1,11 @@
-# Spatial sampling
+# Sampling within a region
 
-Samples rows whose coordinates fall inside a region.
+Draws a simple random sample of the rows whose coordinates fall inside a
+region. It decides *where* sampling happens, not how evenly it covers
+the ground: for a sample spread evenly across space — usually far more
+precise when what you measure varies smoothly — use
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
+on the frame restricted to the region if need be.
 
 ## Usage
 
@@ -77,6 +82,7 @@ Other designs:
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),

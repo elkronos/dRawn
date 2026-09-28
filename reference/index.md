@@ -27,7 +27,8 @@ The probabilities that make a sample estimable.
 
 ## Estimating from a sample
 
-A total or a mean, with a standard error and the design’s price.
+Totals, means and proportions, overall or by domain, with the variance
+estimator the design calls for and a design effect.
 
 - [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
   : Estimate a population total from a sample
@@ -71,21 +72,26 @@ Sample groups, then optionally sample within them.
 
 ## Unequal-probability designs
 
-Selection driven by a weight, a time window, or a place.
+Selection driven by size, and units too big to leave to chance.
 
 - [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md)
   : Weighted sampling
+- [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md)
+  : Take some rows with certainty, sample the rest
+
+## Space and time
+
+A sample spread evenly over a map or over covariates, restricted to a
+region, or taken across time intervals.
+
+- [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md)
+  : Spatially balanced sampling
+- [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md)
+  : Sampling within a region
 - [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md)
   : Temporal sampling
-- [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md)
-  : Spatial sampling
 
 ## Resampling
 
 - [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
   : Bootstrap sampling
-
-## Composite designs
-
-- [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md)
-  : Take some rows with certainty, sample the rest

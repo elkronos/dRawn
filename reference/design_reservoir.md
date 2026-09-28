@@ -1,7 +1,9 @@
 # Reservoir sampling
 
 Draws a uniform sample of fixed size from a stream of unknown length in
-a single pass, using Algorithm L.
+a single pass, using Algorithm L (Li 1994), which skips ahead
+geometrically instead of drawing a random number for every item (Vitter
+1985).
 
 ## Usage
 
@@ -40,6 +42,15 @@ returns the next item and `NULL` at end of stream. For those,
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) returns a
 list rather than a data frame.
 
+## References
+
+Vitter, J. S. (1985). Random sampling with a reservoir. *ACM
+Transactions on Mathematical Software*, 11, 37–57.
+
+Li, K.-H. (1994). Reservoir-sampling algorithms of time complexity
+O(n(1 + log(N/n))). *ACM Transactions on Mathematical Software*, 20,
+481–493.
+
 ## See also
 
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
@@ -51,6 +62,7 @@ Other designs:
 [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),

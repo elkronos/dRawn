@@ -116,6 +116,26 @@ comparable past sample, since a clustered design of 400 may carry the
 information of 100. `response` inflates for non-response: at `0.6` you
 draw enough to end up with what you need.
 
+## Where the formula comes from
+
+`n0 = (z * spread / margin)^2 * deff`, then Cochran's finite population
+correction `n0 / (1 + (n0 - 1) / N)`, then division by `response`
+(Cochran 1977, section 4.4; Valliant, Dever and Kreuter 2018, chapter
+3). `z` is the normal quantile. The interval
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+reports uses t on the design's degrees of freedom, which is slightly
+wider when those are few — with a handful of clusters, plan on more
+clusters rather than trusting the margin to the last digit.
+
+## References
+
+Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
+
+Kish, L. (1965). *Survey Sampling*. Wiley.
+
+Valliant, R., Dever, J. A. and Kreuter, F. (2018). *Practical Tools for
+Designing and Weighting Survey Samples*, 2nd ed. Springer.
+
 ## See also
 
 [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md) to

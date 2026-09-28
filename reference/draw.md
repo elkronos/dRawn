@@ -61,6 +61,18 @@ sample, and some designs have no closed form for them.
 [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
 documents which, why, and what to do instead.
 
+The sample also carries its design, the frame rows it came from and the
+frame itself as attributes, which is what lets
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md),
+[`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md),
+[`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
+and
+[`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
+work from the sample alone. Two consequences: estimate before subsetting
+(use `by` for groups), since `[` drops the attributes; and saving the
+sample with [`saveRDS()`](https://rdrr.io/r/base/readRDS.html) saves the
+frame with it.
+
 `weights = TRUE` is not available for a design that samples **with
 replacement**. `.prob` there is the probability of being selected *at
 least once*, but the sample holds duplicates, so `sum(y * .weight)` over

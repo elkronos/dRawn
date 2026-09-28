@@ -34,10 +34,13 @@ design_stratified(
   How `n` is split across strata. `"proportional"` gives each stratum a
   share of `n` in proportion to its size; `"equal"` splits `n` evenly;
   `"neyman"` gives shares proportional to `size * sd`, using the column
-  named by `allocation_by`. Neyman minimises the variance of a total for
-  a fixed `n` by putting more rows where the values vary most, and is
-  the right choice when you have a frame variable correlated with what
-  you are measuring.
+  named by `allocation_by` (Neyman 1934). Neyman minimises the variance
+  of a total for a fixed `n` by putting more rows where the values vary
+  most, and is the right choice when you have a frame variable
+  correlated with what you are measuring. Under any rule, a stratum that
+  would be allocated more rows than it holds is taken whole and the rest
+  of `n` re-split over the others by the same rule (Cochran 1977,
+  section 5.9).
 
 - allocation_by:
 
@@ -46,9 +49,16 @@ design_stratified(
 
 - min_per_stratum:
 
-  Minimum rows from each stratum. The default of `0` leaves allocation
-  unbiased; `1` guarantees coverage of rare strata at the cost of
-  over-representing them.
+  Minimum rows from each stratum. With the default of `0`, a stratum
+  smaller than about `N / n` can be allocated no rows at all; its rows
+  then have inclusion probability 0 and a total estimated from the
+  sample silently leaves them out, so
+  [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) warns
+  when that happens. `1` makes every stratum reachable, which is what an
+  unbiased Horvitz-Thompson total needs, and `2` also lets every stratum
+  contribute to the variance estimate. Over-sampling a small stratum
+  this way does *not* bias an estimate made with the design weights,
+  which correct for it; it only moves precision around.
 
 - replace:
 
@@ -63,6 +73,13 @@ design_stratified(
 A design object, for use with
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
+## References
+
+Neyman, J. (1934). On the two different aspects of the representative
+method. *Journal of the Royal Statistical Society*, 97, 558–625.
+
+Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
+
 ## See also
 
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
@@ -75,6 +92,7 @@ Other designs:
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md),
 [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md),
 [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md),
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md),
 [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md),
 [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md),
 [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md)
@@ -88,7 +106,8 @@ table(draw(df, design_stratified("site", n = 20), seed = 1)$site)
 #> a b c d 
 #> 5 5 5 5 
 
-# Rare strata are covered only if you ask
+# Rare strata are covered only if you ask -- without the floor, the one
+# "rare" row gets no allocation, and draw() warns that it is unreachable
 skewed <- data.frame(id = 1:1000, g = c(rep("common", 999), "rare"))
 draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1), seed = 1)$g
 #>  [1] "common" "common" "common" "common" "common" "common" "common" "common"

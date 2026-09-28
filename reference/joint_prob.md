@@ -70,14 +70,20 @@ either independent across groups or a simple random sample within them:
 
 Systematic sampling is the awkward one. Most pairs can never co-occur,
 so their joint probability is genuinely 0 and no design-unbiased
-variance estimator exists.
+variance estimator exists;
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
-says so rather than returning a number. Its residue classes follow the
-order the design walks, so `order_by` changes which pairs can co-occur.
+uses the successive-difference approximation instead, and says so. Its
+residue classes follow the order the design walks, so `order_by` changes
+which pairs can co-occur.
 
-`design_weighted(method = "systematic")` has joint probabilities, but
-they depend on the order units are visited and need a dedicated
-algorithm. Use `sampling::UPsystematicpi2()` for those.
+Two designs have joint probabilities that are positive but have no
+closed form: `design_weighted(method = "systematic")`, which shuffles
+the rows before walking them so every pair can co-occur, and
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md).
+For both,
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+uses a variance approximation that needs only first-order probabilities,
+and `simulate = TRUE` here estimates the joint probabilities themselves.
 
 ## See also
 
