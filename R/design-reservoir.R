@@ -1,7 +1,8 @@
 #' Reservoir sampling
 #'
 #' Draws a uniform sample of fixed size from a stream of unknown length in a
-#' single pass, using Algorithm L.
+#' single pass, using Algorithm L (Li 1994), which skips ahead geometrically
+#' instead of drawing a random number for every item (Vitter 1985).
 #'
 #' A data frame is not a stream: its length is already known and it already fits
 #' in memory, so [draw()] takes a direct vectorised path for one. Reach for the
@@ -17,6 +18,14 @@
 #'   stream. Warns when the cap actually truncates.
 #'
 #' @return A design object, for use with [draw()].
+#'
+#' @references
+#' Vitter, J. S. (1985). Random sampling with a reservoir. *ACM Transactions
+#' on Mathematical Software*, 11, 37–57.
+#'
+#' Li, K.-H. (1994). Reservoir-sampling algorithms of time complexity
+#' O(n(1 + log(N/n))). *ACM Transactions on Mathematical Software*, 20,
+#' 481–493.
 #'
 #' @examples
 #' nrow(draw(data.frame(id = 1:1000), design_reservoir(n = 10), seed = 1))

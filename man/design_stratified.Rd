@@ -23,17 +23,25 @@ are cross-classified.}
 \item{allocation}{How \code{n} is split across strata. \code{"proportional"} gives each
 stratum a share of \code{n} in proportion to its size; \code{"equal"} splits \code{n}
 evenly; \code{"neyman"} gives shares proportional to \code{size * sd}, using the
-column named by \code{allocation_by}. Neyman minimises the variance of a total
-for a fixed \code{n} by putting more rows where the values vary most, and is
-the right choice when you have a frame variable correlated with what you
-are measuring.}
+column named by \code{allocation_by} (Neyman 1934). Neyman minimises the
+variance of a total for a fixed \code{n} by putting more rows where the values
+vary most, and is the right choice when you have a frame variable
+correlated with what you are measuring. Under any rule, a stratum that
+would be allocated more rows than it holds is taken whole and the rest of
+\code{n} re-split over the others by the same rule (Cochran 1977, section 5.9).}
 
 \item{allocation_by}{Column whose within-stratum standard deviation drives
 \code{allocation = "neyman"}. Ignored otherwise.}
 
-\item{min_per_stratum}{Minimum rows from each stratum. The default of \code{0}
-leaves allocation unbiased; \code{1} guarantees coverage of rare strata at the
-cost of over-representing them.}
+\item{min_per_stratum}{Minimum rows from each stratum. With the default of
+\code{0}, a stratum smaller than about \code{N / n} can be allocated no rows at all;
+its rows then have inclusion probability 0 and a total estimated from the
+sample silently leaves them out, so \code{\link[=draw]{draw()}} warns when that happens. \code{1}
+makes every stratum reachable, which is what an unbiased
+Horvitz-Thompson total needs, and \code{2} also lets every stratum contribute
+to the variance estimate. Over-sampling a small stratum this way does
+\emph{not} bias an estimate made with the design weights, which correct for it;
+it only moves precision around.}
 
 \item{replace}{Sample with replacement within each stratum?}
 
@@ -51,10 +59,17 @@ with per-stratum rounding.
 df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))
 table(draw(df, design_stratified("site", n = 20), seed = 1)$site)
 
-# Rare strata are covered only if you ask
+# Rare strata are covered only if you ask -- without the floor, the one
+# "rare" row gets no allocation, and draw() warns that it is unreachable
 skewed <- data.frame(id = 1:1000, g = c(rep("common", 999), "rare"))
 draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1), seed = 1)$g
 
+}
+\references{
+Neyman, J. (1934). On the two different aspects of the representative
+method. \emph{Journal of the Royal Statistical Society}, 97, 558–625.
+
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 }
 \seealso{
 \code{\link[=draw]{draw()}}

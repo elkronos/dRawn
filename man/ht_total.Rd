@@ -85,9 +85,14 @@ most pairs of rows can never be drawn together — so this uses the
 successive-difference approximation, which compares each sampled row with
 its neighbour in the order the design walked (Wolter 2007). It removes a
 trend along that order rather than counting it as noise, which is why it
-beats treating the sample as simple random. It is understated if the
-frame has a cycle whose period matches \code{interval}, which no estimator
-from a single systematic sample can detect.}
+beats treating the sample as simple random: on a frame sorted by a
+variable related to \code{y}, the simple random formula overstated the
+variance two- to thirtyfold in the package's simulations, where this one
+stayed near the truth. Two limits no estimator from a single systematic
+sample can escape: it is understated if the frame cycles with a period
+matching \code{interval}, and when a smooth trend so dominates \code{y} that the
+random start is almost the only source of variation, it runs low (0.3 to
+0.7 of the truth when the trend spanned 25 noise standard deviations).}
 \item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
 well spread precisely because neighbours are rarely taken together, so
 this compares each sampled row with the local mean of its nearest

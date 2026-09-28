@@ -1,6 +1,10 @@
-#' Spatial sampling
+#' Sampling within a region
 #'
-#' Samples rows whose coordinates fall inside a region.
+#' Draws a simple random sample of the rows whose coordinates fall inside a
+#' region. It decides *where* sampling happens, not how evenly it covers the
+#' ground: for a sample spread evenly across space — usually far more precise
+#' when what you measure varies smoothly — use [design_spread()], on the frame
+#' restricted to the region if need be.
 #'
 #' @section Coordinate order:
 #' `coords` is `c(x, y)` — longitude first, then latitude — matching

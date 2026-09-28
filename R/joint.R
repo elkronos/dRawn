@@ -23,13 +23,16 @@
 #'
 #' Systematic sampling is the awkward one. Most pairs can never co-occur, so
 #' their joint probability is genuinely 0 and no design-unbiased variance
-#' estimator exists. [ht_total()] says so rather than returning a number. Its
-#' residue classes follow the order the design walks, so `order_by` changes
-#' which pairs can co-occur.
+#' estimator exists; [ht_total()] uses the successive-difference approximation
+#' instead, and says so. Its residue classes follow the order the design walks,
+#' so `order_by` changes which pairs can co-occur.
 #'
-#' `design_weighted(method = "systematic")` has joint probabilities, but they
-#' depend on the order units are visited and need a dedicated algorithm. Use
-#' `sampling::UPsystematicpi2()` for those.
+#' Two designs have joint probabilities that are positive but have no closed
+#' form: `design_weighted(method = "systematic")`, which shuffles the rows
+#' before walking them so every pair can co-occur, and [design_spread()]. For
+#' both, [ht_total()] uses a variance approximation that needs only
+#' first-order probabilities, and `simulate = TRUE` here estimates the joint
+#' probabilities themselves.
 #'
 #' @param data A data frame.
 #' @param design A design object.
@@ -316,9 +319,10 @@ joint_inclusion.drawn_design_weighted <- function(design, data, rows) {
   if (design$method == "systematic") {
     no_joint_form(
       "`design_weighted(method = \"systematic\")`",
-      paste0("Its joint probabilities depend on the order units are visited ",
-             "and need a\ndedicated algorithm. `sampling::UPsystematicpi2()` ",
-             "computes them.")
+      paste0("The rows are shuffled before the systematic walk, so every pair ",
+             "can co-occur,\nbut the joint probabilities average over every ",
+             "ordering and have no closed form.\nPass simulate = TRUE to ",
+             "estimate them; ht_total() uses Deville's approximation.")
     )
   }
   no_joint_form("`design_weighted(method = \"successive\")`",

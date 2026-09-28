@@ -52,7 +52,7 @@ test_that("systematic joints are zero for rows that cannot co-occur", {
 test_that("designs without a closed form refuse", {
   d <- var_pop()
   expect_error(joint_prob(d, design_weighted("w", n = 10, method = "systematic")),
-               "sampling::UPsystematicpi2")
+               "no closed-form joint")
   expect_error(joint_prob(d, design_weighted("w", n = 10)), "no closed-form")
   expect_error(joint_prob(d, design_cluster("cl", n_clusters = 3, balanced = TRUE)),
                "no closed-form")
@@ -198,7 +198,7 @@ test_that("simulation supplies joints for designs with no closed form", {
   set.seed(5)
   d <- data.frame(id = 1:30, w = stats::runif(30, 1, 10))
   des <- design_weighted("w", n = 8, method = "systematic")
-  expect_error(joint_prob(d, des), "UPsystematicpi2")
+  expect_error(joint_prob(d, des), "no closed-form joint")
 
   m <- joint_prob(d, des, simulate = TRUE, R = 3000, seed = 2)
   expect_equal(dim(m), c(30L, 30L))

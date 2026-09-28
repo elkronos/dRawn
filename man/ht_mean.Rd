@@ -36,7 +36,14 @@ The Hajek estimator, \code{sum(y / pi) / sum(1 / pi)}, is the default. It divide
 by the \emph{estimated} population size rather than the known one, so a sample
 that happens to over-represent heavy-weight rows inflates numerator and
 denominator together and they partly cancel. \code{estimator = "ht"} divides by
-the true \code{N} instead. For a 0/1 variable either one estimates a proportion.
+the true \code{N} instead.
+}
+\details{
+For a 0/1 or logical variable either one estimates a proportion, and the
+confidence interval is then formed on the logit scale and transformed back
+(Korn and Graubard 1999, section 5.3). A symmetric interval around a small
+proportion runs below zero; this one cannot, and matches
+\code{survey::svyciprop(method = "xlogit")}.
 }
 \section{When the two differ, and which to use}{
 
@@ -102,12 +109,15 @@ all.equal(ht_mean(s, "spend", estimator = "ht")$mean, ht_mean(s, "spend")$mean)
 
 # Poisson sampling has a random size, so they part company
 p <- draw(pop, design_weighted("spend", n = 40, method = "poisson"),
-          seed = 1, weights = TRUE)
+          seed = 2, weights = TRUE)
 c(hajek = ht_mean(p, "spend", variance = "none")$mean,
   ht    = ht_mean(p, "spend", "ht", variance = "none")$mean)
 
 }
 \references{
+Korn, E. L. and Graubard, B. I. (1999). \emph{Analysis of Health Surveys}.
+Wiley.
+
 Hájek, J. (1971). Comment on "An essay on the logical foundations of survey
 sampling, part one" by D. Basu. In V. P. Godambe and D. A. Sprott (eds.),
 \emph{Foundations of Statistical Inference}, p. 236. Holt, Rinehart and Winston.

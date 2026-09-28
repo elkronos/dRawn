@@ -323,3 +323,23 @@ test_that("a logical y estimates a proportion", {
   s <- draw(d, design_simple(n = 40), seed = 1, weights = TRUE)
   expect_equal(ht_mean(s, "y")$mean, mean(s$y))
 })
+
+test_that("a proportion's interval stays inside [0, 1] and matches survey", {
+  set.seed(14)
+  d <- data.frame(site = rep(c("a", "b"), each = 200),
+                  err = stats::runif(400) < 0.05)
+  s <- draw(d, design_stratified("site", n = 60), seed = 3, weights = TRUE)
+  expect_true(any(s$err))       # a rare event, but present in this sample
+  r <- ht_mean(s, "err")
+  expect_equal(r$ci_scale, "logit")
+  expect_true(r$ci[1] > 0 && r$ci[2] < 1)
+  expect_output(print(r), "logit, t, 58 df")
+  # A continuous mean keeps the symmetric interval
+  s$v <- stats::rnorm(nrow(s))
+  expect_equal(ht_mean(s, "v")$ci_scale, "linear")
+
+  skip_if_not_installed("survey")
+  theirs <- survey::svyciprop(~err, as_svydesign(s), method = "xlogit")
+  expect_equal(unname(as.numeric(theirs)), r$mean)
+  expect_equal(unname(as.vector(attr(theirs, "ci"))), r$ci, tolerance = 1e-8)
+})

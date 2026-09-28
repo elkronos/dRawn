@@ -229,3 +229,14 @@ test_that("systematic PPS maps to survey's Brewer approximation, and agrees clos
     expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 2e-3)
   }
 })
+
+test_that("deff() works whether or not survey's has masked it", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  r <- ht_total(draw(d, design_stratified("site", n = 60), seed = 1,
+                     weights = TRUE), "spend")
+  expect_equal(survey::deff(r), drawn::deff(r))
+  m <- ht_mean(draw(d, design_simple(n = 60), seed = 1, weights = TRUE),
+               "spend")
+  expect_equal(survey::deff(m), drawn::deff(m))
+})

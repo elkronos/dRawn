@@ -191,13 +191,13 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
 #'
 #' @noRd
 estimate_one <- function(parts, est, z, variance, level, df, what, class,
-                         deff_y = NULL, extra = list()) {
+                         deff_y = NULL, extra = list(), logit = FALSE) {
   var_out <- ht_variance_dispatch(parts$design, parts$sample, parts$pop,
                                   parts$rows, z, parts$pi, variance)
   df <- df %||% design_df(parts$design, parts$sample, parts$pop, parts$rows)
   out <- finish_estimate(est, var_out, level, df, nrow(parts$sample),
                          parts$design, deff_y, parts$pi, nrow(parts$pop),
-                         what = what, class = class)
+                         what = what, class = class, logit = logit)
   for (nm in names(extra)) out[[nm]] <- extra[[nm]]
   out
 }
@@ -332,18 +332,20 @@ syg_variance <- function(y, pi_i, pij) {
 #'
 #' @noRd
 lonely_note <- function(group, rows, noun, fix) {
+  # `noun` is c(singular, plural)
   keep <- !is.na(group)
   N_h <- table(group[keep])
   n_h <- table(group[rows][!is.na(group[rows])])
   lonely <- names(n_h)[n_h == 1L & N_h[names(n_h)] > 1L]
   if (!length(lonely)) return(NULL)
   shown <- group_label(utils::head(lonely, 5L))
-  paste0(length(lonely), " ", noun, " (",
-         paste0("`", shown, "`", collapse = ", "),
+  many <- length(lonely) > 1L
+  paste0(if (many) paste(length(lonely), noun[2]) else paste("The", noun[1]),
+         " ", paste0("`", shown, "`", collapse = ", "),
          if (length(lonely) > 5L) ", ..." else "",
-         ") ", if (length(lonely) > 1L) "have" else "has",
+         " ", if (many) "each have" else "has",
          " a single sampled row, so the variation within ",
-         if (length(lonely) > 1L) "them" else "it",
+         if (many) "them" else "it",
          " cannot be measured and leaving it out would understate the standard ",
          "error. ", fix)
 }
@@ -351,7 +353,7 @@ lonely_note <- function(group, rows, noun, fix) {
 #' @noRd
 ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i) {
   group <- as.character(group_key(data, design$strata))
-  note <- lonely_note(group, rows, "stratum/strata",
+  note <- lonely_note(group, rows, c("stratum", "strata"),
                       "Draw at least two rows per stratum (min_per_stratum = 2).")
   if (!is.null(note)) return(list(variance = NA_real_, note = note))
   NextMethod()
@@ -360,7 +362,7 @@ ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i) {
 #' @noRd
 ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i) {
   bucket <- temporal_bucket(design, data)
-  note <- lonely_note(bucket, rows, "interval(s)",
+  note <- lonely_note(bucket, rows, c("interval", "intervals"),
                       "Draw at least two rows per interval (per_interval = 2).")
   if (!is.null(note)) return(list(variance = NA_real_, note = note))
   NextMethod()
@@ -575,9 +577,7 @@ jackknife_variance <- function(design, sample, pop, y, pi_i) {
   }
   if (length(lonely)) {
     return(list(variance = NA_real_, method = "jackknife", note = paste0(
-      "The jackknife cannot delete a unit from a stratum that has only one (",
-      paste0("`", group_label(utils::head(lonely, 5L)), "`", collapse = ", "),
-      if (length(lonely) > 5L) ", ..." else "", ").")))
+      "The stratified jackknife needs two units per stratum as well.")))
   }
   list(variance = v, method = "jackknife",
        note = paste0("Jackknife over ", n_psu, " primary sampling unit(s)",

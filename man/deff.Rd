@@ -22,6 +22,10 @@ probability-proportional-to-size buy you.
 \details{
 Read it as an exchange rate on sample size: at \code{deff = 2}, a sample of 400
 carries about as much information as 200 drawn at random.
+
+\code{survey} has a \code{deff()} of its own, and attaching \code{survey} after this
+package masks this one. Both work on an estimate from \code{\link[=ht_total]{ht_total()}} or
+\code{\link[=ht_mean]{ht_mean()}}, so the masking is harmless.
 }
 \examples{
 set.seed(1)

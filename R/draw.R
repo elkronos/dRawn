@@ -22,6 +22,13 @@
 #' sample, and some designs have no closed form for them. [inclusion_prob()]
 #' documents which, why, and what to do instead.
 #'
+#' The sample also carries its design, the frame rows it came from and the
+#' frame itself as attributes, which is what lets [ht_total()], [ht_mean()],
+#' [sample_summary()] and [as_svydesign()] work from the sample alone. Two
+#' consequences: estimate before subsetting (use `by` for groups), since
+#' `[` drops the attributes; and saving the sample with [saveRDS()] saves the
+#' frame with it.
+#'
 #' `weights = TRUE` is not available for a design that samples **with
 #' replacement**. `.prob` there is the probability of being selected *at least
 #' once*, but the sample holds duplicates, so `sum(y * .weight)` over it counts

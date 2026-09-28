@@ -20,7 +20,8 @@ A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
 Draws a uniform sample of fixed size from a stream of unknown length in a
-single pass, using Algorithm L.
+single pass, using Algorithm L (Li 1994), which skips ahead geometrically
+instead of drawing a random number for every item (Vitter 1985).
 }
 \details{
 A data frame is not a stream: its length is already known and it already fits
@@ -40,6 +41,14 @@ gen <- function() {
 }
 unlist(draw(gen, design_reservoir(n = 5), seed = 1))
 
+}
+\references{
+Vitter, J. S. (1985). Random sampling with a reservoir. \emph{ACM Transactions
+on Mathematical Software}, 11, 37–57.
+
+Li, K.-H. (1994). Reservoir-sampling algorithms of time complexity
+O(n(1 + log(N/n))). \emph{ACM Transactions on Mathematical Software}, 20,
+481–493.
 }
 \seealso{
 \code{\link[=draw]{draw()}}

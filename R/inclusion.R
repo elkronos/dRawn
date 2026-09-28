@@ -24,6 +24,7 @@
 #'   [design_reservoir()]   \tab `n / min(N, max_items)`, and `0` past `max_items` \cr
 #'   [design_temporal()]    \tab `per_interval / N_bucket` within each interval \cr
 #'   [design_spatial()]     \tab `n / N_in_region` \cr
+#'   [design_spread()]      \tab `n / N`, or `n * p_i` with a `size` column \cr
 #' }
 #'
 #' Five cases have no closed form, and the package refuses to invent one:

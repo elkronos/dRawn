@@ -21,13 +21,15 @@
 #'     There is no closed form for `pi`, so [inclusion_prob()] refuses to give
 #'     one. Fine when you want a weighted selection; wrong as the basis for an
 #'     estimate.}
-#'   \item{`"systematic"`}{Systematic probability-proportional-to-size. Walks the
-#'     cumulative weights with a fixed step from a random start, giving
+#'   \item{`"systematic"`}{Randomised systematic probability-proportional-to-
+#'     size (Madow 1949; Hartley and Rao 1962). Shuffles the rows, then walks
+#'     the cumulative weights with a fixed step from a random start, giving
 #'     `pi_i = n * p_i` exactly. Rows heavy enough that `n * p_i > 1` are taken
-#'     with certainty and the rest rescaled, repeatedly, until every probability
-#'     is valid. Fixed sample size. Some pairs of rows can never appear together,
-#'     so joint inclusion probabilities are zero for them and variance estimation
-#'     needs care.}
+#'     with certainty and the rest rescaled, repeatedly, until every
+#'     probability is valid. Fixed sample size. The shuffle means every pair of
+#'     rows can appear together, but their joint probabilities have no closed
+#'     form, so [ht_total()] uses Deville's approximation for the variance,
+#'     which needs only the first-order probabilities.}
 #'   \item{`"poisson"`}{Each row is included independently with probability
 #'     `pi_i = n * p_i`, capped at 1. Inclusion probabilities are exactly
 #'     proportional to size and every pair can co-occur, at the cost of a
@@ -48,6 +50,19 @@
 #'
 #' @return A design object, for use with [draw()].
 #'
+#' @references
+#' Madow, W. G. (1949). On the theory of systematic sampling, II. *Annals of
+#' Mathematical Statistics*, 20, 333–354.
+#'
+#' Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal
+#' probabilities and without replacement. *Annals of Mathematical Statistics*,
+#' 33, 350–374.
+#'
+#' Brewer, K. R. W. and Hanif, M. (1983). *Sampling with Unequal
+#' Probabilities*. Springer.
+#'
+#' Tillé, Y. (2006). *Sampling Algorithms*. Springer.
+#'
 #' @examples
 #' df <- data.frame(id = 1:20, w = 1:20)
 #' draw(df, design_weighted("w", n = 5), seed = 1)
@@ -61,7 +76,10 @@
 #' sum(s$w * s$.weight)   # estimates sum(df$w) = 210
 #'
 #' @family designs
-#' @seealso [draw()], [inclusion_prob()]
+#' @seealso [draw()], [inclusion_prob()], [design_spread()] to select in
+#'   proportion to size *and* spread the sample across a map. The `sampling`
+#'   package implements further fixed-size unequal-probability algorithms
+#'   (Brewer, Sampford, Tillé, maximum entropy) as vector functions.
 #' @export
 design_weighted <- function(weights, n, replace = FALSE,
                             method = c("successive", "systematic", "poisson"),
@@ -181,9 +199,10 @@ exact_inclusion.drawn_design_weighted <- function(design, data) {
   if (design$method == "successive") {
     no_closed_form(
       "`design_weighted(method = \"successive\")`",
-      paste0("Successive sampling has no closed-form inclusion probability.\n",
-             "Use method = \"systematic\" or \"poisson\" for a design whose ",
-             "inclusion\nprobabilities really are proportional to the weights.")
+      paste0("Its weights govern each successive draw, not each row's chance ",
+             "of ending up in\nthe sample. Use method = \"systematic\" or ",
+             "\"poisson\" for a design whose inclusion\nprobabilities really ",
+             "are proportional to the weights.")
     )
   }
   validate_data(data, required_columns = design$weights)

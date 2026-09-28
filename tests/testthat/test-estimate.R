@@ -197,3 +197,13 @@ test_that("deff is NA rather than negative when there is no variance", {
   expect_true(is.na(drawn:::deff_value(-5, 1:10, rep(0.5, 10), 100, 10,
                                        "total")))
 })
+
+test_that("an empty sample is refused with a reason, not a crash", {
+  # A start past the end of a short frame selects nothing
+  d <- data.frame(y = 1:10)
+  s <- suppressWarnings(draw(d, design_systematic(interval = 20), seed = 2,
+                             weights = TRUE))
+  expect_equal(nrow(s), 0L)
+  expect_error(ht_mean(s, "y"), "no rows")
+  expect_error(ht_total(s, "y"), "no rows")
+})

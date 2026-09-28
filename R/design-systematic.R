@@ -14,7 +14,22 @@
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`
 #'   instead of raising an error.
 #'
+#' @section Variance:
+#' A systematic sample has a single random start, so no design-unbiased
+#' variance estimator exists. [ht_total()] uses the successive-difference
+#' approximation (Wolter 2007), which compares neighbouring sampled rows in
+#' the order the design walked. Sorting on a variable related to what you
+#' measure (`order_by`) is what makes systematic sampling efficient, and this
+#' estimator is the one that can see it; see [ht_total()] for its limits.
+#'
 #' @return A design object, for use with [draw()].
+#'
+#' @references
+#' Madow, W. G. and Madow, L. H. (1944). On the theory of systematic sampling,
+#' I. *Annals of Mathematical Statistics*, 15, 1–24.
+#'
+#' Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
+#' Springer.
 #'
 #' @examples
 #' df <- data.frame(id = 1:100, value = (1:100) / 10)

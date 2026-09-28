@@ -4,7 +4,13 @@
 #' by the *estimated* population size rather than the known one, so a sample
 #' that happens to over-represent heavy-weight rows inflates numerator and
 #' denominator together and they partly cancel. `estimator = "ht"` divides by
-#' the true `N` instead. For a 0/1 variable either one estimates a proportion.
+#' the true `N` instead.
+#'
+#' For a 0/1 or logical variable either one estimates a proportion, and the
+#' confidence interval is then formed on the logit scale and transformed back
+#' (Korn and Graubard 1999, section 5.3). A symmetric interval around a small
+#' proportion runs below zero; this one cannot, and matches
+#' `survey::svyciprop(method = "xlogit")`.
 #'
 #' @section When the two differ, and which to use:
 #' They coincide **exactly** whenever the design weights of the rows you drew
@@ -55,6 +61,9 @@
 #'   domain.
 #'
 #' @references
+#' Korn, E. L. and Graubard, B. I. (1999). *Analysis of Health Surveys*.
+#' Wiley.
+#'
 #' Hájek, J. (1971). Comment on "An essay on the logical foundations of survey
 #' sampling, part one" by D. Basu. In V. P. Godambe and D. A. Sprott (eds.),
 #' *Foundations of Statistical Inference*, p. 236. Holt, Rinehart and Winston.
@@ -89,7 +98,7 @@
 #'
 #' # Poisson sampling has a random size, so they part company
 #' p <- draw(pop, design_weighted("spend", n = 40, method = "poisson"),
-#'           seed = 1, weights = TRUE)
+#'           seed = 2, weights = TRUE)
 #' c(hajek = ht_mean(p, "spend", variance = "none")$mean,
 #'   ht    = ht_mean(p, "spend", "ht", variance = "none")$mean)
 #'
@@ -120,7 +129,7 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
 
   estimate_one(parts, est, z, variance, level, df, what = "mean",
                class = "drawn_mean", deff_y = yv,
-               extra = list(estimator = estimator))
+               extra = list(estimator = estimator), logit = parts$binary)
 }
 
 #' Estimates for each domain, from the whole sample
@@ -173,7 +182,8 @@ estimate_by <- function(parts, by, variance, level, df, what,
     }
     v <- ht_variance_dispatch(parts$design, parts$sample, parts$pop,
                               parts$rows, z, pi_i, variance)
-    ci <- interval(est, v$variance, level, df_use)
+    ci <- interval(est, v$variance, level, df_use,
+                   logit = what == "mean" && parts$binary)
     list(n = sum(ind), est = est, se = if (is.finite(v$variance) &&
                                              v$variance >= 0)
            sqrt(v$variance) else NA_real_,
@@ -195,6 +205,7 @@ estimate_by <- function(parts, by, variance, level, df, what,
   structure(out, class = c("drawn_by", "data.frame"),
             what = what, estimator = if (what == "mean") estimator,
             level = level, df = df_use, design = design_type(parts$design),
+            ci_scale = if (what == "mean" && parts$binary) "logit" else "linear",
             notes = notes)
 }
 
@@ -205,18 +216,16 @@ print.drawn_by <- function(x, ...) {
     if (identical(attr(x, "estimator"), "ht")) "Horvitz-Thompson mean" else
       "Hajek mean"
   cat(label, " by domain  (", attr(x, "design"), " design, ",
-      format(100 * attr(x, "level")), "% CI, ", df_label(attr(x, "df")),
-      ")\n", sep = "")
+      format(100 * attr(x, "level")), "% CI, ",
+      if (identical(attr(x, "ci_scale"), "logit")) "logit, ",
+      df_label(attr(x, "df")), ")\n", sep = "")
   y <- x
   attributes(y) <- attributes(x)[c("names", "row.names")]
   class(y) <- "data.frame"
   print(y, digits = 4, row.names = FALSE)
   notes <- attr(x, "notes")
   notes <- notes[nzchar(notes) & !grepl("^Variance not requested", notes)]
-  if (length(notes)) {
-    cat("\n", strwrap(notes, prefix = "  "), sep = "\n")
-    cat("\n")
-  }
+  if (length(notes)) cat_note(notes)
   invisible(x)
 }
 
@@ -230,6 +239,10 @@ print.drawn_by <- function(x, ...) {
 #'
 #' Read it as an exchange rate on sample size: at `deff = 2`, a sample of 400
 #' carries about as much information as 200 drawn at random.
+#'
+#' `survey` has a `deff()` of its own, and attaching `survey` after this
+#' package masks this one. Both work on an estimate from [ht_total()] or
+#' [ht_mean()], so the masking is harmless.
 #'
 #' @param x A result from [ht_total()] or [ht_mean()].
 #'
@@ -267,6 +280,17 @@ deff <- function(x) {
   x$deff
 }
 
+# `survey` exports a `deff()` generic too, and attaching `survey` after this
+# package masks ours. Registering methods for its generic means whichever
+# `deff()` is found first still answers for an estimate made here, instead of
+# failing with "non-numeric argument to mathematical function".
+
+#' @exportS3Method survey::deff
+deff.drawn_ht <- function(object, quietly = FALSE, ...) object$deff
+
+#' @exportS3Method survey::deff
+deff.drawn_mean <- function(object, quietly = FALSE, ...) object$deff
+
 #' Shared argument handling for the estimators
 #' @noRd
 ht_prepare <- function(sample, y, level, df = NULL) {
@@ -285,6 +309,11 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
       level <= 0 || level >= 1) {
     stop("`level` must be a single number strictly between 0 and 1.",
+         call. = FALSE)
+  }
+  if (nrow(sample) == 0L) {
+    # Possible under Poisson sampling or a systematic start past the end.
+    stop("`sample` has no rows, so there is nothing to estimate from.",
          call. = FALSE)
   }
   if (!is.null(df) && (!is.numeric(df) || length(df) != 1L || is.na(df) ||
@@ -309,12 +338,12 @@ ht_prepare <- function(sample, y, level, df = NULL) {
     stop(sum(is.na(yv)), " value(s) of `y` are missing.", call. = FALSE)
   }
   list(design = design, rows = rows, pop = pop, y = yv, pi = sample$.prob,
-       sample = sample)
+       sample = sample, binary = all(yv == 0 | yv == 1))
 }
 
 #' A confidence interval from an estimate, a variance and degrees of freedom
 #' @noRd
-interval <- function(est, v, level, df) {
+interval <- function(est, v, level, df, logit = FALSE) {
   if (!is.finite(v) || v < 0) return(c(NA_real_, NA_real_))
   q <- if (is.finite(df)) {
     if (df < 1) return(c(NA_real_, NA_real_))
@@ -322,16 +351,24 @@ interval <- function(est, v, level, df) {
   } else {
     stats::qnorm(1 - (1 - level) / 2)
   }
+  if (logit && est > 0 && est < 1) {
+    # A proportion's interval on the logit scale, by the delta method, then
+    # back: it cannot leave [0, 1], and near 0 or 1 it is asymmetric the way
+    # the sampling distribution is. This is survey::svyciprop()'s "xlogit".
+    se_logit <- sqrt(v) / (est * (1 - est))
+    return(stats::plogis(stats::qlogis(est) + c(-1, 1) * q * se_logit))
+  }
   est + c(-1, 1) * q * sqrt(v)
 }
 
 #' Assemble an estimate, its interval, and its design effect
 #' @noRd
 finish_estimate <- function(est, var_out, level, df, n, design, y, pi_i, N,
-                            what, class) {
+                            what, class, logit = FALSE) {
   v <- var_out$variance
   se <- if (is.na(v) || v < 0) NA_real_ else sqrt(v)
-  ci <- interval(est, v, level, df)
+  logit <- isTRUE(logit && est > 0 && est < 1)
+  ci <- interval(est, v, level, df, logit)
   note <- var_out$note
   if (!is.na(se) && is.finite(df) && df < 1) {
     note <- c(note, paste0("There are no degrees of freedom left for an ",
@@ -341,6 +378,7 @@ finish_estimate <- function(est, var_out, level, df, n, design, y, pi_i, N,
   }
 
   out <- list(variance = v, se = se, ci = ci, level = level, df = df, n = n,
+              ci_scale = if (logit) "logit" else "linear",
               design = design_type(design),
               deff = if (is.null(y)) NA_real_ else
                 deff_value(v, y, pi_i, N, n, what),
@@ -410,8 +448,9 @@ print_estimate <- function(x, field, label) {
     if (all(is.finite(x$ci))) {
       cat("  ", format(100 * x$level), "% CI  ",
           format(x$ci[1], big.mark = ","), " to ",
-          format(x$ci[2], big.mark = ","), "  (", df_label(x$df), ")\n",
-          sep = "")
+          format(x$ci[2], big.mark = ","), "  (",
+          if (identical(x$ci_scale, "logit")) "logit, ", df_label(x$df),
+          ")\n", sep = "")
     }
     if (is.finite(x$deff)) {
       cat("  deff     ", signif(x$deff, 3), "  (",
@@ -420,8 +459,14 @@ print_estimate <- function(x, field, label) {
     }
   }
   if (!is.null(x$note) && (is.na(x$se) || !identical(x$method, "analytic"))) {
-    cat("\n", strwrap(x$note, prefix = "  "), sep = "\n")
-    cat("\n")
+    cat_note(x$note)
   }
   invisible(x)
+}
+
+#' Print a note, wrapped and indented, after one blank line
+#' @noRd
+cat_note <- function(text) {
+  cat("\n", paste0(strwrap(text, prefix = "  "), collapse = "\n"), "\n",
+      sep = "")
 }

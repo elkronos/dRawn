@@ -46,6 +46,13 @@ They come from the design applied to the population, not from the drawn
 sample, and some designs have no closed form for them. \code{\link[=inclusion_prob]{inclusion_prob()}}
 documents which, why, and what to do instead.
 
+The sample also carries its design, the frame rows it came from and the
+frame itself as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
+\code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone. Two
+consequences: estimate before subsetting (use \code{by} for groups), since
+\code{[} drops the attributes; and saving the sample with \code{\link[=saveRDS]{saveRDS()}} saves the
+frame with it.
+
 \code{weights = TRUE} is not available for a design that samples \strong{with
 replacement}. \code{.prob} there is the probability of being selected \emph{at least
 once}, but the sample holds duplicates, so \code{sum(y * .weight)} over it counts

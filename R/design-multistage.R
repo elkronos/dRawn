@@ -14,7 +14,9 @@
 #' @param allocation `"equal"` splits `n` evenly across the selected clusters;
 #'   `"proportional"` splits it in proportion to their size.
 #' @param min_per_cluster Minimum rows from each selected cluster. Defaults to
-#'   `0`, which leaves allocation unbiased.
+#'   `0`. Take at least two rows per cluster if you intend to estimate a
+#'   variance: with one, the variation within clusters cannot be measured and
+#'   [ht_total()] falls back to the ultimate-cluster jackknife.
 #' @param replace Sample with replacement within each cluster?
 #' @param na_rm Drop rows whose cluster label is `NA` instead of raising an
 #'   error.
