@@ -16,7 +16,23 @@
 #'   `method = "simple"`, where it would have no effect. `NULL` uses
 #'   `floor(nrow(data)^(1/3))`, a common rule of thumb.
 #'
+#' @section Not a survey design:
+#' The bootstrap resamples the data you already have to approximate the
+#' sampling distribution of a statistic (Efron 1979). It is not a probability
+#' sample of a finite population, so it has no inclusion probabilities and
+#' cannot be passed to [ht_total()]. For the design-based variance of a total
+#' or mean, use the estimators there; for a statistic they do not cover, such
+#' as a median, this is the tool. Blocks preserve short-range dependence in
+#' ordered data (Künsch 1989).
+#'
 #' @return A design object, for use with [draw()].
+#'
+#' @references
+#' Efron, B. (1979). Bootstrap methods: another look at the jackknife.
+#' *Annals of Statistics*, 7, 1–26.
+#'
+#' Künsch, H. R. (1989). The jackknife and the bootstrap for general
+#' stationary observations. *Annals of Statistics*, 17, 1217–1241.
 #'
 #' @examples
 #' df <- data.frame(id = 1:100, value = (1:100) / 10)

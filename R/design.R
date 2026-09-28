@@ -19,6 +19,8 @@
 #'   \item{[design_bootstrap()]}{Resampled replicates.}
 #'   \item{[design_temporal()]}{A share of each time interval.}
 #'   \item{[design_spatial()]}{Rows inside a region.}
+#'   \item{[design_spread()]}{A sample spread evenly across a map or across
+#'     auxiliary variables.}
 #' }
 #'
 #' @section What every design guarantees:
@@ -41,7 +43,8 @@
 #' * [draw()] always restores the caller's random number stream before
 #'   returning, and always gives back a data frame with the input's class and
 #'   column order.
-#' * Rows come back in frame order for every design that selects a set of rows.
+#' * Rows come back in frame order for every design that selects a set of rows,
+#'   including [design_systematic()] with `order_by`.
 #'   The two exceptions are the ones where draw order is meaningful:
 #'   [design_simple()] and [design_weighted()] return rows in the order they
 #'   were drawn, and [design_bootstrap()] returns replicates in order with a
@@ -52,11 +55,13 @@
 #' before any sampling happens. [inclusion_prob()] gives first-order
 #' probabilities and [sampling_weight()] their reciprocals — the number of
 #' population rows each sampled row stands for. [joint_prob()] gives
-#' second-order probabilities, and [ht_total()] and
-#' [ht_mean()] combine them into a population total or mean with a standard
-#' error. [deff()] reports what the design cost in precision against simple
-#' random sampling, and [sample_summary()] reports what was actually drawn
-#' against what was in the frame.
+#' second-order probabilities, and [ht_total()] and [ht_mean()] turn a sample
+#' into a population total, mean or proportion — overall or by domain — with a
+#' standard error from the variance estimator suited to the design and a
+#' confidence interval on the design's degrees of freedom. [deff()] reports
+#' what the design cost in precision against simple random sampling, and
+#' [sample_summary()] reports what was actually drawn against what was in the
+#' frame.
 #'
 #' Going the other way, [plan_size()] solves for the sample size a given margin
 #' of error requires — the step *before* choosing a design. For analysis this
@@ -81,8 +86,13 @@
 #'   \item{A few units dominate the total}{[design_certainty()] — take those
 #'     with certainty and sample the tail, which removes them from the variance
 #'     entirely.}
-#'   \item{Coverage across time or space}{[design_temporal()],
-#'     [design_spatial()].}
+#'   \item{Coverage across time or space}{[design_temporal()] for time;
+#'     [design_spread()] for an even spread over a map, which is usually far
+#'     more precise than a simple random sample when what you measure varies
+#'     smoothly over space; [design_spatial()] to restrict sampling to a
+#'     region.}
+#'   \item{Balance on known covariates without choosing strata}{
+#'     [design_spread()] across those covariates.}
 #'   \item{Uncertainty of a statistic, not a population total}{
 #'     [design_bootstrap()].}
 #' }
@@ -138,6 +148,7 @@ fmt_param <- function(v) {
     return(paste0("<", class(v)[1], ">"))
   }
   if (is.function(v)) return("<function>")
+  if (is_design(v)) return(design_label(v))
   if (inherits(v, "POSIXt") || inherits(v, "Date")) return(format(v))
   if (is.character(v)) {
     return(paste0("\"", v, "\"", collapse = ", "))

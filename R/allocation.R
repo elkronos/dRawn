@@ -10,7 +10,7 @@
 #'
 #' @param n Total to allocate.
 #' @param sizes Group sizes, named.
-#' @param allocation `"proportional"` or `"equal"`.
+#' @param allocation `"proportional"`, `"equal"` or `"neyman"`.
 #' @param min_per_stratum Floor per group.
 #' @param cap When `TRUE`, no group may be allocated more rows than it holds.
 #'   `FALSE` when sampling with replacement, where over-allocation is legal.
@@ -35,21 +35,21 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
   n <- as.numeric(n)
   sizes <- stats::setNames(as.numeric(sizes), names(sizes))
 
-  raw <- switch(allocation,
-    equal = rep(n / k, k),
+  share <- switch(allocation,
+    equal = rep(1, k),
     neyman = {
       if (is.null(spread)) {
         stop("Neyman allocation needs `allocation_by`.", call. = FALSE)
       }
       sp <- spread[names(sizes)]
       sp[!is.finite(sp)] <- 0
-      w <- sizes * sp
-      # Every stratum with no spread still needs representation; fall back to
-      # proportional if the auxiliary variable is constant throughout.
-      if (sum(w) <= 0) n * sizes / sum(sizes) else n * w / sum(w)
+      # A constant auxiliary variable has no spread to allocate by; fall back
+      # to proportional rather than dividing by zero.
+      if (sum(sizes * sp) <= 0) sizes else sizes * sp
     },
-    n * sizes / sum(sizes)
+    sizes
   )
+  raw <- capped_shares(n, share, sizes, cap)
 
   base <- pmax(min_per_stratum, floor(raw))
   if (cap) base <- pmin(base, sizes)
@@ -93,4 +93,82 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
   }
 
   stats::setNames(as.integer(base), names(sizes))
+}
+
+#' Continuous allocation with take-all capping
+#'
+#' Splitting `n` in proportion to `share` can ask a group for more rows than it
+#' holds -- routinely under Neyman allocation, where a small, highly variable
+#' stratum attracts a large share, and under equal allocation. The textbook
+#' remedy (Cochran 1977, section 5.9) takes such a group whole and re-splits
+#' what is left over the others *in the same proportions*. Dealing the surplus
+#' out one row at a time instead, as rounding does, spreads it evenly and
+#' quietly abandons the allocation rule that was asked for.
+#'
+#' @noRd
+capped_shares <- function(n, share, sizes, cap) {
+  k <- length(sizes)
+  raw <- numeric(k)
+  free <- rep(TRUE, k)
+  left <- n
+  repeat {
+    w <- share[free]
+    raw[free] <- if (sum(w) > 0) left * w / sum(w) else left / sum(free)
+    if (!cap) break
+    over <- free & raw > sizes
+    if (!any(over)) break
+    raw[over] <- sizes[over]
+    free[over] <- FALSE
+    left <- n - sum(raw[!free])
+    if (!any(free) || left <= 0) {
+      raw[free] <- 0
+      break
+    }
+  }
+  raw
+}
+
+#' Warn when a group with rows in the frame is allocated none of them
+#'
+#' A stratum allocated zero rows makes every one of its frame rows unreachable:
+#' inclusion probability 0, so a Horvitz-Thompson total omits them and is
+#' biased by exactly their total. Proportional allocation does this silently to
+#' any stratum smaller than `N / n`, and Neyman allocation to any stratum whose
+#' auxiliary variable is constant. It is almost never what was meant.
+#'
+#' The warning carries its own class so that loops which draw on purpose many
+#' times -- the Monte Carlo probabilities -- can silence the repeats.
+#'
+#' @noRd
+warn_empty_groups <- function(n_alloc, sizes, noun = "stratum",
+                              arg = "min_per_stratum") {
+  empty <- names(n_alloc)[n_alloc == 0L & sizes > 0]
+  if (!length(empty)) return(invisible(NULL))
+  shown <- group_label(utils::head(empty, 5L))
+  more <- if (length(empty) > 5L) paste0(" and ", length(empty) - 5L, " more")
+          else ""
+  plural <- length(empty) > 1L
+  msg <- paste0(
+    length(empty), " ", if (plural) paste0(sub("um$", "a", noun)) else noun,
+    " (", paste0("`", shown, "`", collapse = ", "), more, ") ",
+    if (plural) "are" else "is", " allocated no rows, so ",
+    if (plural) "their " else "its ", fmt_n(sum(sizes[empty])),
+    " frame row(s) can never be drawn. A total estimated from this sample ",
+    "leaves them out entirely. Raise `n`, or set ", arg, " = 1 (or 2, so ",
+    "each ", noun, " also supports a variance)."
+  )
+  warning(structure(class = c("drawn_empty_stratum", "warning", "condition"),
+                    list(message = msg, call = NULL)))
+}
+
+#' Evaluate `code`, silencing the empty-stratum warning
+#'
+#' For loops that draw the same design many times on purpose; the result they
+#' return already shows the unreachable rows as zeros.
+#'
+#' @noRd
+quietly_empty <- function(code) {
+  withCallingHandlers(code, drawn_empty_stratum = function(w) {
+    invokeRestart("muffleWarning")
+  })
 }

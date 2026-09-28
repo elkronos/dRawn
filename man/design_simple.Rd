@@ -36,6 +36,7 @@ Other designs:
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},
 \code{\link{design_spatial}()},
+\code{\link{design_spread}()},
 \code{\link{design_stratified}()},
 \code{\link{design_systematic}()},
 \code{\link{design_temporal}()},

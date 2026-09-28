@@ -29,7 +29,9 @@ inclusion probability. See \code{\link[=inclusion_prob]{inclusion_prob()}}.}
 \code{"proportional"} splits it in proportion to their size.}
 
 \item{min_per_cluster}{Minimum rows from each selected cluster. Defaults to
-\code{0}, which leaves allocation unbiased.}
+\code{0}. Take at least two rows per cluster if you intend to estimate a
+variance: with one, the variation within clusters cannot be measured and
+\code{\link[=ht_total]{ht_total()}} falls back to the ultimate-cluster jackknife.}
 
 \item{replace}{Sample with replacement within each cluster?}
 
@@ -59,6 +61,7 @@ Other designs:
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},
 \code{\link{design_spatial}()},
+\code{\link{design_spread}()},
 \code{\link{design_stratified}()},
 \code{\link{design_systematic}()},
 \code{\link{design_temporal}()},

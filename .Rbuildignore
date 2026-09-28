@@ -9,3 +9,5 @@
 ^pkgdown$
 ^tools$
 ^Rplots\.pdf$
+^README\.Rmd$
+^vignettes/articles$

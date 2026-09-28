@@ -2,6 +2,19 @@ url: https://elkronos.github.io/dRawn/
 
 template:
   bootstrap: 5
+  math-rendering: mathjax
+
+home:
+  title: "drawn: design-based sampling with known inclusion probabilities"
+  description: >
+    Draw probability samples from data frames under a reusable design, then
+    estimate totals, means and proportions with the variance estimator the
+    design calls for.
+
+navbar:
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github]
 
 reference:
 - title: Drawing a sample
@@ -21,7 +34,9 @@ reference:
   - joint_prob
 
 - title: Estimating from a sample
-  desc: A total or a mean, with a standard error and the design's price.
+  desc: >
+    Totals, means and proportions, overall or by domain, with the variance
+    estimator the design calls for and a design effect.
   contents:
   - ht_total
   - ht_mean
@@ -49,22 +64,34 @@ reference:
   - design_multistage
 
 - title: Unequal-probability designs
-  desc: Selection driven by a weight, a time window, or a place.
+  desc: Selection driven by size, and units too big to leave to chance.
   contents:
   - design_weighted
-  - design_temporal
+  - design_certainty
+
+- title: Space and time
+  desc: >
+    A sample spread evenly over a map or over covariates, restricted to a
+    region, or taken across time intervals.
+  contents:
+  - design_spread
   - design_spatial
+  - design_temporal
 
 - title: Resampling
   contents:
   - design_bootstrap
 
-- title: Composite designs
-  contents:
-  - design_certainty
-
 articles:
 - title: Guides
-  navbar: ~
+  navbar: Guides
   contents:
+  - drawn
   - choosing-a-design
+  - articles/estimation
+
+- title: Walkthroughs
+  navbar: Walkthroughs
+  contents:
+  - articles/audit-sampling
+  - articles/spatial-sampling

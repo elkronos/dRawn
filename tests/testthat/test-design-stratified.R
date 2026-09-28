@@ -29,7 +29,10 @@ test_that("proportional allocation hits the requested total exactly", {
 test_that("rare strata are covered only when asked for", {
   skewed <- data.frame(x = 1:1000, g = c(rep("big", 999), "rare"))
 
-  res <- draw(skewed, design_stratified("g", n = 10), seed = 1)
+  # Left alone, the one-row stratum gets nothing -- and the user is told,
+  # because its row can then never be drawn and a total would omit it.
+  expect_warning(res <- draw(skewed, design_stratified("g", n = 10), seed = 1),
+                 "`rare`.*allocated no rows")
   expect_equal(nrow(res), 10)
 
   covered <- draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1),
@@ -93,9 +96,12 @@ test_that("min_per_stratum still totals n exactly, at every feasible floor", {
   for (m in 0:20) {
     for (nn in c(4L, 10L, 33L, 60L, 137L, 300L)) {
       if (m * 4 > nn) next
-      expect_equal(nrow(draw(d, design_stratified("site", n = nn,
-                                                  min_per_stratum = m), seed = 1)),
-                   nn, info = paste("min_per_stratum =", m, "n =", nn))
+      got <- suppressWarnings(
+        draw(d, design_stratified("site", n = nn, min_per_stratum = m),
+             seed = 1),
+        classes = "drawn_empty_stratum")
+      expect_equal(nrow(got), nn,
+                   info = paste("min_per_stratum =", m, "n =", nn))
     }
   }
 })

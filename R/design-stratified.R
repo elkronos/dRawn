@@ -10,25 +10,40 @@
 #' @param allocation How `n` is split across strata. `"proportional"` gives each
 #'   stratum a share of `n` in proportion to its size; `"equal"` splits `n`
 #'   evenly; `"neyman"` gives shares proportional to `size * sd`, using the
-#'   column named by `allocation_by`. Neyman minimises the variance of a total
-#'   for a fixed `n` by putting more rows where the values vary most, and is
-#'   the right choice when you have a frame variable correlated with what you
-#'   are measuring.
+#'   column named by `allocation_by` (Neyman 1934). Neyman minimises the
+#'   variance of a total for a fixed `n` by putting more rows where the values
+#'   vary most, and is the right choice when you have a frame variable
+#'   correlated with what you are measuring. Under any rule, a stratum that
+#'   would be allocated more rows than it holds is taken whole and the rest of
+#'   `n` re-split over the others by the same rule (Cochran 1977, section 5.9).
 #' @param allocation_by Column whose within-stratum standard deviation drives
 #'   `allocation = "neyman"`. Ignored otherwise.
-#' @param min_per_stratum Minimum rows from each stratum. The default of `0`
-#'   leaves allocation unbiased; `1` guarantees coverage of rare strata at the
-#'   cost of over-representing them.
+#' @param min_per_stratum Minimum rows from each stratum. With the default of
+#'   `0`, a stratum smaller than about `N / n` can be allocated no rows at all;
+#'   its rows then have inclusion probability 0 and a total estimated from the
+#'   sample silently leaves them out, so [draw()] warns when that happens. `1`
+#'   makes every stratum reachable, which is what an unbiased
+#'   Horvitz-Thompson total needs, and `2` also lets every stratum contribute
+#'   to the variance estimate. Over-sampling a small stratum this way does
+#'   *not* bias an estimate made with the design weights, which correct for it;
+#'   it only moves precision around.
 #' @param replace Sample with replacement within each stratum?
 #' @param na_rm Drop rows whose stratum key is `NA` instead of raising an error.
 #'
 #' @return A design object, for use with [draw()].
 #'
+#' @references
+#' Neyman, J. (1934). On the two different aspects of the representative
+#' method. *Journal of the Royal Statistical Society*, 97, 558–625.
+#'
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
+#'
 #' @examples
 #' df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))
 #' table(draw(df, design_stratified("site", n = 20), seed = 1)$site)
 #'
-#' # Rare strata are covered only if you ask
+#' # Rare strata are covered only if you ask -- without the floor, the one
+#' # "rare" row gets no allocation, and draw() warns that it is unreachable
 #' skewed <- data.frame(id = 1:1000, g = c(rep("common", 999), "rare"))
 #' draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1), seed = 1)$g
 #'
@@ -102,6 +117,7 @@ draw_design.drawn_design_stratified <- function(design, data) {
   n_alloc <- allocate(design$n, sizes, design$allocation,
                       design$min_per_stratum, cap = !design$replace,
                       spread = stratum_spread(design, data, idx_by_stratum))
+  warn_empty_groups(n_alloc, sizes)
 
   if (!design$replace) {
     over <- n_alloc > sizes

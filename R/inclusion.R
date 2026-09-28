@@ -24,6 +24,7 @@
 #'   [design_reservoir()]   \tab `n / min(N, max_items)`, and `0` past `max_items` \cr
 #'   [design_temporal()]    \tab `per_interval / N_bucket` within each interval \cr
 #'   [design_spatial()]     \tab `n / N_in_region` \cr
+#'   [design_spread()]      \tab `n / N`, or `n * p_i` with a `size` column \cr
 #' }
 #'
 #' Five cases have no closed form, and the package refuses to invent one:
@@ -135,14 +136,14 @@ simulate_inclusion <- function(data, design, R, seed) {
   tagged[[key]] <- seq_len(n_rows)
 
   hits <- integer(n_rows)
-  with_seed(seed, {
+  with_seed(seed, quietly_empty({
     for (i in seq_len(R)) {
       s <- draw_design(design, tagged)
       ids <- s[[key]]
       # A row drawn twice in one replicate is still one inclusion.
       hits[unique(ids)] <- hits[unique(ids)] + 1L
     }
-  })
+  }))
   hits / R
 }
 

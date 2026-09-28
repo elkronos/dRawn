@@ -36,6 +36,17 @@ chosen blocks per replicate.
 \code{\link[=draw]{draw()}} returns all replicates in one data frame with a leading \code{.replicate}
 column. Split them with \code{split(out, out$.replicate)}.
 }
+\section{Not a survey design}{
+
+The bootstrap resamples the data you already have to approximate the
+sampling distribution of a statistic (Efron 1979). It is not a probability
+sample of a finite population, so it has no inclusion probabilities and
+cannot be passed to \code{\link[=ht_total]{ht_total()}}. For the design-based variance of a total
+or mean, use the estimators there; for a statistic they do not cover, such
+as a median, this is the tool. Blocks preserve short-range dependence in
+ordered data (Künsch 1989).
+}
+
 \examples{
 df <- data.frame(id = 1:100, value = (1:100) / 10)
 
@@ -45,6 +56,13 @@ table(reps$.replicate)
 # A statistic per replicate
 vapply(split(reps, reps$.replicate), function(r) mean(r$value), numeric(1))
 
+}
+\references{
+Efron, B. (1979). Bootstrap methods: another look at the jackknife.
+\emph{Annals of Statistics}, 7, 1–26.
+
+Künsch, H. R. (1989). The jackknife and the bootstrap for general
+stationary observations. \emph{Annals of Statistics}, 17, 1217–1241.
 }
 \seealso{
 \code{\link[=draw]{draw()}}
@@ -56,6 +74,7 @@ Other designs:
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},
 \code{\link{design_spatial}()},
+\code{\link{design_spread}()},
 \code{\link{design_stratified}()},
 \code{\link{design_systematic}()},
 \code{\link{design_temporal}()},

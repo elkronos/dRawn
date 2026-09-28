@@ -14,7 +14,22 @@
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`
 #'   instead of raising an error.
 #'
+#' @section Variance:
+#' A systematic sample has a single random start, so no design-unbiased
+#' variance estimator exists. [ht_total()] uses the successive-difference
+#' approximation (Wolter 2007), which compares neighbouring sampled rows in
+#' the order the design walked. Sorting on a variable related to what you
+#' measure (`order_by`) is what makes systematic sampling efficient, and this
+#' estimator is the one that can see it; see [ht_total()] for its limits.
+#'
 #' @return A design object, for use with [draw()].
+#'
+#' @references
+#' Madow, W. G. and Madow, L. H. (1944). On the theory of systematic sampling,
+#' I. *Annals of Mathematical Statistics*, 15, 1–24.
+#'
+#' Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
+#' Springer.
 #'
 #' @examples
 #' df <- data.frame(id = 1:100, value = (1:100) / 10)
@@ -46,6 +61,9 @@ design_systematic <- function(interval, start = NULL, order_by = NULL,
 draw_design.drawn_design_systematic <- function(design, data) {
   validate_data(data, required_columns = design$order_by)
 
+  # The walk visits rows in `walk` order; the result comes back in frame order
+  # like every other design that selects a set of rows.
+  walk <- seq_len(nrow(data))
   if (!is.null(design$order_by)) {
     check_key_columns(data, design$order_by, "order_by")
     key <- data[[design$order_by]]
@@ -54,7 +72,7 @@ draw_design.drawn_design_systematic <- function(design, data) {
                            paste0("a missing `", design$order_by, "`"))
       key <- data[[design$order_by]]
     }
-    data <- data[order(key), , drop = FALSE]
+    walk <- order(key)
   }
 
   start <- design$start %||% sample.int(design$interval, 1L)
@@ -65,7 +83,8 @@ draw_design.drawn_design_systematic <- function(design, data) {
     return(empty_like(data))
   }
 
-  reindex(data, seq.int(from = start, to = nrow(data), by = design$interval))
+  picked <- walk[seq.int(from = start, to = nrow(data), by = design$interval)]
+  reindex(data, picked, sort = TRUE)
 }
 
 # ---- inclusion probability ------------------------------------------------

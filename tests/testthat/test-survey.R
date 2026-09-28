@@ -106,7 +106,6 @@ test_that("survey reproduces this package's standard error, design by design", {
     stratified = design_stratified("site", n = 100),
     cluster    = design_cluster("cl", n_clusters = 8),
     reservoir  = design_reservoir(n = 100),
-    pps_sys    = design_weighted("size", n = 60, method = "systematic"),
     pps_pois   = design_weighted("size", n = 60, method = "poisson"),
     certainty  = design_certainty("spend", 400,
                                   design_stratified("site", n = 60)),
@@ -186,4 +185,58 @@ test_that("a `rest` design that puts a row at probability 1 is not a certainty r
                                                     method = "systematic")),
              seed = 1, weights = TRUE)
   expect_s3_class(as_svydesign(s2), "survey.design")
+})
+
+test_that("a multistage design is handed over as two stages, and agrees exactly", {
+  skip_if_not_installed("survey")
+  set.seed(3)
+  sizes <- rep(c(8, 12, 16), length.out = 20)
+  d <- data.frame(cl = rep(paste0("k", 1:20), times = sizes))
+  d$y <- stats::rnorm(nrow(d), rep(stats::rnorm(20, 50, 20), times = sizes), 8)
+  s <- draw(d, design_multistage("cl", n_clusters = 5, n = 20), seed = 2,
+            weights = TRUE)
+  ours <- ht_total(s, "y")
+  theirs <- survey::svytotal(~y, as_svydesign(s))
+  # Stated as one stage, `survey` saw only the first and came out ~5% low.
+  expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8)
+})
+
+test_that("a capped reservoir's population is the rows the stream reached", {
+  skip_if_not_installed("survey")
+  set.seed(1)
+  d <- data.frame(y = stats::rnorm(300, 10, 3))
+  s <- suppressWarnings(draw(d, design_reservoir(n = 30, max_items = 100),
+                             seed = 1, weights = TRUE))
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, as_svydesign(s)))),
+               ht_total(s, "y")$se, tolerance = 1e-8)
+})
+
+test_that("systematic PPS maps to survey's Brewer approximation, and agrees closely", {
+  skip_if_not_installed("survey")
+  set.seed(5)
+  pop <- data.frame(x = stats::rgamma(300, 2, 0.1))
+  pop$y <- 3 * pop$x + stats::rnorm(300, 0, 15)
+  for (des in list(
+    design_weighted("x", n = 60, method = "systematic"),
+    design_certainty("x", 45, design_weighted("x", n = 40,
+                                              method = "systematic"))
+  )) {
+    s <- draw(pop, des, seed = 1, weights = TRUE)
+    theirs <- survey::svytotal(~y, as_svydesign(s))
+    ours <- ht_total(s, "y")
+    expect_equal(as.numeric(theirs), ours$total, tolerance = 1e-8)
+    # Deville here, Brewer there: close relatives, not twins
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 2e-3)
+  }
+})
+
+test_that("deff() works whether or not survey's has masked it", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  r <- ht_total(draw(d, design_stratified("site", n = 60), seed = 1,
+                     weights = TRUE), "spend")
+  expect_equal(survey::deff(r), drawn::deff(r))
+  m <- ht_mean(draw(d, design_simple(n = 60), seed = 1, weights = TRUE),
+               "spend")
+  expect_equal(survey::deff(m), drawn::deff(m))
 })

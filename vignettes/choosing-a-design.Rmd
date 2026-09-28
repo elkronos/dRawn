@@ -20,7 +20,7 @@ Every function in this package answers one question — *which rows do I look at
 — and the interesting part is what you can say afterwards about the rows you
 didn't.
 
-## One population, eleven questions
+## One population, twelve designs
 
 We'll use a synthetic audit population throughout: invoices from a handful of
 sites, over a fortnight, with a value attached.
@@ -271,19 +271,30 @@ sample_summary(draw(invoices, window, seed = 1, weights = TRUE))
 
 ## When you want the rare stratum represented
 
-`west` has only 30 invoices. Proportional allocation gives it three. If you need
-coverage rather than efficiency, ask for a floor — and note that this is a
-deliberate bias, not a free lunch:
+`west` has only 30 invoices. Proportional allocation gives it three at `n = 60`
+— and at a smaller `n` it can give it none at all, which is worse than it
+sounds: a stratum allocated no rows can never be drawn, so every estimate made
+from the sample silently leaves it out. `draw()` warns when that happens:
+
+```{r}
+small <- draw(invoices, design_stratified("site", n = 12), seed = 1,
+              weights = TRUE)
+```
+
+A floor fixes it, and it does *not* bias anything. The design weights know
+that `west` was over-sampled and scale each of its rows down accordingly:
 
 ```{r}
 covered <- draw(invoices, design_stratified("site", n = 60, min_per_stratum = 8),
-                seed = 1)
+                seed = 1, weights = TRUE)
 table(covered$site)
+tapply(covered$.weight, covered$site, unique)
 ```
 
-The default of `min_per_stratum = 0` leaves allocation unbiased. Setting it
-over-represents small strata, which is fine when the goal is "look at every
-site" and wrong when the goal is "estimate the total".
+What a floor changes is precision, and usually only a little. Take at least
+two per stratum if you want a variance: with one, the variation inside that
+stratum cannot be measured, and `ht_total()` declines rather than report a
+standard error that is too small.
 
 ## Sampling proportional to size
 
@@ -352,12 +363,13 @@ spread_of <- function(design, column) {
   }, numeric(1)))
 }
 
-round(rbind(
+bet <- rbind(
   cost   = c(stratified = spread_of(plan, "cost"),
              pps        = spread_of(pps,  "cost")),
   checks = c(stratified = spread_of(plan, "checks"),
              pps        = spread_of(pps,  "checks"))
-), 1)
+)
+round(bet, 1)
 ```
 
 Review cost scales with invoice size, and PPS estimates its total several times
@@ -369,6 +381,25 @@ than small ones do.
 That is the trade PPS actually offers. It is a bet that your size measure
 predicts what you are measuring, and it is a bad bet when it doesn't. `deff()`,
 below, puts a number on which way the bet went.
+
+There is a way to use the size measure without betting on it. `design_spread()`
+keeps every invoice's chance equal but spreads the sample evenly along
+`value`, so small, middling and large invoices are all represented in their
+proper proportion — a very fine stratification on size, without choosing the
+boundaries:
+
+```{r}
+by_value <- design_spread("value", n = 60)
+spread_sd <- c(cost   = spread_of(by_value, "cost"),
+               checks = spread_of(by_value, "checks"))
+round(cbind(bet, spread = spread_sd), 1)
+```
+
+On `cost` it goes
+`r round(100 * (bet["cost", "stratified"] - spread_sd[["cost"]]) / (bet["cost", "stratified"] - bet["cost", "pps"]))`%
+of the way from stratification to PPS, and on `checks` it gives up nothing
+against stratifying by site, where PPS lost badly. When you are not sure the
+size measure predicts what you will measure, that is the safer use of it.
 
 ## The units too big to leave to chance
 
@@ -417,6 +448,7 @@ designs <- list(
   cluster     = design_cluster("team", n_clusters = 4),
   multistage  = design_multistage("team", n_clusters = 6, n = 60),
   weighted    = design_weighted("value", n = 60, method = "systematic"),
+  spread      = design_spread("value", n = 60),
   certainty   = design_certainty("value", 2000, design_simple(n = 60)),
   temporal    = design_temporal("when", from = "2024-03-01", to = "2024-03-15",
                                 interval = 1, per_interval = 4, unit = "days")
@@ -478,9 +510,11 @@ inclusion_prob(invoices, no_form$bootstrap, simulate = TRUE, R = 100)
 ```
 
 Second-order probabilities can be simulated too, which is the general answer
-where no formula exists. Systematic PPS is the case that needs it: it has exact
-first-order probabilities, but its joint ones depend on the order units are
-visited.
+where no formula exists. Systematic PPS is a case that needs it: it has exact
+first-order probabilities, but it shuffles the rows before walking them, so its
+joint probabilities are an average over every ordering and have no closed form.
+(For its *variance*, `ht_total()` does not need them: it uses Deville's
+approximation, which works from the first-order probabilities alone.)
 
 ```{r, error = TRUE}
 joint_prob(invoices, pps, rows = 1:4)
@@ -522,8 +556,10 @@ table(res_ms$team)
 ```
 
 Both are estimable, but cluster designs pay for their convenience in precision —
-and in degrees of freedom. With only a handful of clusters the normal-approximation
-interval undercovers, so treat it as indicative:
+and in degrees of freedom. With four clusters there are three degrees of
+freedom, and the interval uses t on three rather than the normal
+distribution. That is why it is so wide, and it is right to be: a normal
+interval here covers about 87% of the time where it claims 95%.
 
 ```{r}
 ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
@@ -594,12 +630,22 @@ identical(before, after)
 That is deliberate: a sampling call is not supposed to be visible to the code
 around it.
 
+## Estimates by group
+
+A total or mean for each site comes from the whole sample, not from cutting it
+up. `by` does that, and its standard errors account for the fact that the number
+of sampled rows landing in each group was itself random:
+
+```{r}
+ht_total(s, "value", by = "site")
+```
+
 ## Where this package stops
 
-`drawn` draws samples and estimates totals and means from them. It does not do
-subpopulation estimates, regression, calibration, or quantiles with proper
-standard errors — [`survey`](https://cran.r-project.org/package=survey) does all
-of that, and `as_svydesign()` hands a sample straight over.
+`drawn` draws samples and estimates totals, means and proportions from them,
+overall or by group. It does not do regression, calibration, or quantiles with
+proper standard errors — [`survey`](https://cran.r-project.org/package=survey)
+does all of that, and `as_svydesign()` hands a sample straight over.
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE), message = FALSE}
 library(survey)
@@ -621,7 +667,7 @@ c(drawn  = ht_total(s, "value")$se,
 From there it is `survey`'s vocabulary:
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE)}
-svyby(~value, ~site, des, svymean)
+svyquantile(~value, des, quantiles = c(0.25, 0.5, 0.75))
 ```
 
 Draw here, analyse there.

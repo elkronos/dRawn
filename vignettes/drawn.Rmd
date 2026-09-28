@@ -1,0 +1,203 @@
+---
+title: "Get started"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Get started}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.show = "hold", fig.width = 7,
+                      fig.height = 3.4, dpi = 96)
+```
+
+```{r setup}
+library(drawn)
+```
+
+This walkthrough follows one job from start to finish: a retail chain wants to
+know how much stock it lost last quarter across its 2,000 stores, and can afford
+to audit a sample of them. Along the way it covers the six steps every use of
+`drawn` goes through — size, design, check, draw, estimate, hand off.
+
+## The frame
+
+What we know about every store *before* sampling: its region, its floor area,
+and what it lost the year before. What we want — this quarter's loss — is only
+known for the stores we audit. Here the frame holds it too, so we can check the
+answers, but nothing below uses it except through the sample.
+
+```{r frame}
+set.seed(2024)
+N <- 2000
+stores <- data.frame(
+  store  = sprintf("S%04d", 1:N),
+  region = sample(c("north", "south", "east", "west", "central"), N,
+                  replace = TRUE, prob = c(0.3, 0.25, 0.2, 0.15, 0.1)),
+  area   = round(rlnorm(N, 7, 0.5))
+)
+region_rate <- c(north = 1.0, south = 1.4, east = 0.8, west = 1.9,
+                 central = 1.1)
+stores$last_year <- round(stores$area * region_rate[stores$region] *
+                            rgamma(N, 4, 4) * 2)
+stores$loss <- round(stores$last_year * rgamma(N, 12, 12) +
+                       rnorm(N, 0, 200))
+stores$loss <- pmax(stores$loss, 0)
+
+# A size band from last year's loss: known for every store before sampling
+stores$band <- cut(stores$last_year,
+                   quantile(stores$last_year, c(0, 0.5, 0.8, 0.95, 1)),
+                   labels = c("small", "medium", "large", "top"),
+                   include.lowest = TRUE)
+
+head(stores)
+```
+
+## 1. How many stores?
+
+Last year's losses give a fair idea of the spread, and management wants the
+total to within about 10%. `plan_size()` turns that into a number of stores —
+allowing for audits that fail to complete, and assuming no help from the design
+yet (`deff = 1`), which errs on the safe side:
+
+```{r plan}
+target <- 0.10 * sum(stores$last_year)
+p <- plan_size(margin = target, sd = sd(stores$last_year), N = N,
+               target = "total", response = 0.95)
+p
+```
+
+## 2. Choose a design, and ask it questions before drawing
+
+Losses track store size far more than region, and last year's loss is known
+for every store, so stratify on the size band built from it. Allocate by
+Neyman — more audits where losses vary most, which is among the biggest
+stores — and set `min_per_stratum = 2` so every band is reachable and
+contributes to the variance.
+
+```{r design}
+plan <- design_stratified("band", n = p$n, allocation = "neyman",
+                          allocation_by = "last_year", min_per_stratum = 2)
+plan
+```
+
+A design is a value. Before drawing anything, ask it what each store's chance
+of selection is:
+
+```{r interrogate}
+pi <- inclusion_prob(stores, plan)
+round(tapply(pi, stores$band, unique), 3)
+```
+
+The top band, where losses are largest and most variable, is sampled far more
+heavily than the small stores. That is Neyman allocation doing its job, and the
+design weights scale those stores back down in every estimate.
+
+```{r plot-prob, fig.alt = "Inclusion probability for each of the 2,000 stores, sorted by size band: a rising step pattern with four levels."}
+plot(plan, stores[order(stores$band), ], type = "probability")
+```
+
+## 3. Draw
+
+`weights = TRUE` attaches each audited store's inclusion probability (`.prob`)
+and design weight (`.weight`, the number of stores it stands for), and
+remembers the design so the sample can be estimated from later. `seed` makes the
+draw reproducible without disturbing your own random number stream.
+
+```{r draw}
+audit <- draw(stores, plan, seed = 7, weights = TRUE)
+nrow(audit)
+head(audit[, c(".prob", ".weight", "store", "band", "region", "loss")])
+```
+
+## 4. Check what you got
+
+```{r check}
+sample_summary(audit)
+```
+
+Every band is represented, no store is unreachable, and the weights vary by
+band exactly as the allocation intended.
+
+## 5. Estimate
+
+The total loss, with a standard error and a confidence interval:
+
+```{r total}
+ht_total(audit, "loss")
+sum(stores$loss)   # what we are trying to recover
+```
+
+The interval uses Student's t on the design's degrees of freedom — audited
+stores minus strata — and the design effect says what the design bought: at
+`r signif(deff(ht_total(audit, "loss")), 2)`, this sample carries about as much
+information as `r round(nrow(audit) / deff(ht_total(audit, "loss")))` stores
+drawn at random.
+
+The mean loss per store, and the share of stores losing more than 1,500, are the
+same machinery; a proportion is just the mean of a yes/no column:
+
+```{r mean-prop}
+ht_mean(audit, "loss")
+ht_mean(audit, audit$loss > 1500)
+```
+
+Estimates for each region come from the whole sample, not from cutting it into
+pieces — region was not a stratum, so how many audited stores land in each is
+itself random, and the standard errors account for that:
+
+```{r by}
+ht_total(audit, "loss", by = "region")
+```
+
+## What the design bought
+
+Drawing the same number of stores many times under each design shows what the
+stratification was worth — and that stratifying on region, the obvious choice,
+would have bought almost nothing:
+
+```{r compare}
+spread_of <- function(design) {
+  sd(vapply(1:200, function(i) {
+    ht_total(draw(stores, design, seed = i, weights = TRUE), "loss",
+             variance = "none")$total
+  }, numeric(1)))
+}
+round(c(simple    = spread_of(design_simple(n = p$n)),
+        by_region = spread_of(design_stratified("region", n = p$n)),
+        by_band   = spread_of(plan)))
+```
+
+`deff()` estimates that exchange rate from a single sample, which is exactly
+what `plan_size(deff = )` wants when sizing next quarter's audit:
+
+```{r replan}
+plan_size(margin = target, sd = sd(stores$last_year), N = N,
+          target = "total", response = 0.95,
+          deff = deff(ht_total(audit, "loss")))
+```
+
+A design effect measured on one sample is itself an estimate, and the
+simulation above puts the true ratio of variances somewhat higher. A cautious
+planner rounds it up — but either way, the next audit can be a fraction of the
+size of this one for the same precision.
+
+## 6. Hand off
+
+`drawn` estimates totals, means and proportions. For regression, calibration
+or quantiles, hand the sample to `survey`; the design is expressed in `survey`'s
+own terms, so the standard errors agree.
+
+```{r survey, eval = requireNamespace("survey", quietly = TRUE)}
+des <- as_svydesign(audit)
+survey::svytotal(~loss, des)
+```
+
+## Where next
+
+* `vignette("choosing-a-design")` compares every design on one population and
+  shows when each pays.
+* The articles on the package website explain how each variance estimator
+  works, and walk through an audit sample and a spatially balanced field
+  survey.

@@ -24,6 +24,8 @@ the rest.}
 \item{\code{\link[=design_bootstrap]{design_bootstrap()}}}{Resampled replicates.}
 \item{\code{\link[=design_temporal]{design_temporal()}}}{A share of each time interval.}
 \item{\code{\link[=design_spatial]{design_spatial()}}}{Rows inside a region.}
+\item{\code{\link[=design_spread]{design_spread()}}}{A sample spread evenly across a map or across
+auxiliary variables.}
 }
 }
 
@@ -48,7 +50,8 @@ cannot be weighted by one.
 \item \code{\link[=draw]{draw()}} always restores the caller's random number stream before
 returning, and always gives back a data frame with the input's class and
 column order.
-\item Rows come back in frame order for every design that selects a set of rows.
+\item Rows come back in frame order for every design that selects a set of rows,
+including \code{\link[=design_systematic]{design_systematic()}} with \code{order_by}.
 The two exceptions are the ones where draw order is meaningful:
 \code{\link[=design_simple]{design_simple()}} and \code{\link[=design_weighted]{design_weighted()}} return rows in the order they
 were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns replicates in order with a
@@ -62,11 +65,13 @@ Because a design is a value, it can report its own inclusion probabilities
 before any sampling happens. \code{\link[=inclusion_prob]{inclusion_prob()}} gives first-order
 probabilities and \code{\link[=sampling_weight]{sampling_weight()}} their reciprocals — the number of
 population rows each sampled row stands for. \code{\link[=joint_prob]{joint_prob()}} gives
-second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and
-\code{\link[=ht_mean]{ht_mean()}} combine them into a population total or mean with a standard
-error. \code{\link[=deff]{deff()}} reports what the design cost in precision against simple
-random sampling, and \code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn
-against what was in the frame.
+second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} turn a sample
+into a population total, mean or proportion — overall or by domain — with a
+standard error from the variance estimator suited to the design and a
+confidence interval on the design's degrees of freedom. \code{\link[=deff]{deff()}} reports
+what the design cost in precision against simple random sampling, and
+\code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn against what was in the
+frame.
 
 Going the other way, \code{\link[=plan_size]{plan_size()}} solves for the sample size a given margin
 of error requires — the step \emph{before} choosing a design. For analysis this
@@ -93,8 +98,13 @@ fifty, at the cost of precision.}
 \item{A few units dominate the total}{\code{\link[=design_certainty]{design_certainty()}} — take those
 with certainty and sample the tail, which removes them from the variance
 entirely.}
-\item{Coverage across time or space}{\code{\link[=design_temporal]{design_temporal()}},
-\code{\link[=design_spatial]{design_spatial()}}.}
+\item{Coverage across time or space}{\code{\link[=design_temporal]{design_temporal()}} for time;
+\code{\link[=design_spread]{design_spread()}} for an even spread over a map, which is usually far
+more precise than a simple random sample when what you measure varies
+smoothly over space; \code{\link[=design_spatial]{design_spatial()}} to restrict sampling to a
+region.}
+\item{Balance on known covariates without choosing strata}{
+\code{\link[=design_spread]{design_spread()}} across those covariates.}
 \item{Uncertainty of a statistic, not a population total}{
 \code{\link[=design_bootstrap]{design_bootstrap()}}.}
 }

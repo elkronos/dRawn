@@ -4,10 +4,15 @@ test_that("walks the data at a fixed interval", {
                seq(1, 100, by = 10))
 })
 
-test_that("order_by sorts before walking", {
+test_that("order_by sorts before walking, and rows come back in frame order", {
   df <- make_df()
   res <- draw(df, design_systematic(interval = 10, order_by = "value"), seed = 123)
-  expect_equal(order(res$value), seq_len(nrow(res)))
+  # Every selected row sits the same distance from the start of the sorted walk
+  pos <- rank(df$value)[res$id]
+  expect_length(unique((pos - 1) %% 10), 1L)
+  expect_length(res$id, 10L)
+  # ...and the contract in ?designs: frame order, not walk order
+  expect_identical(res$id, sort(res$id))
 })
 
 test_that("a random start lands inside 1:interval", {

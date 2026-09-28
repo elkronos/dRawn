@@ -57,6 +57,7 @@ Most do, and those are computed exactly:
 \code{\link[=design_reservoir]{design_reservoir()}}   \tab \code{n / min(N, max_items)}, and \code{0} past \code{max_items} \cr
 \code{\link[=design_temporal]{design_temporal()}}    \tab \code{per_interval / N_bucket} within each interval \cr
 \code{\link[=design_spatial]{design_spatial()}}     \tab \code{n / N_in_region} \cr
+\code{\link[=design_spread]{design_spread()}}      \tab \code{n / N}, or \code{n * p_i} with a \code{size} column \cr
 }
 
 Five cases have no closed form, and the package refuses to invent one:

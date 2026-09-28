@@ -1,0 +1,203 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file. -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "man/figures/README-",
+                      dpi = 110)
+options(width = 80)
+library(drawn)
+```
+
+# drawn
+
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/elkronos/dRawn/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/elkronos/dRawn/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
+**Take a probability sample, then say something defensible about the
+population it came from.**
+
+Pulling rows out of a data frame is easy. The hard part is what comes next:
+someone asks what the total was across all 40,000 invoices, and you examined
+200. Answering honestly needs to know how likely each examined row was to be
+picked, and that number lives in the *design*, not in the sample. `drawn` keeps
+the design around, so a sample can answer for itself:
+
+```{r setup-frame}
+set.seed(42)
+invoices <- data.frame(
+  id    = 1:600,
+  site  = rep(c("north", "south", "east", "west"), times = c(300, 180, 90, 30)),
+  value = round(rlnorm(600, meanlog = 6, sdlog = 1.1), 2)
+)
+
+plan <- design_stratified(strata = "site", n = 60, min_per_stratum = 2)
+s <- draw(invoices, plan, seed = 1, weights = TRUE)
+
+ht_total(s, "value")
+```
+
+The true total is `r format(sum(invoices$value), big.mark = ",")`. The
+standard error is the point: without it you have a number; with it you have an
+estimate, an interval on the design's own degrees of freedom, and a design
+effect that says what the design bought you.
+
+## Installation
+
+```r
+# install.packages("remotes")
+remotes::install_github("elkronos/dRawn")
+```
+
+## What it does that other packages don't
+
+R has excellent sampling software. `drawn` is built to sit between it, and to
+make the step from "draw" to "estimate" hard to get wrong.
+
+| | `drawn` | `sampling` | `survey` | `spsurvey`, `BalancedSampling` | `dplyr::slice_sample()` |
+|---|---|---|---|---|---|
+| Draws the sample | yes | yes | no | yes | yes |
+| Data frame in, data frame out | yes | index vectors | — | yes / vectors | yes |
+| Design is a reusable, printable value | yes | no | yes (for analysis) | no | no |
+| Inclusion probabilities *before* drawing | yes, exact | yes | no | yes | no |
+| Standard errors from the same object | yes | separate functions | yes | yes | no |
+| Variance estimator chosen to match the design | yes, and named | you choose | you specify | yes (spatial) | — |
+| Plan → draw → estimate → hand off | one package | — | — | — | — |
+
+Where the others go further, use them: `sampling` has a dozen
+unequal-probability algorithms and calibration; `survey` does regression,
+calibration and replicate weights, and `as_svydesign()` hands a sample
+straight to it; `spsurvey` has GRTS designs and a full environmental-monitoring
+workflow.
+
+## The workflow
+
+**1. Size it.** You rarely know `n`; you know the margin of error you can live
+with.
+
+```{r plan}
+plan_size(margin = 5, sd = 40, N = 20000, deff = 1.5, response = 0.8)
+```
+
+**2. Describe the design, and interrogate it before drawing.** A design is a
+value. Ask it which rows it can reach, and at what probability:
+
+```{r interrogate}
+tapply(inclusion_prob(invoices, plan), invoices$site, unique)
+```
+
+**3. Draw,** with `weights = TRUE` to attach each row's inclusion probability
+(`.prob`) and design weight (`.weight`).
+
+**4. Check what you got.**
+
+```{r summary}
+sample_summary(s)
+```
+
+**5. Estimate** a total, a mean or a proportion, overall or by domain. Domain
+estimates use the whole sample, not a subset of it, which is what keeps their
+standard errors right:
+
+```{r estimate}
+ht_mean(s, "value", by = "site")
+```
+
+**6. Hand off** anything this package does not do:
+
+```r
+des <- as_svydesign(s)             # a survey.design, with matching SEs
+survey::svyquantile(~value, des, 0.5)
+```
+
+## The designs
+
+| Design | Selects | Size | Variance estimator |
+|---|---|---|---|
+| `design_simple()` | rows uniformly at random | `n` | exact |
+| `design_stratified()` | a share of each stratum: proportional, equal or Neyman | `n` total | exact |
+| `design_systematic()` | every *k*-th row from a random start | `interval` | successive-difference approx. |
+| `design_cluster()` | whole clusters | `n_clusters` | exact |
+| `design_multistage()` | clusters, then rows within them | `n_clusters`, `n` | exact two-stage |
+| `design_weighted()` | probability proportional to size | `n` | exact (Poisson), Deville (systematic) |
+| `design_certainty()` | everything above a threshold, plus any design below it | `rest`'s own | `rest`'s own |
+| `design_spread()` | a sample spread evenly over a map or covariates | `n` | local-mean approx. |
+| `design_temporal()` | a fixed number per time interval | `per_interval` | exact |
+| `design_spatial()` | a simple random sample inside a region | `n` | exact |
+| `design_reservoir()` | a fixed-size sample from a stream, in one pass | `n` | exact |
+| `design_bootstrap()` | resampled replicates, simple or block | `n_replicates` | not a survey design |
+
+Every estimate says which estimator produced its variance, and any
+approximation is named when it prints.
+
+## Spread the sample, not just the rows
+
+When what you measure varies smoothly across space — biomass, soil carbon,
+footfall — a sample that covers the map evenly is worth far more than one that
+clumps. `design_spread()` uses the local pivotal method (Grafström, Lundström
+and Schelin 2012): exact inclusion probabilities, but neighbours compete, so
+clumps and gaps become rare.
+
+```{r spread, fig.width = 8, fig.height = 3.6, fig.show = "hold", fig.alt = "Two maps of 400 plots. On the left, a simple random sample of 40 leaves clumps and empty patches; on the right, the spread sample covers the square evenly."}
+set.seed(1)
+plots <- data.frame(x = runif(400), y = runif(400))
+plots$biomass <- 100 + 80 * plots$x + 60 * sin(4 * plots$y) + rnorm(400, 0, 10)
+
+op <- par(mfrow = c(1, 2))
+plot(design_simple(n = 40), plots, type = "map", coords = c("x", "y"), seed = 3,
+     main = "simple random")
+plot(design_spread(c("x", "y"), n = 40, scale = FALSE), plots, type = "map",
+     seed = 3, main = "spread (local pivotal method)")
+par(op)
+```
+
+```{r spread-gain}
+spread_of <- function(design) sd(vapply(1:200, function(i) {
+  ht_total(draw(plots, design, seed = i, weights = TRUE), "biomass",
+           variance = "none")$total
+}, numeric(1)))
+
+c(simple = spread_of(design_simple(n = 40)),
+  spread = spread_of(design_spread(c("x", "y"), n = 40, scale = FALSE)))
+```
+
+Same sample size, a fraction of the error.
+
+## Told when the answer isn't available
+
+Some designs have no closed-form inclusion probability, and some samples cannot
+support a variance. `drawn` says so, and says what to change, rather than
+returning a plausible number:
+
+```{r refuse, error = TRUE}
+inclusion_prob(invoices, design_weighted("value", n = 60))
+```
+
+```{r lonely}
+one_each <- draw(invoices, design_stratified("site", n = 4, min_per_stratum = 1),
+                 seed = 1, weights = TRUE)
+ht_total(one_each, "value")
+```
+
+## Learn more
+
+* [Get started](https://elkronos.github.io/dRawn/articles/drawn.html) walks
+  through the whole workflow on one frame.
+* [Choosing a design](https://elkronos.github.io/dRawn/articles/choosing-a-design.html)
+  compares the designs on the same population, and shows when each one pays.
+* [How the estimates work](https://elkronos.github.io/dRawn/articles/estimation.html)
+  sets out every variance estimator, with references and simulation checks.
+* Walkthroughs: [an audit sample](https://elkronos.github.io/dRawn/articles/audit-sampling.html)
+  and [a spatially balanced field survey](https://elkronos.github.io/dRawn/articles/spatial-sampling.html).
+
+## Credit
+
+The sampling routines began as an R port of
+[sample_py](https://github.com/elkronos/sample_py).
+
+## License
+
+GPL-3

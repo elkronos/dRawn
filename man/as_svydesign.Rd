@@ -18,12 +18,12 @@ A \code{survey.design} object.
 }
 \description{
 Builds a \code{\link[survey:svydesign]{survey::svydesign()}} object from a drawn sample, so the analysis
-this package does not do — subpopulation estimates, regression, calibration,
-quantiles with proper standard errors — can be done by the package that does.
+this package does not do — regression, calibration, quantiles with proper
+standard errors, replicate weights — can be done by the package that does.
 }
 \details{
 The two packages compute variance from different starting points. This one
-uses the design's joint inclusion probabilities; \code{survey} reconstructs the
+uses the design's inclusion probabilities; \code{survey} reconstructs the
 variance from the design's \emph{shape}. So the job here is to express each design
 in \code{survey}'s own terms rather than hand over a weight column and hope.
 }
@@ -31,28 +31,34 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 
 \tabular{lll}{
 \strong{Design} \tab \strong{Expressed as} \tab \strong{Standard errors} \cr
-\code{\link[=design_simple]{design_simple()}}, \code{\link[=design_reservoir]{design_reservoir()}}, \code{\link[=design_spatial]{design_spatial()}} \tab \code{ids = ~1} with \code{fpc} the frame size \tab identical \cr
+\code{\link[=design_simple]{design_simple()}}, \code{\link[=design_spatial]{design_spatial()}} \tab \code{ids = ~1} with \code{fpc} the rows the design can reach \tab identical \cr
+\code{\link[=design_reservoir]{design_reservoir()}} \tab \code{ids = ~1} with \code{fpc} the rows the stream reached \tab identical \cr
 \code{\link[=design_stratified]{design_stratified()}} \tab \code{strata} from the strata columns, \code{fpc} each stratum's size \tab identical \cr
 \code{\link[=design_temporal]{design_temporal()}} \tab \code{strata} from the sampling intervals, \code{fpc} each interval's size \tab identical \cr
 \code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} the cluster column, \code{fpc} the number of clusters \tab identical \cr
-\code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{ids = ~1} with \code{fpc} the frame size \tab identical \cr
+\code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids = ~cluster + row}, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size \tab identical \cr
-\code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as their own stratum, taken whole \tab identical \cr
-\code{\link[=design_multistage]{design_multistage()}} \tab \code{ids} the cluster column \tab \strong{differ by a few percent} \cr
-\code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the frame size \tab \strong{\code{survey} returns one; this package declines} \cr
+\code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as their own stratum, taken whole \tab as \code{rest} \cr
+\code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab within about 0.2 percent \cr
+\code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size} \tab \strong{\code{survey}'s is larger} \cr
+\code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the frame size \tab \strong{differ} \cr
 }
 
 "Identical" means to floating point, and is checked by this package's tests
-against \code{survey::svytotal()}. The two exceptions are real and worth knowing:
+against \code{survey::svytotal()}, as are domain estimates against
+\code{survey::svyby()} and degrees of freedom against \code{survey::degf()}. The
+exceptions are real and worth knowing:
 \itemize{
-\item \strong{Multistage.} \code{survey} uses the ultimate-cluster approximation, which
-attributes all the variance to the first stage and ignores sampling within
-clusters. \code{\link[=ht_total]{ht_total()}} uses the exact two-stage form. \code{survey}'s is the
-smaller of the two, by around 5–10\% on a typical frame.
-\item \strong{Systematic.} Most pairs of rows can never co-occur, so no
-design-unbiased variance exists and \code{\link[=ht_total]{ht_total()}} returns \code{NA} with a note.
-\code{survey}, having only been told \code{ids = ~1}, computes the simple-random
-variance — which is the conservative substitute, not the design's own.
+\item \strong{Systematic PPS.} Neither package has its joint probabilities. This one
+uses Deville's approximation and \code{survey} uses Brewer's; the two are close
+relatives and agree to a fraction of a percent.
+\item \strong{Spread.} \code{survey} has no estimator for a spatially balanced sample, so
+it is told only the first-order design and computes a variance that
+ignores the spreading. That errs conservative, often substantially.
+\item \strong{Systematic.} \code{survey}, told only \code{ids = ~1}, computes the simple-random
+variance; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation, which
+can see a trend along the sort order. Neither is design-unbiased, because
+no such estimator exists for one systematic sample.
 }
 
 Certainty rows arrive in a stratum where \code{n == N}, so \code{survey}'s own finite
@@ -63,6 +69,11 @@ approximated: \code{\link[=design_certainty]{design_certainty()}} over a cluster
 \code{rest}, where the certainty rows and the rest are different kinds of sampling
 unit. \code{\link[=design_bootstrap]{design_bootstrap()}} is refused outright — it resamples the sample, so
 there is no finite population for \code{svydesign()} to represent.
+
+A stratum or interval with a single sampled row makes \code{survey} stop with
+"Stratum has only one PSU" unless \code{options(survey.lonely.psu)} says
+otherwise; \code{\link[=ht_total]{ht_total()}} declines in the same situation. Draw at least two
+per stratum.
 }
 
 \examples{
@@ -82,7 +93,7 @@ survey::svytotal(~spend, des)
 ht_total(s, "spend")
 
 # Now the analysis this package does not do
-survey::svyby(~spend, ~site, des, survey::svymean)
+survey::svyquantile(~spend, des, quantiles = 0.5)
 \dontshow{\}) # examplesIf}
 }
 \seealso{

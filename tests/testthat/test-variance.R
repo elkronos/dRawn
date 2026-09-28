@@ -52,7 +52,7 @@ test_that("systematic joints are zero for rows that cannot co-occur", {
 test_that("designs without a closed form refuse", {
   d <- var_pop()
   expect_error(joint_prob(d, design_weighted("w", n = 10, method = "systematic")),
-               "sampling::UPsystematicpi2")
+               "no closed-form joint")
   expect_error(joint_prob(d, design_weighted("w", n = 10)), "no closed-form")
   expect_error(joint_prob(d, design_cluster("cl", n_clusters = 3, balanced = TRUE)),
                "no closed-form")
@@ -108,14 +108,15 @@ test_that("the estimated variance matches the estimator's true variance", {
   }
 })
 
-test_that("systematic sampling reports no variance and says why", {
+test_that("systematic sampling reports a successive-difference variance and says so", {
   d <- var_pop()
   s <- draw(d, design_systematic(interval = 8), seed = 1, weights = TRUE)
   r <- ht_total(s, "y")
   expect_true(is.finite(r$total))
-  expect_true(is.na(r$variance))
+  expect_equal(r$method, "successive difference")
+  expect_true(r$variance > 0)
   expect_match(r$note, "no design-unbiased variance")
-  expect_true(all(is.na(r$ci)))
+  expect_true(all(is.finite(r$ci)))
 })
 
 test_that("the print method shows the interval, or the reason there isn't one", {
@@ -125,9 +126,15 @@ test_that("the print method shows the interval, or the reason there isn't one", 
   expect_true(any(grepl("Horvitz-Thompson total", out)))
   expect_true(any(grepl("95% CI", out)))
 
-  out2 <- capture.output(print(ht_total(draw(d, design_systematic(interval = 8),
+  out2 <- capture.output(print(ht_total(draw(d, design_cluster("cl",
+                                                             n_clusters = 1),
                                              seed = 1, weights = TRUE), "y")))
   expect_true(any(grepl("se\\s+NA", out2)))
+
+  # An approximation is named in the print, never passed off as exact
+  out3 <- capture.output(print(ht_total(draw(d, design_systematic(interval = 8),
+                                             seed = 1, weights = TRUE), "y")))
+  expect_true(any(grepl("successive-difference approximation", out3)))
 })
 
 test_that("the jackknife supplies a variance where the analytic form cannot", {
@@ -136,8 +143,8 @@ test_that("the jackknife supplies a variance where the analytic form cannot", {
                     y = round(stats::runif(N, 5, 200)))
   pop$w <- pop$y + 50
 
-  # Systematic PPS has first-order probabilities but no closed-form joint ones
-  r <- ht_total(draw(pop, design_weighted("w", n = 30, method = "systematic"),
+  # One row per cluster: the exact two-stage estimator declines
+  r <- ht_total(draw(pop, design_multistage("cl", n_clusters = 6, n = 6),
                      seed = 1, weights = TRUE), "y")
   expect_equal(r$method, "jackknife")
   expect_true(is.finite(r$se))
@@ -191,7 +198,7 @@ test_that("simulation supplies joints for designs with no closed form", {
   set.seed(5)
   d <- data.frame(id = 1:30, w = stats::runif(30, 1, 10))
   des <- design_weighted("w", n = 8, method = "systematic")
-  expect_error(joint_prob(d, des), "UPsystematicpi2")
+  expect_error(joint_prob(d, des), "no closed-form joint")
 
   m <- joint_prob(d, des, simulate = TRUE, R = 3000, seed = 2)
   expect_equal(dim(m), c(30L, 30L))
@@ -281,7 +288,7 @@ test_that("the jackknife declines where deleting rows misrepresents the design",
   # at n/N = 0.375, against 1.11 with the correction.
   ps <- draw(pop, design_weighted("w", n = 12, method = "systematic"), seed = 1,
              weights = TRUE)
-  r <- ht_total(ps, "y")
+  r <- ht_total(ps, "y", variance = "jackknife")
   expect_equal(r$method, "jackknife")
   expect_match(r$note, "finite population correction")
 })
@@ -342,12 +349,12 @@ test_that("a negative analytic variance is reported, not passed on", {
 
 test_that("a design neither estimator can handle says so once, truthfully", {
   set.seed(3)
-  pop <- data.frame(y = stats::rnorm(60, 10, 3))
-  r <- ht_total(draw(pop, design_systematic(interval = 5), seed = 1,
+  pop <- data.frame(y = stats::rnorm(60, 10, 3), cl = rep(1:6, each = 10))
+  r <- ht_total(draw(pop, design_cluster("cl", n_clusters = 1), seed = 1,
                      weights = TRUE), "y")
   # Nothing computed a variance, so nothing may claim to have been used.
   expect_true(is.na(r$variance))
   expect_equal(r$method, "none")
-  expect_match(r$note, "no design-unbiased variance")
-  expect_match(r$note, "one primary sampling unit")
+  expect_match(r$note, "at least two clusters")
+  expect_match(r$note, "at least two primary")
 })

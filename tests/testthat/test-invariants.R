@@ -151,7 +151,8 @@ test_that("single-column frames survive intact", {
   res_sys <- draw(one_col, design_systematic(interval = 1, order_by = "v",
                                              start = 1))
   expect_identical(names(res_sys), "v")
-  expect_equal(res_sys$v, c(1, 2, 3))
+  # Every row taken, and returned in frame order like every other design
+  expect_equal(res_sys$v, c(3, 1, 2))
 })
 
 test_that("a short stream is trimmed, not padded with NULLs", {
@@ -220,7 +221,9 @@ test_that("allocation hits the total and does not floor rare strata", {
   expect_equal(nrow(draw(uneven, design_stratified("g", n = 50), seed = 1)), 50)
 
   skewed <- data.frame(x = 1:1000, g = c(rep("big", 999), "rare"))
-  expect_equal(nrow(draw(skewed, design_stratified("g", n = 10), seed = 1)), 10)
+  expect_warning(res <- draw(skewed, design_stratified("g", n = 10), seed = 1),
+                 "allocated no rows")
+  expect_equal(nrow(res), 10)
 })
 
 test_that("month buckets follow the calendar, not 30.44-day durations", {

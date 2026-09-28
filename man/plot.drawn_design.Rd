@@ -7,12 +7,13 @@
 \method{plot}{drawn_design}(
   x,
   y,
-  type = c("selection", "probability"),
+  type = c("selection", "probability", "map"),
   seed = NULL,
   ncol = NULL,
   max_dots = 4000,
   main = NULL,
   palette = NULL,
+  coords = NULL,
   ...
 )
 }
@@ -21,7 +22,7 @@
 
 \item{y}{The population data frame to draw against.}
 
-\item{type}{\code{"selection"} or \code{"probability"}.}
+\item{type}{\code{"selection"}, \code{"probability"} or \code{"map"}.}
 
 \item{seed}{Optional seed for the \code{"selection"} draw, so the picture is
 reproducible.}
@@ -36,6 +37,9 @@ subset, noted under the title. Keeps individual dots visible.}
 
 \item{palette}{Named list overriding any of \code{surface}, \code{ink}, \code{secondary},
 \code{muted}, \code{recessive}, \code{accent}, \code{fill}, \code{rule}.}
+
+\item{coords}{For \code{type = "map"}, the two columns to place rows by, \code{c(x, y)}. Defaults to the design's own \code{across} (\code{\link[=design_spread]{design_spread()}}) or
+\code{coords} (\code{\link[=design_spatial]{design_spatial()}}); required for any other design.}
 
 \item{...}{Passed to the underlying plot call.}
 }
@@ -59,6 +63,11 @@ as a step. Flat means every row had the same chance; plateaus mean
 strata; a rise means size-proportional selection. Rows the design can
 never reach sit at zero and are marked, which is usually the thing worth
 finding out.}
+\item{\code{"map"}}{Every row placed by two columns — coordinates, or any
+two numeric variables — with the selected ones filled in. This is the
+view for \code{\link[=design_spread]{design_spread()}} and \code{\link[=design_spatial]{design_spatial()}}, where what matters is
+how evenly the sample covers the space: compare a simple random sample's
+clumps and gaps against a spread one.}
 }
 
 Base graphics, so there is no plotting dependency to install.

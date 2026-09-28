@@ -28,11 +28,28 @@ A design object, for use with \code{\link[=draw]{draw()}}.
 Takes every \code{interval}-th row, beginning at \code{start}. The number of rows drawn
 follows from the interval and the size of the data, so there is no \code{n}.
 }
+\section{Variance}{
+
+A systematic sample has a single random start, so no design-unbiased
+variance estimator exists. \code{\link[=ht_total]{ht_total()}} uses the successive-difference
+approximation (Wolter 2007), which compares neighbouring sampled rows in
+the order the design walked. Sorting on a variable related to what you
+measure (\code{order_by}) is what makes systematic sampling efficient, and this
+estimator is the one that can see it; see \code{\link[=ht_total]{ht_total()}} for its limits.
+}
+
 \examples{
 df <- data.frame(id = 1:100, value = (1:100) / 10)
 draw(df, design_systematic(interval = 10, start = 3))
 draw(df, design_systematic(interval = 25, order_by = "value"), seed = 1)
 
+}
+\references{
+Madow, W. G. and Madow, L. H. (1944). On the theory of systematic sampling,
+I. \emph{Annals of Mathematical Statistics}, 15, 1–24.
+
+Wolter, K. M. (2007). \emph{Introduction to Variance Estimation}, 2nd ed.
+Springer.
 }
 \seealso{
 \code{\link[=draw]{draw()}}
@@ -45,6 +62,7 @@ Other designs:
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},
 \code{\link{design_spatial}()},
+\code{\link{design_spread}()},
 \code{\link{design_stratified}()},
 \code{\link{design_temporal}()},
 \code{\link{design_weighted}()}

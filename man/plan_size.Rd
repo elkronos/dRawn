@@ -81,6 +81,17 @@ information of 100. \code{response} inflates for non-response: at \code{0.6} you
 enough to end up with what you need.
 }
 
+\section{Where the formula comes from}{
+
+\code{n0 = (z * spread / margin)^2 * deff}, then Cochran's finite population
+correction \code{n0 / (1 + (n0 - 1) / N)}, then division by \code{response} (Cochran
+1977, section 4.4; Valliant, Dever and Kreuter 2018, chapter 3). \code{z} is the
+normal quantile. The interval \code{\link[=ht_total]{ht_total()}} reports uses t on the design's
+degrees of freedom, which is slightly wider when those are few — with a
+handful of clusters, plan on more clusters rather than trusting the margin
+to the last digit.
+}
+
 \examples{
 # A proportion, no prior guess, 20,000 in the frame
 plan_size(margin = 0.03, N = 20000, target = "proportion")
@@ -94,6 +105,14 @@ plan_size(margin = 5, sd = 40, N = 20000, deff = 2.5, response = 0.7)
 # A total, to within 100,000 across a 20,000-row frame
 plan_size(margin = 1e5, sd = 40, N = 20000, target = "total")
 
+}
+\references{
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
+
+Kish, L. (1965). \emph{Survey Sampling}. Wiley.
+
+Valliant, R., Dever, J. A. and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer.
 }
 \seealso{
 \code{\link[=deff]{deff()}} to measure the design effect of a past sample, \code{\link[=draw]{draw()}} to

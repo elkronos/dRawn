@@ -64,6 +64,23 @@
 #' # A total, to within 100,000 across a 20,000-row frame
 #' plan_size(margin = 1e5, sd = 40, N = 20000, target = "total")
 #'
+#' @section Where the formula comes from:
+#' `n0 = (z * spread / margin)^2 * deff`, then Cochran's finite population
+#' correction `n0 / (1 + (n0 - 1) / N)`, then division by `response` (Cochran
+#' 1977, section 4.4; Valliant, Dever and Kreuter 2018, chapter 3). `z` is the
+#' normal quantile. The interval [ht_total()] reports uses t on the design's
+#' degrees of freedom, which is slightly wider when those are few — with a
+#' handful of clusters, plan on more clusters rather than trusting the margin
+#' to the last digit.
+#'
+#' @references
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
+#'
+#' Kish, L. (1965). *Survey Sampling*. Wiley.
+#'
+#' Valliant, R., Dever, J. A. and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer.
+#'
 #' @seealso [deff()] to measure the design effect of a past sample, [draw()] to
 #'   take the sample.
 #' @export
@@ -157,7 +174,7 @@ print.drawn_plan <- function(x, ...) {
   cat("  margin         +/- ", format(x$margin), " at ",
       format(100 * x$level), "% confidence\n", sep = "")
   cat("  assuming       sd ", signif(x$spread, 4),
-      if (x$deff != 1) paste0(", deff ", x$deff) else "",
+      if (x$deff != 1) paste0(", deff ", signif(x$deff, 3)) else "",
       ", N ", if (is.finite(x$N)) fmt_n(x$N) else "unbounded", "\n", sep = "")
   msg <- if (isTRUE(x$capped)) {
     paste0("That is a census: the frame is not large enough to reach this ",
@@ -176,8 +193,7 @@ print.drawn_plan <- function(x, ...) {
     NULL
   }
   if (!is.null(msg)) {
-    cat("\n", strwrap(msg, prefix = "  "), sep = "\n")
-    cat("\n")
+    cat_note(msg)
   }
   invisible(x)
 }

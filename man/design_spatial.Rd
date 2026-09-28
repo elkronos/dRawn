@@ -2,7 +2,7 @@
 % Please edit documentation in R/design-spatial.R
 \name{design_spatial}
 \alias{design_spatial}
-\title{Spatial sampling}
+\title{Sampling within a region}
 \usage{
 design_spatial(coords, region, n, crs = 4326, na_rm = FALSE)
 }
@@ -23,7 +23,11 @@ EPSG:4326.}
 A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Samples rows whose coordinates fall inside a region.
+Draws a simple random sample of the rows whose coordinates fall inside a
+region. It decides \emph{where} sampling happens, not how evenly it covers the
+ground: for a sample spread evenly across space — usually far more precise
+when what you measure varies smoothly — use \code{\link[=design_spread]{design_spread()}}, on the frame
+restricted to the region if need be.
 }
 \section{Coordinate order}{
 
@@ -74,6 +78,7 @@ Other designs:
 \code{\link{design_multistage}()},
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},
+\code{\link{design_spread}()},
 \code{\link{design_stratified}()},
 \code{\link{design_systematic}()},
 \code{\link{design_temporal}()},

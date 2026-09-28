@@ -52,13 +52,15 @@ if they were proportional biases a Horvitz-Thompson total by around 1\% at
 There is no closed form for \code{pi}, so \code{\link[=inclusion_prob]{inclusion_prob()}} refuses to give
 one. Fine when you want a weighted selection; wrong as the basis for an
 estimate.}
-\item{\code{"systematic"}}{Systematic probability-proportional-to-size. Walks the
-cumulative weights with a fixed step from a random start, giving
+\item{\code{"systematic"}}{Randomised systematic probability-proportional-to-
+size (Madow 1949; Hartley and Rao 1962). Shuffles the rows, then walks
+the cumulative weights with a fixed step from a random start, giving
 \code{pi_i = n * p_i} exactly. Rows heavy enough that \code{n * p_i > 1} are taken
-with certainty and the rest rescaled, repeatedly, until every probability
-is valid. Fixed sample size. Some pairs of rows can never appear together,
-so joint inclusion probabilities are zero for them and variance estimation
-needs care.}
+with certainty and the rest rescaled, repeatedly, until every
+probability is valid. Fixed sample size. The shuffle means every pair of
+rows can appear together, but their joint probabilities have no closed
+form, so \code{\link[=ht_total]{ht_total()}} uses Deville's approximation for the variance,
+which needs only the first-order probabilities.}
 \item{\code{"poisson"}}{Each row is included independently with probability
 \code{pi_i = n * p_i}, capped at 1. Inclusion probabilities are exactly
 proportional to size and every pair can co-occur, at the cost of a
@@ -82,8 +84,24 @@ s <- draw(df, d, seed = 1, weights = TRUE)
 sum(s$w * s$.weight)   # estimates sum(df$w) = 210
 
 }
+\references{
+Madow, W. G. (1949). On the theory of systematic sampling, II. \emph{Annals of
+Mathematical Statistics}, 20, 333–354.
+
+Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal
+probabilities and without replacement. \emph{Annals of Mathematical Statistics},
+33, 350–374.
+
+Brewer, K. R. W. and Hanif, M. (1983). \emph{Sampling with Unequal
+Probabilities}. Springer.
+
+Tillé, Y. (2006). \emph{Sampling Algorithms}. Springer.
+}
 \seealso{
-\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
+\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=design_spread]{design_spread()}} to select in
+proportion to size \emph{and} spread the sample across a map. The \code{sampling}
+package implements further fixed-size unequal-probability algorithms
+(Brewer, Sampford, Tillé, maximum entropy) as vector functions.
 
 Other designs: 
 \code{\link{design_bootstrap}()},
@@ -93,6 +111,7 @@ Other designs:
 \code{\link{design_reservoir}()},
 \code{\link{design_simple}()},
 \code{\link{design_spatial}()},
+\code{\link{design_spread}()},
 \code{\link{design_stratified}()},
 \code{\link{design_systematic}()},
 \code{\link{design_temporal}()}

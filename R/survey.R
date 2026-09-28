@@ -1,39 +1,45 @@
 #' Hand a sample to the survey package
 #'
 #' Builds a [survey::svydesign()] object from a drawn sample, so the analysis
-#' this package does not do — subpopulation estimates, regression, calibration,
-#' quantiles with proper standard errors — can be done by the package that does.
+#' this package does not do — regression, calibration, quantiles with proper
+#' standard errors, replicate weights — can be done by the package that does.
 #'
 #' The two packages compute variance from different starting points. This one
-#' uses the design's joint inclusion probabilities; `survey` reconstructs the
+#' uses the design's inclusion probabilities; `survey` reconstructs the
 #' variance from the design's *shape*. So the job here is to express each design
 #' in `survey`'s own terms rather than hand over a weight column and hope.
 #'
 #' @section What maps to what:
 #' \tabular{lll}{
 #'   **Design** \tab **Expressed as** \tab **Standard errors** \cr
-#'   [design_simple()], [design_reservoir()], [design_spatial()] \tab `ids = ~1` with `fpc` the frame size \tab identical \cr
+#'   [design_simple()], [design_spatial()] \tab `ids = ~1` with `fpc` the rows the design can reach \tab identical \cr
+#'   [design_reservoir()] \tab `ids = ~1` with `fpc` the rows the stream reached \tab identical \cr
 #'   [design_stratified()] \tab `strata` from the strata columns, `fpc` each stratum's size \tab identical \cr
 #'   [design_temporal()] \tab `strata` from the sampling intervals, `fpc` each interval's size \tab identical \cr
 #'   [design_cluster()] \tab `ids` the cluster column, `fpc` the number of clusters \tab identical \cr
-#'   [design_weighted()], `"systematic"` \tab `ids = ~1` with `fpc` the frame size \tab identical \cr
+#'   [design_multistage()] \tab two stages, `ids = ~cluster + row`, `fpc` the number of clusters and each cluster's size \tab identical \cr
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size \tab identical \cr
-#'   [design_certainty()] \tab the certainty rows as their own stratum, taken whole \tab identical \cr
-#'   [design_multistage()] \tab `ids` the cluster column \tab **differ by a few percent** \cr
-#'   [design_systematic()] \tab `ids = ~1` with `fpc` the frame size \tab **`survey` returns one; this package declines** \cr
+#'   [design_certainty()] \tab the certainty rows as their own stratum, taken whole \tab as `rest` \cr
+#'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab within about 0.2 percent \cr
+#'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size` \tab **`survey`'s is larger** \cr
+#'   [design_systematic()] \tab `ids = ~1` with `fpc` the frame size \tab **differ** \cr
 #' }
 #'
 #' "Identical" means to floating point, and is checked by this package's tests
-#' against `survey::svytotal()`. The two exceptions are real and worth knowing:
+#' against `survey::svytotal()`, as are domain estimates against
+#' `survey::svyby()` and degrees of freedom against `survey::degf()`. The
+#' exceptions are real and worth knowing:
 #'
-#' * **Multistage.** `survey` uses the ultimate-cluster approximation, which
-#'   attributes all the variance to the first stage and ignores sampling within
-#'   clusters. [ht_total()] uses the exact two-stage form. `survey`'s is the
-#'   smaller of the two, by around 5–10% on a typical frame.
-#' * **Systematic.** Most pairs of rows can never co-occur, so no
-#'   design-unbiased variance exists and [ht_total()] returns `NA` with a note.
-#'   `survey`, having only been told `ids = ~1`, computes the simple-random
-#'   variance — which is the conservative substitute, not the design's own.
+#' * **Systematic PPS.** Neither package has its joint probabilities. This one
+#'   uses Deville's approximation and `survey` uses Brewer's; the two are close
+#'   relatives and agree to a fraction of a percent.
+#' * **Spread.** `survey` has no estimator for a spatially balanced sample, so
+#'   it is told only the first-order design and computes a variance that
+#'   ignores the spreading. That errs conservative, often substantially.
+#' * **Systematic.** `survey`, told only `ids = ~1`, computes the simple-random
+#'   variance; [ht_total()] uses the successive-difference approximation, which
+#'   can see a trend along the sort order. Neither is design-unbiased, because
+#'   no such estimator exists for one systematic sample.
 #'
 #' Certainty rows arrive in a stratum where `n == N`, so `survey`'s own finite
 #' population correction zeroes them out, matching this package's treatment.
@@ -43,6 +49,11 @@
 #' `rest`, where the certainty rows and the rest are different kinds of sampling
 #' unit. [design_bootstrap()] is refused outright — it resamples the sample, so
 #' there is no finite population for `svydesign()` to represent.
+#'
+#' A stratum or interval with a single sampled row makes `survey` stop with
+#' "Stratum has only one PSU" unless `options(survey.lonely.psu)` says
+#' otherwise; [ht_total()] declines in the same situation. Draw at least two
+#' per stratum.
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`.
 #' @param ... Passed to [survey::svydesign()]. Anything named here overrides
@@ -67,7 +78,7 @@
 #' ht_total(s, "spend")
 #'
 #' # Now the analysis this package does not do
-#' survey::svyby(~spend, ~site, des, survey::svymean)
+#' survey::svyquantile(~spend, des, quantiles = 0.5)
 #'
 #' @seealso [ht_total()], [ht_mean()]
 #' @export
@@ -88,9 +99,17 @@ as_svydesign <- function(sample, ...) {
   dat <- as.data.frame(sample)
   parts <- survey_parts(design, dat, pop, rows = attr(sample, "drawn_rows"))
   dat$.fpc <- parts$fpc
+  fpc <- stats::as.formula("~.fpc")
+  if (!is.null(parts$fpc2)) {
+    # Two stages: clusters, then rows within them, each with its own
+    # population count, so `survey` computes the full two-stage variance.
+    dat$.fpc2 <- parts$fpc2
+    dat$.unit <- seq_len(nrow(dat))
+    fpc <- stats::as.formula("~.fpc + .fpc2")
+  }
   if (!is.null(parts$stratum)) dat$.stratum <- parts$stratum
   args <- c(list(data = dat, weights = stats::as.formula("~.weight"),
-                 ids = parts$ids, fpc = stats::as.formula("~.fpc")),
+                 ids = parts$ids, fpc = fpc),
             parts$extra)
   if (!is.null(parts$stratum)) {
     args$strata <- stats::as.formula("~.stratum")
@@ -137,7 +156,12 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
     },
     weighted = {
       if (design$method != "poisson") {
-        return(list(stratum = NULL, fpc = rep(nrow(pop), nrow(dat)), ids = one))
+        # Neither package has the joint probabilities of systematic PPS.
+        # `survey`'s Brewer approximation and this package's Deville
+        # approximation are close relatives, and agree to a fraction of a
+        # percent.
+        return(list(stratum = NULL, fpc = dat$.prob, ids = one,
+                    extra = list(pps = "brewer")))
       }
       # Poisson sampling has a random size, so no finite population correction
       # over a fixed n describes it. `survey` models it directly.
@@ -151,9 +175,34 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
       refuse_nested(prefix, "a cluster or multistage `rest`",
                     paste0("the certainty rows and the clusters are different ",
                            "kinds of sampling unit"))
-      list(stratum = NULL,
-           fpc = rep(length(unique(pop[[design$clusters]])), nrow(dat)),
-           ids = stats::as.formula(paste0("~", design$clusters)))
+      labels <- pop[[design$clusters]]
+      n_clusters <- length(unique(labels[!is.na(labels)]))
+      if (design_type(design) == "cluster") {
+        return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
+                    ids = stats::as.formula(paste0("~", design$clusters))))
+      }
+      sizes <- table(labels[!is.na(labels)])
+      list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
+           fpc2 = as.integer(sizes[as.character(dat[[design$clusters]])]),
+           ids = stats::as.formula(paste0("~", design$clusters, " + .unit")))
+    },
+    reservoir = {
+      # Rows past `max_items` are never read, so the population is the rows
+      # the stream reached, not the whole frame.
+      list(stratum = NULL, fpc = rep(reservoir_reach(design, nrow(pop)),
+                                     nrow(dat)), ids = one)
+    },
+    spread = {
+      # Neither package has the pivotal method's joint probabilities. Handed
+      # to `survey` as the unequal- or equal-probability draw it is at first
+      # order, which does not credit the spreading and so errs conservative.
+      fr <- spread_frame(design, pop)
+      if (is.null(design$size)) {
+        list(stratum = NULL, fpc = rep(length(fr$keep), nrow(dat)), ids = one)
+      } else {
+        list(stratum = NULL, fpc = dat$.prob, ids = one,
+             extra = list(pps = "brewer"))
+      }
     },
     spatial = {
       # The design's population is the rows inside the region, not the frame.
@@ -184,6 +233,12 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
         out$stratum[!is_certain] <- rest$stratum %||%
           paste0(prefix, "(rest)")
         out$fpc[!is_certain] <- rest$fpc
+        if (!is.null(rest$extra$pps)) {
+          # A PPS `rest` states its fpc as probabilities, and `survey` needs
+          # the whole design in the same terms: certainty rows are probability 1.
+          out$fpc[is_certain] <- 1
+          out$extra <- rest$extra
+        }
       }
       out
     },
