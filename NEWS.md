@@ -1,3 +1,101 @@
+# drawn 0.2.0
+
+An adversarial review of 0.1.0 found estimates that were wrong without saying
+so. Every fix below was reproduced by simulation first, and each now has a
+test that fails on the old behaviour.
+
+## Wrong answers, fixed
+
+* **One sampled row per stratum reported a variance of 0.** Sen-Yates-Grundy
+  has no within-stratum pair to sum over, so a stratified sample with one row
+  in every stratum printed a standard error of exactly zero and a zero-width
+  interval. `ht_total()` and `ht_mean()` now decline with the reason, as
+  `survey` does by default, for strata and for `design_temporal()` intervals.
+* **A stratum allocated no rows silently biased the total.** Proportional
+  allocation gives nothing to a stratum smaller than about `N / n`, and Neyman
+  allocation gives nothing to one whose auxiliary variable is constant. Its
+  rows then have probability 0 and drop out of every estimate; one example was
+  84% low. `draw()` now warns, naming the strata and the fix. The
+  documentation previously claimed `min_per_stratum = 0` "leaves allocation
+  unbiased" and that a floor biases a total; both were wrong, and are
+  corrected.
+* **The jackknife ignored strata.** It deleted rows across the whole sample,
+  counting the differences *between* strata as sampling variance: sixty times
+  too large on a well-stratified frame. It is now the stratified (JKn)
+  jackknife, and equals the analytic figure exactly for `design_stratified()`
+  and `design_temporal()`.
+* **One row per cluster understated a multistage variance by ~30%.** The
+  exact two-stage estimator cannot see within-cluster variation when only one
+  row is taken per cluster. It now declines, and `variance = "auto"` falls back
+  to the delete-a-cluster (ultimate-cluster) jackknife.
+* **Neyman allocation abandoned its own rule when a stratum was capped.** The
+  surplus from a stratum too small for its share was dealt out round-robin;
+  it is now re-split in proportion to `size * sd`, as in Cochran (1977, 5.9).
+* `ht_mean(estimator = "ht")` printed itself as a Hajek mean.
+* `design_systematic(order_by = )` returned rows in sorted order, breaking the
+  documented promise that rows come back in frame order.
+* The documentation for `design_weighted(method = "systematic")` said some
+  pairs of rows can never be drawn together and pointed to
+  `sampling::UPsystematicpi2()` for joint probabilities. The rows are shuffled
+  before the walk, so every pair can co-occur and that function answers a
+  different design.
+
+## Variance estimators from the literature
+
+Every estimate now reports which estimator produced its variance in `method`,
+and names any approximation when it prints.
+
+* **Confidence intervals use t on the design's degrees of freedom** — primary
+  sampling units minus strata (Korn and Graubard 1999), matching
+  `survey::degf()`. At four clusters the normal interval covered about 87%;
+  the t interval restores nominal coverage. `df = Inf` gives the normal
+  interval.
+* **Systematic PPS uses Deville's (1999) approximation**, which needs only
+  first-order probabilities and scales each row by its own `1 - pi`. It
+  equals `sampling::varest()` exactly and tracks the empirical variance at
+  0.98, where the previous jackknife ran at 0.89.
+* **Systematic samples get the successive-difference approximation** (Wolter
+  2007) rather than no variance at all. On a frame sorted by something related
+  to `y` it stays near the truth where the simple random formula overstates
+  two- to thirtyfold. Its limits — a cycle matching the interval, or a trend
+  so smooth the random start is the only variation — are documented.
+
+## New
+
+* `design_spread()` draws a spatially balanced sample by the local pivotal
+  method (Grafström, Lundström and Schelin 2012): exact first-order
+  inclusion probabilities, equal or proportional to `size`, with neighbours
+  competing so the sample covers the space evenly. On a smooth surface its
+  variance was 14–25% of a simple random sample's. It spreads across any
+  numeric columns, so it also balances a sample on covariates without
+  choosing strata. `ht_total()` uses the local mean variance estimator
+  (Stevens and Olsen 2003) for it.
+* `ht_total()` and `ht_mean()` take `by =` for domain estimates computed from
+  the whole sample rather than a subset of it. Standard errors match
+  `survey::svyby()` exactly.
+* `ht_mean()` accepts a logical `y`, so a proportion is one call.
+* `plot(design, data, type = "map")` places every row by two columns and
+  fills in the selected ones — the view that shows whether a sample covers the
+  ground.
+* Key functions carry `@references` to the methods they implement.
+
+## Handing off to survey
+
+* Multistage designs are expressed as two stages, so `survey`'s standard error
+  now matches `ht_total()` exactly; it previously differed by up to 5–10%.
+* Systematic PPS, alone or as a certainty design's `rest`, maps to
+  `pps = "brewer"` and agrees with `ht_total()` within 0.2%.
+* A reservoir capped by `max_items` uses the rows the stream reached as its
+  population, not the whole frame.
+
+## Documentation and site
+
+* The README is generated from `README.Rmd`, so every output shown is real.
+* New articles: a getting-started walkthrough, how the estimates work (every
+  estimator, its reference and its simulation check), an audit-sampling
+  walkthrough, and a spatially balanced field survey.
+* `graphics` and `utils` are declared in `Imports`.
+
 # drawn 0.1.0
 
 First release.
