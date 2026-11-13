@@ -71,6 +71,12 @@
 #'   down. When no stratum has any spread, the shares are
 #'   proportional to `size / sqrt(cost)`, as for equal spreads, and without
 #'   `cost` to `size`.
+#' @param within How rows are drawn inside each stratum: `NULL`, the
+#'   default, for a simple random sample, or [design_systematic()] without
+#'   `interval` or `n`, to walk each stratum in the order of its `order_by`
+#'   column, or in frame order without one. Each stratum gets the rows the
+#'   allocation gives it, at an even step from a random start of its own;
+#'   see "Systematic sampling within strata". Needs `replace = FALSE`.
 #'
 #' @section Rounding, ties and the order of strata:
 #' Each stratum first gets the whole part of its share of `n`. The rows left
@@ -91,6 +97,39 @@
 #' An empty string is a stratum like any other, shown as `(blank)` in
 #' messages.
 #'
+#' @section Systematic sampling within strata:
+#' With `within = design_systematic(order_by = "x")`, the strata are
+#' allocated as without it, each stratum is sorted on `x`, and the `n_h`
+#' rows allocated to a stratum of `N_h` are taken as
+#' `design_systematic(n = n_h)` takes them from a frame of `N_h` rows: a
+#' start drawn from (0, 1) and a step of `N_h / n_h` rows, which need not be
+#' whole. Strata draw their starts in key order. Every row has probability
+#' `n_h / N_h`, as under simple random sampling within strata, so the
+#' allocation, [allocation_table()] and the weights are the same; what
+#' changes is which rows can be drawn together. Two rows of one stratum have
+#' the joint probability of the systematic design there, which is 0 for
+#' rows less than a step apart, and two rows of different strata the product
+#' of their probabilities. Rows whose `x` is missing are refused, or with
+#' the `na_rm = TRUE` of the systematic design left out of their stratum
+#' before it is allocated.
+#'
+#' Each stratum has one random start, so no design-unbiased variance exists,
+#' as for [design_systematic()] on its own. [ht_total()] and [ht_mean()]
+#' add up the strata's successive-difference approximations,
+#' `(1 - n_h / N_h) * n_h / (2 * (n_h - 1)) * sum(diff(y / pi)^2)` over each
+#' stratum's sampled rows in the order it was walked (Wolter 2007), with
+#' the degrees of freedom of a stratified sample, the sampled rows less the
+#' strata. A stratum with one sampled row from several is refused, as
+#' without `within`. So is the jackknife: a stratum's rows all come from one
+#' start, and deleting them one at a time does not mirror the design.
+#' [as_svydesign()] hands `survey` the strata, whose simple-random variance
+#' differs.
+#'
+#' Only [design_systematic()] is taken as `within`, with one start and no
+#' `interval` or `n`: the allocation sets the size of each stratum. To walk
+#' a stratum by several columns, give `order_by` a column of ranks, as in
+#' the examples of [design_systematic()].
+#'
 #' @return A design object, for use with [draw()]. [allocation_table()] shows
 #'   the rows it takes from each stratum of a frame before anything is drawn.
 #'
@@ -99,6 +138,9 @@
 #' method. *Journal of the Royal Statistical Society*, 97, 558–625.
 #'
 #' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
+#'
+#' Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
+#' Springer.
 #'
 #' @examples
 #' df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))
@@ -120,6 +162,12 @@
 #'                            cost = c(a = 1, b = 1, c = 4, d = 4))
 #' allocation_table(df, pilot)
 #'
+#' # Each stratum walked in order of `size`, from a start of its own
+#' df$size <- (df$id * 37) %% 101
+#' walked <- design_stratified("site", n = 20,
+#'                             within = design_systematic(order_by = "size"))
+#' draw(df, walked, seed = 1)
+#'
 #' @family designs
 #' @seealso [draw()], [allocation_table()]
 #' @export
@@ -127,7 +175,7 @@ design_stratified <- function(strata, n,
                               allocation = c("proportional", "equal", "neyman"),
                               allocation_by = NULL,
                               min_per_stratum = 0L, replace = FALSE,
-                              na_rm = FALSE, cost = NULL) {
+                              na_rm = FALSE, cost = NULL, within = NULL) {
   if (is.numeric(allocation) || is.data.frame(allocation)) {
     strata <- check_columns(strata, "strata")
     allocation <- check_stratum_counts(allocation, strata)
@@ -185,8 +233,41 @@ design_stratified <- function(strata, n,
     },
     min_per_stratum = check_count(min_per_stratum, "min_per_stratum"),
     replace = check_flag(replace, "replace"),
-    na_rm = check_flag(na_rm, "na_rm")
+    na_rm = check_flag(na_rm, "na_rm"),
+    within = check_within(within, replace)
   ))
+}
+
+#' Check `within`: `NULL`, or a systematic design the allocation can size
+#' @noRd
+check_within <- function(within, replace) {
+  if (is.null(within)) return(NULL)
+  if (!inherits(within, "drawn_design_systematic")) {
+    stop("`within` must be NULL, for a simple random sample in each ",
+         "stratum, or design_systematic(), to walk each stratum in order, ",
+         "not ", if (is_design(within)) design_label(within) else
+           format_bad(within), ".", call. = FALSE)
+  }
+  given <- c("interval", "n")[c(!is.null(within$interval),
+                                 !is.null(within$n))]
+  if (length(given)) {
+    stop("`within` takes design_systematic() without `interval` or `n`, ",
+         "and has `", given[1], "` (", within[[given[1]]], "). The ",
+         "allocation sets the size of each stratum. Leave it out, as in ",
+         "within = design_systematic(order_by = \"x\").", call. = FALSE)
+  }
+  if (isTRUE(replace)) {
+    stop("`within` cannot be combined with replace = TRUE: a systematic ",
+         "walk takes each row of a stratum at most once. Use replace = ",
+         "FALSE.", call. = FALSE)
+  }
+  within
+}
+
+#' Does the design walk each stratum systematically?
+#' @noRd
+walks_strata <- function(design) {
+  inherits(design, "drawn_design_stratified") && !is.null(design$within)
 }
 
 #' Check `allocation_by`: a column name, or a standard deviation per stratum
@@ -420,6 +501,10 @@ stratum_cost <- function(design, data, key = group_key(data, design$strata)) {
 #' `replace`, `min_per_stratum`, `allocation_by` or `cost`, and is treated as
 #' a design without replacement, with no floor.
 #'
+#' Under `within`, a row whose `order_by` is missing is refused, or with the
+#' systematic design's `na_rm` left out like a row with a missing stratum
+#' key.
+#'
 #' @noRd
 stratum_allocation <- function(design, data) {
   validate_data(data, required_columns = design$strata)
@@ -427,6 +512,15 @@ stratum_allocation <- function(design, data) {
   key <- group_key(data, design$strata)
   bad <- check_na_policy(is.na(key), design$na_rm, "a missing stratum key")
   if (all(bad)) stop("Every row has a missing stratum key.", call. = FALSE)
+  if (walks_strata(design)) {
+    # A row with no place in its stratum's walk cannot be drawn, so it is
+    # left out before the strata are counted and allocated.
+    gone <- walk_missing(design$within, data, bad, key)
+    if (any(gone)) {
+      bad <- bad | gone
+      key[gone] <- NA
+    }
+  }
   code <- as.integer(key)
   idx <- split(seq_len(nrow(data))[!bad], key[!bad])
   sizes <- lengths(idx, use.names = FALSE)
@@ -649,7 +743,89 @@ draw_design.drawn_design_stratified <- function(design, data) {
       paste0("Give each stratum a count of at least 1 in `allocation` (or ",
              "2, so each stratum also supports a variance).")
     })
+  if (walks_strata(design)) {
+    return(reindex(data, take_walks(design, data, al), sort = TRUE))
+  }
   reindex(data, take_within(al$idx, al$n_alloc, design$replace), sort = TRUE)
+}
+
+# ---- systematic sampling within strata --------------------------------------
+
+#' Rows `within` cannot place on its walk
+#'
+#' A missing `order_by` among the rows that have a stratum, `bad` marking the
+#' others and `key` giving each row's stratum. Refused unless the systematic
+#' design has `na_rm = TRUE`, and refused even then for a stratum that would
+#' be left with no rows to walk.
+#'
+#' @noRd
+walk_missing <- function(within, data, bad, key) {
+  col <- within$order_by
+  if (is.null(col)) return(rep(FALSE, nrow(data)))
+  if (!col %in% names(data)) {
+    stop("`data` is missing column: `", col, "`.", call. = FALSE)
+  }
+  check_key_columns(data, col, "order_by")
+  what <- paste0("a missing `", col, "`")
+  gone <- check_na_policy(is.na(data[[col]]) & !bad, within$na_rm, what)
+  code <- as.integer(key)
+  k <- nlevels(key)
+  emptied <- tabulate(code[!bad], k) > 0L &
+    tabulate(code[!bad & !gone], k) == 0L
+  if (any(emptied)) {
+    one <- sum(emptied) == 1L
+    stop(if (one) "Stratum " else "Strata ",
+         quote_labels(levels(key)[emptied]), if (one) " has " else " have ",
+         what, " in every row, so `within` has nothing to walk there. Give ",
+         "those rows a `", col, "`, or leave ", if (one) "the stratum" else
+           "those strata", " out of `data`.", call. = FALSE)
+  }
+  gone
+}
+
+#' The frame rows of every stratum, in the order the design walks them
+#'
+#' Stratum by stratum in key order, each sorted on the `order_by` of
+#' `within`, or left in frame order without one. Text is sorted byte by byte
+#' and ties keep frame order, as in [design_systematic()]. `code` is each
+#' row's stratum from `stratum_allocation()`, `NA` for a row in none.
+#'
+#' @noRd
+stratum_walk <- function(design, data, code) {
+  kept <- which(!is.na(code))
+  col <- design$within$order_by
+  if (!is.null(col)) kept <- kept[key_order(data[[col]][kept])]
+  # Radix ordering is stable, so each stratum keeps the order of its key.
+  kept[order(code[kept], method = "radix")]
+}
+
+#' Each frame row's position in its stratum's walk, `NA` for a row in none
+#'
+#' `k` is the number of strata that `code` indexes.
+#'
+#' @noRd
+walk_positions <- function(design, data, code, k) {
+  walk <- stratum_walk(design, data, code)
+  before <- c(0L, cumsum(tabulate(code, k)))
+  pos <- rep(NA_integer_, length(code))
+  pos[walk] <- seq_along(walk) - before[code[walk]]
+  pos
+}
+
+#' The rows a stratified design with `within` draws
+#'
+#' Stratum `h`, in key order, takes the walk positions `fractional_walk()`
+#' gives for `n_h` of `N_h` rows, from one `stats::runif()` of its own. A
+#' stratum allocated no rows draws no start.
+#'
+#' @noRd
+take_walks <- function(design, data, al) {
+  walk <- stratum_walk(design, data, al$code)
+  before <- c(0L, cumsum(al$sizes))
+  unlist(lapply(which(al$n_alloc > 0L), function(h) {
+    walk[before[h] + fractional_walk(stats::runif(1L), al$n_alloc[h],
+                                     al$sizes[h])]
+  }))
 }
 
 # ---- inclusion probability ------------------------------------------------

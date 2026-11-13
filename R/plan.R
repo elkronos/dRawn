@@ -257,6 +257,10 @@ sample_summary <- function(sample) {
     # or cluster column renamed or recoded in the sample after the draw still
     # counts the groups that were drawn.
     key <- group_key(pop, grp_col)
+    if (walks_strata(design)) {
+      # Rows the walk leaves out for a missing `order_by` are in no stratum.
+      key[is.na(stratum_allocation(design, pop)$code)] <- NA
+    }
     code <- as.integer(key)
     got <- tabulate(code[state$rows], nlevels(key))
     have <- tabulate(code, nlevels(key))

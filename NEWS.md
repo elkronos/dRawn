@@ -435,6 +435,11 @@
   `n_replicates * n / nrow(data)` times on average. Under the moving-block
   bootstrap the first and last `block_length - 1` rows appear less often,
   and the message now says so.
+* `design_systematic()` given more than one `order_by` column says how to
+  walk by several: add a column of ranks built from them, such as
+  `order(order(data$a, data$b, method = "radix"))`, and give its name.
+  `?design_systematic` has an example. The message said only that
+  `order_by` must name a single column.
 
 ## Behaviour changes
 
@@ -542,6 +547,9 @@
 * `draw()` with a finite `design_reservoir(max_items =)` pushes the line it
   reads past the cap back onto an open connection in text mode, so the next
   read starts with it. It was read and dropped.
+* The default title of `plot()` names the `order_by` of a systematic
+  design, its `n_starts` when above 1, and the `within` of a stratified
+  design.
 
 ## New
 
@@ -650,6 +658,28 @@
   a fractional `interval` was refused, so 30 rows from 100 could not be
   asked for. `interval` keeps its place as the first argument, and a seed
   draws the same rows with it as before.
+* `design_systematic()` takes `n_starts`, for a replicated systematic
+  sample. With `n_starts = m`, `m` different starts are drawn from
+  `1:(m * interval)` and each is walked at a step of `m * interval`, so
+  every row keeps probability `1 / interval` and the expected sample size
+  is unchanged. `joint_prob()` gives the exact joint probabilities, and
+  `ht_total()` and `ht_mean()` use the variance between the replicates'
+  totals, `(1 - 1 / interval) * var(t_r) / m`, which is design-unbiased, on
+  `m - 1` degrees of freedom. `as_svydesign()` hands the replicates to
+  `survey` as clusters and gets the same standard error. One start has no
+  unbiased variance at all, and the successive-difference approximation
+  was the only figure on offer.
+* `design_stratified()` takes `within = design_systematic(order_by = "x")`
+  for systematic sampling within strata. The strata are allocated as
+  before, and each is sorted on `x` and walked from a start of its own at a
+  step of `N_h / n_h` rows, so every row keeps probability `n_h / N_h`.
+  `joint_prob()` gives the exact joint probabilities, `ht_total()` and
+  `ht_mean()` add up the strata's successive-difference variances on the
+  degrees of freedom of a stratified sample, and `as_svydesign()` hands
+  `survey` the strata. Other designs as `within` are refused, and so is
+  `design_systematic()` with `interval` or `n` there, since the allocation
+  sets each stratum's size. `design_systematic()` with neither is now built
+  for this role, and refused if drawn on its own.
 
 ## Speed and memory
 

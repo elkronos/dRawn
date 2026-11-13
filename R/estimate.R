@@ -510,7 +510,7 @@ domain_variances <- function(parts, dom, est, variance, ratio, ctx) {
   k <- length(dom$levels_in)
   out <- vector("list", k)
   if (ratio && variance != "none") {
-    psu <- sample_units(parts$design, parts$units)
+    psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows)
     for (j in seq_len(k)) {
       out[j] <- list(ratio_decline(parts, dom$idx[[j]], domain_frame(dom, j),
                                    dom$labels[dom$levels_in[j]], psu))
@@ -583,7 +583,7 @@ estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
   labels <- dom$labels[dom$levels_in[used]]
   var_out <- NULL
   if (what == "mean" && estimator == "hajek" && variance != "none") {
-    psu <- sample_units(parts$design, parts$units)
+    psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows)
     notes <- unlist(lapply(seq_along(used), function(u) {
       ratio_decline(parts, dom$idx[[used[u]]], domain_frame(dom, used[u]),
                     labels[u], psu)$note

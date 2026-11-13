@@ -173,7 +173,15 @@ test_that("deleting order_by from the frame after the draw leaves the sample", {
 
 test_that("design_systematic() takes `interval` or `n`, and `start` with `interval`", {
   expect_identical(design_systematic(7), design_systematic(interval = 7))
-  expect_error(design_systematic(), "needs `interval` or `n`")
+  # Without either it is built, for design_stratified(within =), and refused
+  # wherever it would have to draw on its own.
+  bare <- design_systematic(order_by = "id")
+  d <- data.frame(id = 1:10)
+  want <- "`design_systematic()` has no `interval` or `n`"
+  expect_error(draw(d, bare, seed = 1), want, fixed = TRUE)
+  expect_error(inclusion_prob(d, bare), want, fixed = TRUE)
+  expect_error(joint_prob(d, bare), want, fixed = TRUE)
+  expect_error(design_systematic(start = 2), "`start` needs `interval`")
   expect_error(design_systematic(5, n = 3), "not both")
   expect_error(design_systematic(n = 3, start = 1),
                "`start` cannot be fixed with `n`")
@@ -293,4 +301,187 @@ test_that("a fixed-size systematic sample goes to survey with the rows walked", 
   expect_equal(unname(coef(survey::svytotal(~y, sv))), r$total)
   expect_equal(survey::degf(sv), r$df)
   expect_equal(unname(sv$fpc$popsize[, 1]), rep(49, 7))
+})
+
+# ---- several random starts ---------------------------------------------------
+
+# Every set of `m` starts from 1:(m * k), each walked at a step of m * k:
+# the rows each set takes, all equally likely.
+every_start_set <- function(N, k, m) {
+  sets <- utils::combn(m * k, m)
+  lapply(seq_len(ncol(sets)), function(j) {
+    st <- sets[, j]
+    sort(unlist(lapply(st[st <= N], function(s) seq(s, N, by = m * k))))
+  })
+}
+
+test_that("n_starts is checked when the design is built", {
+  des <- design_systematic(interval = 10, n_starts = 3)
+  expect_identical(des$n_starts, 3L)
+  expect_identical(design_systematic(10)$n_starts, 1L)
+  expect_output(print(des), "n_starts +3")
+  expect_identical(drawn:::design_label(des),
+                   "design_systematic(interval = 10, n_starts = 3)")
+  expect_identical(drawn:::design_label(design_systematic(10)),
+                   "design_systematic(interval = 10)")
+  expect_error(design_systematic(10, n_starts = 0), "at least 1")
+  expect_error(design_systematic(10, n_starts = 1.5), "single whole number")
+  expect_error(design_systematic(n = 4, n_starts = 2),
+               "Give `interval` in place of `n`")
+  expect_error(design_systematic(n_starts = 2), "needs `interval`")
+  expect_error(design_systematic(3, start = 1, n_starts = 2),
+               "`start` cannot be fixed with `n_starts` (2)", fixed = TRUE)
+  expect_error(design_systematic(1e9, n_starts = 3), "must be at most")
+})
+
+test_that("n_starts draws that many replicates, each at a step of n_starts * interval", {
+  d <- data.frame(id = 1:120)
+  for (seed in 1:10) {
+    ids <- draw(d, design_systematic(interval = 10, n_starts = 4),
+                seed = seed)$id
+    # 120 rows at a step of 40: three rows from each of four starts.
+    expect_length(ids, 12L)
+    expect_equal(as.vector(table((ids - 1L) %% 40L)), rep(3L, 4))
+  }
+  # A seed draws the rows it drew before n_starts existed.
+  expect_identical(draw(d, design_systematic(7, n_starts = 1), seed = 2)$id,
+                   seq(5L, 120L, by = 7L))
+})
+
+test_that("several starts give every pair its exact joint probability", {
+  # 23 rows, interval 3 and 2 starts from 1:6: averaging over all 15 sets
+  # of starts gives the joint probabilities exactly.
+  d <- data.frame(y = c(4, 9, 1, 7, 3, 12, 6, 2, 8, 5, 11, 10, 15, 3, 9, 14,
+                        2, 6, 8, 1, 13, 7, 5))
+  des <- design_systematic(interval = 3, n_starts = 2)
+  sets <- every_start_set(23L, 3L, 2L)
+  pairs <- matrix(0, 23, 23)
+  for (rows in sets) pairs[rows, rows] <- pairs[rows, rows] + 1 / length(sets)
+  jp <- joint_prob(d, des)
+  expect_equal(jp, pairs)
+  expect_equal(inclusion_prob(d, des), rep(1 / 3, 23))
+  # Same residue class modulo 6, then two classes.
+  expect_equal(jp[1, 7], 1 / 3)
+  expect_equal(jp[1, 2], 2 * 1 / (6 * 5))
+  sim <- joint_prob(d, des, simulate = TRUE, R = 2000, seed = 1)
+  expect_lt(max(abs(jp - sim)), 0.04)
+})
+
+test_that("the variance between replicates is unbiased over every set of starts", {
+  check <- function(y, k, m) {
+    N <- length(y)
+    des <- design_systematic(interval = k, n_starts = m)
+    est <- vapply(every_start_set(N, k, m), function(rows) {
+      c(k * sum(y[rows]),
+        drawn:::replicate_variance(des, seq_len(N), rows, y[rows],
+                                   rep(1 / k, length(rows)))$variance)
+    }, numeric(2))
+    expect_equal(mean(est[1, ]), sum(y))
+    expect_equal(mean(est[2, ]), mean((est[1, ] - sum(y))^2))
+  }
+  # 23 rows at a step of 6, so the replicates differ in size.
+  check(c(4, 9, 1, 7, 3, 12, 6, 2, 8, 5, 11, 10, 15, 3, 9, 14, 2, 6, 8, 1,
+          13, 7, 5), k = 3L, m = 2L)
+  # 10 rows at a step of 12: starts 11 and 12 draw nothing, and count with a
+  # total of 0.
+  check(c(5, 1, 8, 3, 9, 2, 7, 4, 6, 10), k = 4L, m = 3L)
+})
+
+test_that("ht_total() uses the replicates, on n_starts - 1 degrees of freedom", {
+  d <- data.frame(y = sin(1:24) * 10 + 1:24, one = 1)
+  des <- design_systematic(interval = 4, n_starts = 3)
+  s <- draw(d, des, seed = 5, weights = TRUE)
+  r <- ht_total(s, "y")
+  t_r <- vapply(split(s$y / s$.prob, (s$.row - 1L) %% 12L), sum, 0) * 3
+  expect_equal(r$variance, (1 - 1 / 4) * var(t_r) / 3)
+  expect_identical(r$method, "analytic")
+  expect_equal(r$df, 2)
+  # With a fixed size, the Sen-Yates-Grundy sum over the exact joint
+  # probabilities gives the same figure.
+  pij <- joint_prob(d, des, rows = s$.row)
+  expect_equal(r$variance,
+               drawn:::syg_variance(s$y, s$.prob, pij)$variance)
+  # Every replicate holds two rows here, so the count is exact.
+  expect_equal(ht_total(s, "one")$se, 0)
+  expect_match(ht_total(s, "y", variance = "jackknife")$note,
+               "starts as its primary sampling units")
+})
+
+test_that("a Hajek mean over one replicate's rows has no standard error", {
+  # Its residuals sum to 0 inside the replicate, so every replicate total
+  # is 0 and the variance between them would be 0 too.
+  d <- data.frame(y = (1:60 * 7) %% 23)
+  s <- draw(d, design_systematic(interval = 6, n_starts = 2), seed = 1,
+            weights = TRUE)
+  s$dom <- ifelse((s$.row - 1L) %% 12L == (s$.row[1] - 1L) %% 12L, "x", "z")
+  r <- ht_mean(s, "y", by = "dom")
+  expect_true(all(is.na(r$se)))
+  expect_match(attr(r, "notes")[1],
+               "sampled rows in one replicate only", fixed = TRUE)
+  expect_true(is.finite(ht_mean(s, "y")$se))
+})
+
+test_that("several starts go to survey as replicates with the same standard error", {
+  skip_if_not_installed("survey")
+  d <- data.frame(id = 1:50, v = c(NA, 49:1), y = sin(1:50) * 10 + 1:50,
+                  g = rep(c("a", "b"), 25))
+  des <- design_systematic(interval = 5, n_starts = 3, order_by = "v",
+                           na_rm = TRUE)
+  s <- draw(d, des, seed = 3, weights = TRUE)
+  sv <- as_svydesign(s)
+  r <- ht_total(s, "y")
+  st <- survey::svytotal(~y, sv)
+  expect_equal(unname(coef(st)), r$total)
+  expect_equal(as.numeric(survey::SE(st)), r$se)
+  expect_equal(survey::degf(sv), r$df)
+  expect_equal(unname(sv$fpc$popsize[, 1]), rep(15, nrow(s)))
+  by <- ht_mean(s, "y", by = "g")
+  sb <- survey::svyby(~y, ~g, sv, survey::svymean)
+  expect_equal(by$se, unname(sb$se))
+
+  # A start past the last row drew nothing, and survey would count the
+  # replicates with rows only.
+  d2 <- data.frame(y = 1:10)
+  des2 <- design_systematic(interval = 4, n_starts = 3)
+  s2 <- draw(d2, des2, seed = 2, weights = TRUE)
+  expect_length(unique((s2$.row - 1L) %% 12L), 2L)
+  expect_error(as_svydesign(s2), "1 of its 3 starts fell past the last")
+  expect_true(is.finite(ht_total(s2, "y")$se))
+
+  # An interval of 1 takes every row, whatever the starts.
+  s3 <- draw(data.frame(y = c(3, 8)), design_systematic(1, n_starts = 3),
+             seed = 1, weights = TRUE)
+  r3 <- ht_total(s3, "y")
+  expect_equal(c(r3$total, r3$se), c(11, 0))
+  expect_match(r3$note, "taken with certainty")
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, as_svydesign(s3)))),
+               0)
+})
+
+test_that("a certainty design over several starts estimates, and is not handed to survey", {
+  d <- data.frame(y = c(1000, 2000, 1:48))
+  des <- design_certainty("y", 500, design_systematic(interval = 4,
+                                                      n_starts = 2))
+  s <- draw(d, des, seed = 2, weights = TRUE)
+  r <- ht_total(s, "y")
+  rest <- s[s$.prob < 1, ]
+  t_r <- vapply(split(rest$y / rest$.prob, (rest$.row - 3L) %% 8L), sum, 0) * 2
+  expect_equal(r$variance, (1 - 1 / 4) * var(t_r) / 2)
+  expect_equal(r$df, 1)
+  skip_if_not_installed("survey")
+  expect_error(as_svydesign(s), "replicates are different kinds of sampling")
+})
+
+test_that("order_by takes one column, and a column of ranks walks by several", {
+  expect_error(design_systematic(3, order_by = c("region", "size")),
+               "order(order(data$region, data$size", fixed = TRUE)
+  d <- data.frame(region = rep(c("b", "a"), each = 6), size = c(6:1, 1:6))
+  d$walk <- order(order(d$region, d$size, method = "radix"))
+  des <- design_systematic(interval = 4, order_by = "walk")
+  ids <- draw(d, des, seed = 1)
+  # The walk runs through region a, then b, each by size.
+  walk <- order(d$region, d$size, method = "radix")
+  pos <- match(seq_len(12), walk)
+  expect_length(unique((pos[match(ids$walk, d$walk)] - 1L) %% 4L), 1L)
+  expect_identical(drawn:::systematic_positions(des, d), pos)
 })

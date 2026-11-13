@@ -708,3 +708,151 @@ test_that("allocation_table() refuses what it cannot describe", {
                paste0("`strata` column `n` has the name of a column ",
                       "allocation_table() adds."), fixed = TRUE)
 })
+
+# ---- systematic sampling within strata ---------------------------------------
+
+walk_frame <- function() {
+  data.frame(id = 1:30, g = rep(c("b", "a"), c(17, 13)),
+             v = (1:30 * 7) %% 31, y = (1:30 * 13) %% 17 + 1:30)
+}
+
+test_that("within takes a systematic design the allocation can size", {
+  within <- design_systematic(order_by = "v")
+  des <- design_stratified("g", n = 9, within = within)
+  expect_identical(des$within, within)
+  expect_null(design_stratified("g", n = 9)$within)
+  expect_output(print(des), 'within +design_systematic\\(order_by = "v"\\)')
+  expect_error(design_stratified("g", n = 9, within = design_simple(n = 2)),
+               "not design_simple(n = 2)", fixed = TRUE)
+  expect_error(design_stratified("g", n = 9, within = "systematic"),
+               "`within` must be NULL")
+  expect_error(design_stratified("g", n = 9, within = design_systematic(3)),
+               "and has `interval` (3)", fixed = TRUE)
+  expect_error(design_stratified("g", n = 9, within = design_systematic(n = 3)),
+               "and has `n` (3)", fixed = TRUE)
+  expect_error(design_stratified("g", n = 9, replace = TRUE, within = within),
+               "cannot be combined with replace = TRUE")
+})
+
+test_that("within draws n_h rows from each stratum at a step of N_h / n_h", {
+  d <- walk_frame()
+  des <- design_stratified("g", n = 9, within = design_systematic(order_by = "v"))
+  tab <- allocation_table(d, des)
+  expect_equal(tab$n, c(4L, 5L))
+  for (seed in 1:15) {
+    s <- draw(d, des, seed = seed)
+    expect_identical(s$id, sort(s$id))
+    for (h in c("a", "b")) {
+      in_h <- d[d$g == h, ]
+      # Positions along the stratum's walk, sorted on `v`.
+      pos <- sort(match(s$v[s$g == h], sort(in_h$v)))
+      expect_length(pos, tab$n[tab$g == h])
+      step <- nrow(in_h) / length(pos)
+      expect_true(all(diff(pos) %in% c(floor(step), ceiling(step))),
+                  info = paste("seed", seed, "stratum", h))
+    }
+  }
+  # Without order_by each stratum is walked in frame order.
+  s <- draw(d, design_stratified("g", n = 9, within = design_systematic()),
+            seed = 1)
+  expect_true(all(diff(s$id[s$g == "b"]) %in% 3:4))
+})
+
+test_that("within gives n_h / N_h to each row and exact joint probabilities", {
+  d <- walk_frame()
+  des <- design_stratified("g", n = 9, within = design_systematic(order_by = "v"))
+  pi <- inclusion_prob(d, des)
+  expect_equal(pi, ifelse(d$g == "a", 4 / 13, 5 / 17))
+  jp <- joint_prob(d, des)
+  expect_equal(diag(jp), pi)
+  # Two strata are drawn independently.
+  expect_equal(jp[d$g == "a", d$g == "b"], tcrossprod(pi[d$g == "a"],
+                                                      pi[d$g == "b"]))
+  # Within a stratum the size is fixed, so each row's pairs sum to n_h pi.
+  for (h in c("a", "b")) {
+    i <- which(d$g == h)
+    expect_equal(rowSums(jp[i, i]), sum(pi[i]) * pi[i])
+  }
+  # Two rows of one stratum next to each other on its walk never co-occur.
+  b <- which(d$g == "b")
+  nb <- b[order(d$v[b])][1:2]
+  expect_equal(jp[nb[1], nb[2]], 0)
+  sim <- joint_prob(d, des, simulate = TRUE, R = 2000, seed = 1)
+  expect_lt(max(abs(jp - sim)), 0.04)
+})
+
+test_that("within adds up the strata's successive-difference variances", {
+  d <- walk_frame()
+  des <- design_stratified("g", n = 9, within = design_systematic(order_by = "v"))
+  s <- draw(d, des, seed = 4, weights = TRUE)
+  r <- ht_total(s, "y")
+  want <- 0
+  for (h in c("a", "b")) {
+    sh <- s[s$g == h, ]
+    sh <- sh[order(sh$v), ]
+    n_h <- nrow(sh)
+    f <- n_h / sum(d$g == h)
+    want <- want + (1 - f) * n_h / (2 * (n_h - 1)) *
+      sum(diff(sh$y / sh$.prob)^2)
+  }
+  expect_equal(r$variance, want)
+  expect_identical(r$method, "successive difference")
+  expect_match(r$note, "within strata")
+  expect_equal(r$df, 9 - 2)
+  expect_match(ht_total(s, "y", variance = "jackknife")$note,
+               "Each stratum of a systematic sample within strata")
+  # Domains go through the same estimator.
+  by <- ht_total(s, "y", by = "g")
+  expect_equal(by$total, as.vector(tapply(s$y / s$.prob, s$g, sum)))
+  expect_true(all(by$method == "successive difference"))
+  # Each domain is a stratum here, so the two variances add up to the total's.
+  expect_equal(sum(by$se^2), r$variance)
+})
+
+test_that("within refuses a stratum with one sampled row", {
+  d <- walk_frame()
+  des <- design_stratified("g", allocation = c(a = 1, b = 3),
+                           within = design_systematic(order_by = "v"))
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_true(is.na(r$se))
+  expect_match(r$note, "The stratum `a` has a single sampled row")
+})
+
+test_that("within leaves out rows with a missing order_by only when told to", {
+  d <- walk_frame()
+  d$v[c(2, 20)] <- NA
+  strict <- design_stratified("g", n = 9,
+                              within = design_systematic(order_by = "v"))
+  expect_error(draw(d, strict, seed = 1), "2 row(s) have a missing `v`",
+               fixed = TRUE)
+  expect_error(inclusion_prob(d, strict), "2 row(s) have a missing `v`",
+               fixed = TRUE)
+  des <- design_stratified("g", n = 9,
+                           within = design_systematic(order_by = "v",
+                                                      na_rm = TRUE))
+  tab <- allocation_table(d, des)
+  expect_equal(tab$N, c(12L, 16L))
+  pi <- inclusion_prob(d, des)
+  expect_equal(pi[c(2, 20)], c(0, 0))
+  expect_equal(pi[-c(2, 20)], tab$prob[match(d$g[-c(2, 20)], tab$g)])
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  expect_false(any(c(2, 20) %in% s$.row))
+  # sample_summary() counts the rows each stratum walks.
+  grp <- sample_summary(s)$by_group
+  expect_equal(grp$in_frame, c(12L, 16L))
+  expect_equal(grp$rate, round(tab$prob, 4))
+  # A stratum left with no row to walk is refused.
+  d$v[d$g == "a"] <- NA
+  expect_error(inclusion_prob(d, des),
+               "Stratum `a` has a missing `v` in every row", fixed = TRUE)
+  skip_if_not_installed("survey")
+  d <- walk_frame()
+  d$v[c(2, 20)] <- NA
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  sv <- as_svydesign(s)
+  # `survey` gets the strata and the rows walked in each.
+  expect_equal(sort(unique(sv$fpc$popsize[, 1])), c(12, 16))
+  expect_equal(survey::degf(sv), ht_total(s, "y")$df)
+  expect_equal(unname(coef(survey::svytotal(~y, sv))), ht_total(s, "y")$total)
+})

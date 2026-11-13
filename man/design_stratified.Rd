@@ -12,7 +12,8 @@ design_stratified(
   min_per_stratum = 0L,
   replace = FALSE,
   na_rm = FALSE,
-  cost = NULL
+  cost = NULL,
+  within = NULL
 )
 }
 \arguments{
@@ -90,6 +91,13 @@ size, the \code{n} that spends a budget \code{C}, net of any fixed cost, is
 down. When no stratum has any spread, the shares are
 proportional to \code{size / sqrt(cost)}, as for equal spreads, and without
 \code{cost} to \code{size}.}
+
+\item{within}{How rows are drawn inside each stratum: \code{NULL}, the
+default, for a simple random sample, or \code{\link[=design_systematic]{design_systematic()}} without
+\code{interval} or \code{n}, to walk each stratum in the order of its \code{order_by}
+column, or in frame order without one. Each stratum gets the rows the
+allocation gives it, at an even step from a random start of its own;
+see "Systematic sampling within strata". Needs \code{replace = FALSE}.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}. \code{\link[=allocation_table]{allocation_table()}} shows
@@ -121,6 +129,41 @@ An empty string is a stratum like any other, shown as \code{(blank)} in
 messages.
 }
 
+\section{Systematic sampling within strata}{
+
+With \code{within = design_systematic(order_by = "x")}, the strata are
+allocated as without it, each stratum is sorted on \code{x}, and the \code{n_h}
+rows allocated to a stratum of \code{N_h} are taken as
+\code{design_systematic(n = n_h)} takes them from a frame of \code{N_h} rows: a
+start drawn from (0, 1) and a step of \code{N_h / n_h} rows, which need not be
+whole. Strata draw their starts in key order. Every row has probability
+\code{n_h / N_h}, as under simple random sampling within strata, so the
+allocation, \code{\link[=allocation_table]{allocation_table()}} and the weights are the same; what
+changes is which rows can be drawn together. Two rows of one stratum have
+the joint probability of the systematic design there, which is 0 for
+rows less than a step apart, and two rows of different strata the product
+of their probabilities. Rows whose \code{x} is missing are refused, or with
+the \code{na_rm = TRUE} of the systematic design left out of their stratum
+before it is allocated.
+
+Each stratum has one random start, so no design-unbiased variance exists,
+as for \code{\link[=design_systematic]{design_systematic()}} on its own. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}}
+add up the strata's successive-difference approximations,
+\code{(1 - n_h / N_h) * n_h / (2 * (n_h - 1)) * sum(diff(y / pi)^2)} over each
+stratum's sampled rows in the order it was walked (Wolter 2007), with
+the degrees of freedom of a stratified sample, the sampled rows less the
+strata. A stratum with one sampled row from several is refused, as
+without \code{within}. So is the jackknife: a stratum's rows all come from one
+start, and deleting them one at a time does not mirror the design.
+\code{\link[=as_svydesign]{as_svydesign()}} hands \code{survey} the strata, whose simple-random variance
+differs.
+
+Only \code{\link[=design_systematic]{design_systematic()}} is taken as \code{within}, with one start and no
+\code{interval} or \code{n}: the allocation sets the size of each stratum. To walk
+a stratum by several columns, give \code{order_by} a column of ranks, as in
+the examples of \code{\link[=design_systematic]{design_systematic()}}.
+}
+
 \examples{
 df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))
 table(draw(df, design_stratified("site", n = 20), seed = 1)$site)
@@ -141,12 +184,21 @@ pilot <- design_stratified("site", n = 20, allocation = "neyman",
                            cost = c(a = 1, b = 1, c = 4, d = 4))
 allocation_table(df, pilot)
 
+# Each stratum walked in order of `size`, from a start of its own
+df$size <- (df$id * 37) \%\% 101
+walked <- design_stratified("site", n = 20,
+                            within = design_systematic(order_by = "size"))
+draw(df, walked, seed = 1)
+
 }
 \references{
 Neyman, J. (1934). On the two different aspects of the representative
 method. \emph{Journal of the Royal Statistical Society}, 97, 558–625.
 
 Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
+
+Wolter, K. M. (2007). \emph{Introduction to Variance Estimation}, 2nd ed.
+Springer.
 }
 \seealso{
 \code{\link[=draw]{draw()}}, \code{\link[=allocation_table]{allocation_table()}}

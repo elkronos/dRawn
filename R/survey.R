@@ -22,7 +22,9 @@
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab close for totals, less so for means \cr
 #'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size`; with `strata`, `strata` from the strata columns and `fpc` each stratum's size, or Brewer's within them \tab **`survey`'s is larger** \cr
+#'   [design_systematic()] with `n_starts` of 2 or more \tab `ids` a `.cluster` column numbering the replicates, `fpc` the `n_starts * interval` possible starts \tab identical \cr
 #'   [design_systematic()] \tab `ids = ~1` with `fpc` the rows the walk can reach \tab **differ** \cr
+#'   [design_stratified()] with `within` \tab `strata` from the strata columns, `fpc` each stratum's rows walked \tab **differ** \cr
 #' }
 #'
 #' "Identical" means to floating point, and is checked by this package's tests
@@ -45,7 +47,13 @@
 #' * **Systematic.** `survey`, told only `ids = ~1`, computes the simple-random
 #'   variance; [ht_total()] uses the successive-difference approximation, which
 #'   can see a trend along the sort order. Neither is design-unbiased, because
-#'   no such estimator exists for one systematic sample.
+#'   no such estimator exists for one systematic sample. Within strata,
+#'   `survey` computes the stratified simple-random variance and [ht_total()]
+#'   adds up the strata's successive-difference approximations. With
+#'   `n_starts` of 2 or more the replicates are clusters and the two agree.
+#'   A replicated sample with a start that drew no rows, which happens only
+#'   when `n_starts * interval` exceeds the rows walked, is refused, because
+#'   `survey` would count one replicate fewer.
 #'
 #' Units taken with certainty are in every sample and add nothing to the
 #' variance: the rows above a [design_certainty()] threshold, strata and
@@ -68,9 +76,10 @@
 #'
 #' Two compositions have no single `survey` design and are refused rather than
 #' approximated: [design_certainty()] over a cluster, multistage or Poisson
-#' `rest`, where the certainty rows and the rest are different kinds of sampling
-#' unit. [design_bootstrap()] is refused outright — it resamples the sample, so
-#' there is no finite population for `svydesign()` to represent.
+#' `rest`, or a systematic `rest` with several starts, where the certainty rows
+#' and the rest are different kinds of sampling unit. [design_bootstrap()] is
+#' refused outright — it resamples the sample, so there is no finite
+#' population for `svydesign()` to represent.
 #'
 #' A stratum or interval with a single sampled row makes `survey` stop with
 #' "Stratum has only one PSU" unless `options(survey.lonely.psu)` says
@@ -220,6 +229,12 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
 
   switch(design_type(design),
     stratified = {
+      if (walks_strata(design)) {
+        # Rows the walk drops for a missing `order_by` are in no stratum.
+        al <- stratum_allocation(design, pop)
+        return(by_group(al$code, unique_labels(
+          structure(integer(0), levels = al$labels, class = "factor"))))
+      }
       key <- group_key(pop, design$strata)
       by_group(as.integer(key), unique_labels(key))
     },
@@ -266,6 +281,12 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
                                      nrow(dat)), ids = one)
     },
     systematic = {
+      if (replicated(design)) {
+        refuse_nested(prefix, "a systematic `rest` with several starts",
+                      paste0("the certainty rows and the replicates are ",
+                             "different kinds of sampling unit"))
+        return(replicate_parts(design, dat, pop, rows))
+      }
       # Rows `na_rm` drops from the walk can never be drawn, so the
       # population is the rows with a sort key, not the whole frame.
       list(stratum = NULL, fpc = rep(reachable_rows(design, pop), nrow(dat)),
@@ -327,6 +348,36 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
     },
     list(stratum = NULL, fpc = rep(nrow(pop), nrow(dat)), ids = one)
   )
+}
+
+#' A systematic sample with several starts, as a sample of clusters
+#'
+#' The `m` starts are a simple random sample of the `m * interval` possible
+#' ones, and each replicate is the cluster of rows its start takes. Handed
+#' to `survey` as clusters numbered in `.cluster`, with that count of
+#' possible starts as `fpc`, `survey`'s one-stage variance is the random
+#' group variance of `replicate_variance()`. A replicate whose start fell
+#' past the last row walked has no rows to pass, and `survey` would count
+#' one replicate fewer, so such a sample is refused.
+#'
+#' @noRd
+replicate_parts <- function(design, dat, pop, rows) {
+  m <- systematic_starts(design)
+  walk <- systematic_positions(design, pop)
+  cluster <- systematic_replicates(design, walk, rows)
+  got <- length(unique(cluster))
+  # An interval of 1 takes every row, and a census needs no replicates.
+  if (got < m && !all(is_certain(dat$.prob))) {
+    stop("A systematic sample with an empty replicate has no `survey` ",
+         "equivalent: ", m - got, " of its ", m, " starts fell past the last ",
+         "of the ", sum(!is.na(walk)), " rows walked and drew none, and ",
+         "`survey` would count only the ", got, " with rows. Estimate it ",
+         "with ht_total() or ht_mean(), which count an empty replicate as a ",
+         "total of 0, or draw with `n_starts * interval` of at most the rows ",
+         "walked.", call. = FALSE)
+  }
+  list(stratum = NULL, fpc = rep(m * design$interval, nrow(dat)),
+       ids = stats::as.formula("~.cluster"), cluster = cluster)
 }
 
 #' A spread design with strata, as stratified sampling or stratified PPS

@@ -126,12 +126,15 @@ fmt_n <- function(n) formatC(n, format = "d", big.mark = ",")
 #' @noRd
 design_label <- function(x) {
   p <- unclass(x)
+  # One start is the default, and says nothing about the design.
+  if (identical(p$n_starts, 1L)) p$n_starts <- NULL
   p <- p[!vapply(p, function(v) is.null(v) || inherits(v, c("sf", "sfc")),
                  logical(1))]
   keep <- intersect(c("strata", "clusters", "weights", "across", "size",
                       "time", "n",
-                      "n_clusters", "interval", "per_interval", "n_replicates",
-                      "allocation", "method", "balanced"), names(p))
+                      "n_clusters", "interval", "n_starts", "order_by",
+                      "per_interval", "n_replicates",
+                      "allocation", "method", "balanced", "within"), names(p))
   bits <- vapply(keep, function(k) paste0(k, " = ", fmt_param(p[[k]])),
                  character(1))
   paste0("design_", design_type(x), "(", paste(bits, collapse = ", "), ")")

@@ -55,6 +55,8 @@ piece as fixed, which it is not.
 | weighted, `"poisson"` | $\sum (1-\pi_k) y_k^2 / \pi_k^2$ | `"analytic"` | exact, unbiased |
 | weighted, `"systematic"` | Deville (1999) | `"deville"` | approximation |
 | systematic | successive differences (Wolter 2007) | `"successive difference"` | approximation |
+| systematic, `n_starts` of 2 or more | random groups (Wolter 2007) | `"analytic"` | exact, unbiased |
+| stratified, `within = design_systematic()` | successive differences within strata | `"successive difference"` | approximation |
 | spread | local means (Stevens and Olsen 2003) | `"local mean"` | approximation, conservative |
 | certainty | whatever `rest` uses | as `rest` | as `rest` |
 | any, on request or as fallback | jackknife, stratified where there are strata | `"jackknife"` | approximation |
@@ -173,6 +175,29 @@ frame that cycles with a period matching the interval, and a trend so smooth
 that the random start is almost the only source of variation, both make it run
 low.
 
+### Several starts: random groups
+
+`design_systematic(interval = k, n_starts = m)` draws $m$ different starts
+from $1, \dots, mk$ and walks each at a step of $mk$. Every row keeps
+$\pi_k = 1/k$, and two rows in different residue classes modulo $mk$ can now
+be drawn together, with $\pi_{kl} = (m-1)/(k(mk-1))$. Each start gives a
+replicate whose own total $\hat t_r$ estimates $t$, the sample's total is
+their mean $\bar t$, and
+
+$$\hat V = \left(1 - \frac1k\right) \frac{1}{m(m-1)}
+\sum_{r=1}^{m} \left(\hat t_r - \bar t\right)^2$$
+
+is the random group estimator (Wolter 2007), unbiased on $m - 1$ degrees of
+freedom. It equals the Horvitz-Thompson variance estimator over the exact
+$\pi_{kl}$, so `method` is `"analytic"`. The price is a step $m$ times as
+long, so each replicate follows a sorted frame less closely, and few degrees
+of freedom: with four starts a 95% interval uses $t_3$.
+
+`design_stratified(within = design_systematic(order_by = "x"))` instead walks
+each stratum from a start of its own, at a step of $N_h / n_h$ rows. The
+variance is the sum of the strata's successive-difference approximations,
+on the degrees of freedom of a stratified sample.
+
 ### Spatially balanced samples: local means
 
 `design_spread()` selects by the local pivotal method (Grafström, Lundström and
@@ -213,8 +238,8 @@ c(analytic  = ht_total(strat, "y", variance = "analytic")$se,
 when that declines — for instance a multistage sample with one row per cluster,
 where the within-cluster variation cannot be measured and the delete-a-cluster
 jackknife gives the standard ultimate-cluster approximation. It is refused for
-systematic samples (one primary sampling unit) and Poisson samples (whose
-exact variance it understates).
+systematic samples, whose primary sampling units are their starts rather than
+their rows, and Poisson samples, whose exact variance it understates.
 
 ## Confidence intervals
 

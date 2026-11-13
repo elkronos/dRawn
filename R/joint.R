@@ -18,7 +18,7 @@
 #'   [design_temporal()]    \tab within an interval as above; across intervals, independent \cr
 #'   [design_spatial()]     \tab simple random sampling inside the region \cr
 #'   [design_weighted()]    \tab `"poisson"` only, where rows are independent: `pi_i * pi_j` \cr
-#'   [design_systematic()]  \tab `1/interval` for rows sharing a residue class, otherwise **zero**; with `n`, the overlap of the two rows' stretches, from 0 to `n / N` \cr
+#'   [design_systematic()]  \tab `1/interval` for rows sharing a residue class, otherwise **zero**; with `n`, the overlap of the two rows' stretches, from 0 to `n / N`; with `n_starts = m`, `1/interval` for rows sharing a residue class modulo `m * interval`, otherwise `m(m-1) / (mk(mk-1))` with `k` the interval \cr
 #' }
 #'
 #' Systematic sampling is the awkward one. Most pairs can never co-occur, so
@@ -30,7 +30,12 @@
 #' covering a stretch of length `n / N`, and a pair is drawn together when `u`
 #' falls where both stretches, moved into (0, 1), overlap. With a fixed
 #' `start` the design is deterministic, and it is refused as in
-#' [inclusion_prob()].
+#' [inclusion_prob()]. With several starts (`n_starts`), rows in different
+#' residue classes can be drawn together too, which is what gives a
+#' replicated sample its unbiased variance. Within the strata of
+#' `design_stratified(within = design_systematic())`, pairs in one stratum
+#' get the overlap of their stretches, as with `n`, and pairs in two strata
+#' the product of their probabilities.
 #'
 #' Two designs have joint probabilities that are positive but have no closed
 #' form: `design_weighted(method = "systematic")`, which shuffles the rows
@@ -292,9 +297,30 @@ joint_inclusion.drawn_design_stratified <- function(design, data, rows) {
     no_joint_form("`design_stratified(replace = TRUE)`", "Use replace = FALSE.")
   }
   al <- stratum_allocation(design, data)
+  if (walks_strata(design)) return(walk_joint(design, data, rows, al))
   # A dropped row has no stratum code, so it co-occurs with nothing.
   joint_from_groups(al$code[rows], al$n_alloc, al$sizes,
                     stratum_pi(design, al)[rows])
+}
+
+#' Joint probabilities of a stratified design that walks each stratum
+#'
+#' Strata are drawn independently, so a pair in two strata gets the product
+#' of its probabilities. A pair in one stratum gets the overlap of its
+#' stretches on that stratum's walk, from `fractional_joint()` with the
+#' stratum's `n_h` and `N_h`. A row in no stratum co-occurs with nothing.
+#'
+#' @noRd
+walk_joint <- function(design, data, rows, al) {
+  pos <- walk_positions(design, data, al$code, length(al$sizes))[rows]
+  code <- al$code[rows]
+  p <- stratum_pi(design, al)[rows]
+  out <- tcrossprod(p)
+  for (h in unique(code[!is.na(code)])) {
+    i <- which(code == h)
+    out[i, i] <- fractional_joint(pos[i], al$n_alloc[h], al$sizes[h])
+  }
+  out
 }
 
 #' @noRd
@@ -407,9 +433,18 @@ joint_inclusion.drawn_design_systematic <- function(design, data, rows) {
   if (!is.null(design$n)) {
     return(fractional_joint(pos, design$n, sum(!is.na(walk))))
   }
+  # With `m` starts drawn from 1:(m * k), a pair in one residue class modulo
+  # m * k is taken when its start is among them, m times in m * k, and a
+  # pair in two classes when both starts are. One start is the case m = 1.
+  # Only the classes of `rows` get a block.
   k <- design$interval
-  pair_matrix(as.integer((pos - 1L) %% k) + 1L, rep(1 / k, k),
-              ifelse(is.na(pos), 0, 1 / k))
+  m <- systematic_starts(design)
+  step <- m * k
+  cls <- as.integer((pos - 1L) %% step)
+  live <- unique(cls[!is.na(cls)])
+  pair_matrix(match(cls, live), rep(1 / k, length(live)),
+              ifelse(is.na(pos), 0, 1 / k),
+              between = if (m > 1L) (m - 1) / (k * (step - 1)) else 0)
 }
 
 #' Joint probabilities of a systematic sample of fixed size `n`

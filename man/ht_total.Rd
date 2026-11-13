@@ -105,7 +105,10 @@ Poisson sampling, whose rows are independent, uses
 \code{sum((1 - pi) / pi^2 * y^2)}; cluster designs apply the estimator at
 the cluster level, because taking whole clusters makes the row count
 random; certainty designs hand the problem to \code{rest}, since certainty
-rows are in every sample and add nothing.}
+rows are in every sample and add nothing. A \code{\link[=design_systematic]{design_systematic()}}
+sample with \code{n_starts} of 2 or more uses the variance between its
+replicates' totals, the random group estimator (Wolter 2007), on
+\code{n_starts - 1} degrees of freedom.}
 \item{\code{"deville"}}{Systematic probability-proportional-to-size
 (\code{\link[=design_weighted]{design_weighted()}} with \code{method = "systematic"}). Its joint
 probabilities have no closed form, so this uses Deville's (1999)
@@ -137,7 +140,9 @@ the remainder, is added, and the note says so. Without it a constant
 \code{y} had a standard error of 0, and a variable with a coefficient of
 variation of 0.02 an interval that never covered the truth. A design
 given \code{n} draws exactly \code{n} rows at a step of \code{N / n} and needs no
-such term.}
+such term. \code{\link[=design_stratified]{design_stratified()}} with
+\code{within = design_systematic()} adds up this estimator over its
+strata.}
 \item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
 well spread precisely because neighbours are rarely taken together, so
 this compares each sampled row with the local mean of its nearest

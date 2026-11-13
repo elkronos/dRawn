@@ -42,7 +42,9 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as \code{rest} \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab close for totals, less so for means \cr
 \code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size}; with \code{strata}, \code{strata} from the strata columns and \code{fpc} each stratum's size, or Brewer's within them \tab \strong{\code{survey}'s is larger} \cr
+\code{\link[=design_systematic]{design_systematic()}} with \code{n_starts} of 2 or more \tab \code{ids} a \code{.cluster} column numbering the replicates, \code{fpc} the \code{n_starts * interval} possible starts \tab identical \cr
 \code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the rows the walk can reach \tab \strong{differ} \cr
+\code{\link[=design_stratified]{design_stratified()}} with \code{within} \tab \code{strata} from the strata columns, \code{fpc} each stratum's rows walked \tab \strong{differ} \cr
 }
 
 "Identical" means to floating point, and is checked by this package's tests
@@ -65,7 +67,13 @@ ignores the spreading. That errs conservative, often substantially.
 \item \strong{Systematic.} \code{survey}, told only \code{ids = ~1}, computes the simple-random
 variance; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation, which
 can see a trend along the sort order. Neither is design-unbiased, because
-no such estimator exists for one systematic sample.
+no such estimator exists for one systematic sample. Within strata,
+\code{survey} computes the stratified simple-random variance and \code{\link[=ht_total]{ht_total()}}
+adds up the strata's successive-difference approximations. With
+\code{n_starts} of 2 or more the replicates are clusters and the two agree.
+A replicated sample with a start that drew no rows, which happens only
+when \code{n_starts * interval} exceeds the rows walked, is refused, because
+\code{survey} would count one replicate fewer.
 }
 
 Units taken with certainty are in every sample and add nothing to the
@@ -89,9 +97,10 @@ variance.
 
 Two compositions have no single \code{survey} design and are refused rather than
 approximated: \code{\link[=design_certainty]{design_certainty()}} over a cluster, multistage or Poisson
-\code{rest}, where the certainty rows and the rest are different kinds of sampling
-unit. \code{\link[=design_bootstrap]{design_bootstrap()}} is refused outright — it resamples the sample, so
-there is no finite population for \code{svydesign()} to represent.
+\code{rest}, or a systematic \code{rest} with several starts, where the certainty rows
+and the rest are different kinds of sampling unit. \code{\link[=design_bootstrap]{design_bootstrap()}} is
+refused outright — it resamples the sample, so there is no finite
+population for \code{svydesign()} to represent.
 
 A stratum or interval with a single sampled row makes \code{survey} stop with
 "Stratum has only one PSU" unless \code{options(survey.lonely.psu)} says

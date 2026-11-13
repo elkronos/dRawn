@@ -135,20 +135,20 @@ survey::svyquantile(~value, des, 0.5)
 
 ## The designs
 
-| Design                | Selects                                                           | Size              | Variance estimator                    |
-|-----------------------|-------------------------------------------------------------------|-------------------|---------------------------------------|
-| `design_simple()`     | rows uniformly at random                                          | `n`               | exact                                 |
-| `design_stratified()` | a share of each stratum: proportional, equal or Neyman            | `n` total         | exact                                 |
-| `design_systematic()` | every *k*-th row from a random start, or `n` rows at an even step | `interval` or `n` | successive-difference approx.         |
-| `design_cluster()`    | whole clusters                                                    | `n_clusters`      | exact                                 |
-| `design_multistage()` | clusters, then rows within them                                   | `n_clusters`, `n` | exact two-stage                       |
-| `design_weighted()`   | probability proportional to size                                  | `n`               | exact (Poisson), Deville (systematic) |
-| `design_certainty()`  | everything above a threshold, plus any design below it            | `rest`’s own      | `rest`’s own                          |
-| `design_spread()`     | a sample spread evenly over a map or covariates                   | `n`               | local-mean approx.                    |
-| `design_temporal()`   | a fixed number per time interval                                  | `per_interval`    | exact                                 |
-| `design_spatial()`    | a simple random sample inside a region                            | `n`               | exact                                 |
-| `design_reservoir()`  | a fixed-size sample from a stream, in one pass                    | `n`               | exact                                 |
-| `design_bootstrap()`  | resampled replicates, simple or block                             | `n_replicates`    | not a survey design                   |
+| Design                | Selects                                                                         | Size              | Variance estimator                                   |
+|-----------------------|---------------------------------------------------------------------------------|-------------------|------------------------------------------------------|
+| `design_simple()`     | rows uniformly at random                                                        | `n`               | exact                                                |
+| `design_stratified()` | a share of each stratum: proportional, equal or Neyman                          | `n` total         | exact                                                |
+| `design_systematic()` | every *k*-th row from one or several random starts, or `n` rows at an even step | `interval` or `n` | successive-difference approx.; exact with `n_starts` |
+| `design_cluster()`    | whole clusters                                                                  | `n_clusters`      | exact                                                |
+| `design_multistage()` | clusters, then rows within them                                                 | `n_clusters`, `n` | exact two-stage                                      |
+| `design_weighted()`   | probability proportional to size                                                | `n`               | exact (Poisson), Deville (systematic)                |
+| `design_certainty()`  | everything above a threshold, plus any design below it                          | `rest`’s own      | `rest`’s own                                         |
+| `design_spread()`     | a sample spread evenly over a map or covariates                                 | `n`               | local-mean approx.                                   |
+| `design_temporal()`   | a fixed number per time interval                                                | `per_interval`    | exact                                                |
+| `design_spatial()`    | a simple random sample inside a region                                          | `n`               | exact                                                |
+| `design_reservoir()`  | a fixed-size sample from a stream, in one pass                                  | `n`               | exact                                                |
+| `design_bootstrap()`  | resampled replicates, simple or block                                           | `n_replicates`    | not a survey design                                  |
 
 Every estimate says which estimator produced its variance, and any
 approximation is named when it prints.

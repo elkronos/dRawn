@@ -9,7 +9,8 @@ design_systematic(
   start = NULL,
   order_by = NULL,
   na_rm = FALSE,
-  n = NULL
+  n = NULL,
+  n_starts = 1L
 )
 }
 \arguments{
@@ -23,13 +24,14 @@ selected with probability 0 or 1, so \code{\link[=inclusion_prob]{inclusion_prob
 \code{\link[=sampling_weight]{sampling_weight()}}, \code{\link[=joint_prob]{joint_prob()}}, \code{draw(weights = TRUE)},
 \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} refuse it, while
 \code{inclusion_prob(simulate = TRUE)} reports those 0s and 1s. Not used with
-\code{n}, whose start is always random.}
+\code{n} or \code{n_starts}, whose starts are always random.}
 
 \item{order_by}{Optional column to sort by before walking the data. It
 changes which rows can appear together, so \code{\link[=inclusion_prob]{inclusion_prob()}} and
 \code{\link[=joint_prob]{joint_prob()}} compute against the sorted order too. Text is sorted byte
 by byte, as in the C locale, so the walk is the same in every session;
-ties keep frame order.}
+ties keep frame order. One column: to walk by several, add a column of
+ranks built from them and give its name, as in the examples.}
 
 \item{na_rm}{When \code{order_by} is given, drop rows whose sort key is \code{NA}
 instead of raising an error.}
@@ -40,6 +42,14 @@ walked, each row covers a stretch of length \code{n / N} on a line from 0 to
 \code{u + 1}, ..., \code{u + n - 1} are taken. The step is \code{N / n} rows, every row
 has probability \code{n / N}, and the sample always holds \code{n} rows. When \code{n}
 divides \code{N} the probabilities are those of \code{interval = N / n}.}
+
+\item{n_starts}{Number of random starts, 1 by default. With
+\code{n_starts = m} and \code{interval = k}, \code{m} different starts are drawn from
+\code{1:(m * k)} and each is walked at a step of \code{m * k} rows. Every row
+still has probability \code{1 / k}, and the expected sample size is that of
+one start at \code{interval}. Each start gives a replicate, a systematic
+sample of its own, and two or more of them give a design-unbiased
+variance (see "Variance"). Needs \code{interval}, and a random \code{start}.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -50,7 +60,10 @@ Walks the rows at a fixed step. Give \code{interval} to take every
 given; the number of rows drawn then follows from the interval and the size
 of the data. Give \code{n} instead to draw exactly \code{n} rows from a random start:
 the step is the number of rows walked divided by \code{n}, and need not be a
-whole number.
+whole number. With \code{n_starts}, several random starts are walked at a
+longer step, which gives the sample a design-unbiased variance. Given
+neither \code{interval} nor \code{n}, the design walks each stratum of
+\code{\link[=design_stratified]{design_stratified()}} as its \code{within} argument.
 }
 \section{Variance}{
 
@@ -63,15 +76,43 @@ estimator is the one that can see it; see \code{\link[=ht_total]{ht_total()}} fo
 When \code{interval} does not divide the number of rows walked, the sample size
 is random, and a term for that is added to the variance. A design given
 \code{n} has a fixed size and needs no such term.
+
+With \code{n_starts = m} of 2 or more, the \code{m} starts are a simple random
+sample of the \code{m * k} possible ones, and each replicate \code{r} gives a total
+of its own, \code{t_r}, which is \code{m} times the sum of \code{y / pi} over its rows.
+The sample's total is their mean, and \code{\link[=ht_total]{ht_total()}} uses the random group
+variance (Wolter 2007), \code{(1 - 1 / k) * var(t_r) / m}, on \code{m - 1} degrees
+of freedom. It is design-unbiased whether or not \code{m * k} divides the rows
+walked, a replicate that drew no rows counting with a total of 0, and
+\code{\link[=as_svydesign]{as_svydesign()}} gives the same standard error with each replicate as a
+primary sampling unit. The price is precision: \code{m} starts spread the
+sample over the walk less evenly than one start at \code{interval} does, and
+few replicates give few degrees of freedom and a wide interval.
+
+Within strata, as \code{design_stratified(within = design_systematic())}, each
+stratum has a start of its own and the variance is the sum of the
+strata's successive-difference approximations; see \code{\link[=design_stratified]{design_stratified()}}.
 }
 
 \examples{
-df <- data.frame(id = 1:100, value = (1:100) / 10)
+df <- data.frame(id = 1:100, value = (1:100) / 10,
+                 site = rep(c("b", "a"), each = 50))
 draw(df, design_systematic(interval = 10, start = 3))
 draw(df, design_systematic(interval = 25, order_by = "value"), seed = 1)
 
 # 30 rows from 100, a step of 3.33
 draw(df, design_systematic(n = 30), seed = 1)$id
+
+# Four starts from 1:40, each walked at a step of 40: ten rows on
+# average, as with one start, and a variance from the spread of the four
+# replicates
+s <- draw(df, design_systematic(interval = 10, n_starts = 4), seed = 1,
+          weights = TRUE)
+ht_total(s, "value")
+
+# Walking by two columns: rank the rows by both, then walk the ranks
+df$walk <- order(order(df$site, -df$value, method = "radix"))
+draw(df, design_systematic(interval = 20, order_by = "walk"), seed = 1)
 
 }
 \references{
@@ -82,7 +123,7 @@ Wolter, K. M. (2007). \emph{Introduction to Variance Estimation}, 2nd ed.
 Springer.
 }
 \seealso{
-\code{\link[=draw]{draw()}}
+\code{\link[=draw]{draw()}}, \code{\link[=design_stratified]{design_stratified()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},

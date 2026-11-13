@@ -53,7 +53,7 @@ independent across groups or a simple random sample within them:
 \code{\link[=design_temporal]{design_temporal()}}    \tab within an interval as above; across intervals, independent \cr
 \code{\link[=design_spatial]{design_spatial()}}     \tab simple random sampling inside the region \cr
 \code{\link[=design_weighted]{design_weighted()}}    \tab \code{"poisson"} only, where rows are independent: \code{pi_i * pi_j} \cr
-\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero}; with \code{n}, the overlap of the two rows' stretches, from 0 to \code{n / N} \cr
+\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero}; with \code{n}, the overlap of the two rows' stretches, from 0 to \code{n / N}; with \code{n_starts = m}, \code{1/interval} for rows sharing a residue class modulo \code{m * interval}, otherwise \code{m(m-1) / (mk(mk-1))} with \code{k} the interval \cr
 }
 
 Systematic sampling is the awkward one. Most pairs can never co-occur, so
@@ -65,7 +65,12 @@ at a step of \code{N / n} rows from a start \code{u} uniform on (0, 1), each row
 covering a stretch of length \code{n / N}, and a pair is drawn together when \code{u}
 falls where both stretches, moved into (0, 1), overlap. With a fixed
 \code{start} the design is deterministic, and it is refused as in
-\code{\link[=inclusion_prob]{inclusion_prob()}}.
+\code{\link[=inclusion_prob]{inclusion_prob()}}. With several starts (\code{n_starts}), rows in different
+residue classes can be drawn together too, which is what gives a
+replicated sample its unbiased variance. Within the strata of
+\code{design_stratified(within = design_systematic())}, pairs in one stratum
+get the overlap of their stretches, as with \code{n}, and pairs in two strata
+the product of their probabilities.
 
 Two designs have joint probabilities that are positive but have no closed
 form: \code{design_weighted(method = "systematic")}, which shuffles the rows

@@ -5,7 +5,10 @@
 #' given; the number of rows drawn then follows from the interval and the size
 #' of the data. Give `n` instead to draw exactly `n` rows from a random start:
 #' the step is the number of rows walked divided by `n`, and need not be a
-#' whole number.
+#' whole number. With `n_starts`, several random starts are walked at a
+#' longer step, which gives the sample a design-unbiased variance. Given
+#' neither `interval` nor `n`, the design walks each stratum of
+#' [design_stratified()] as its `within` argument.
 #'
 #' @param interval Sampling interval, a whole number of 1 or more: every
 #'   `interval`-th row of the walk is taken. Give `interval` or `n`, not both.
@@ -16,12 +19,13 @@
 #'   [sampling_weight()], [joint_prob()], `draw(weights = TRUE)`,
 #'   [ht_total()] and [ht_mean()] refuse it, while
 #'   `inclusion_prob(simulate = TRUE)` reports those 0s and 1s. Not used with
-#'   `n`, whose start is always random.
+#'   `n` or `n_starts`, whose starts are always random.
 #' @param order_by Optional column to sort by before walking the data. It
 #'   changes which rows can appear together, so [inclusion_prob()] and
 #'   [joint_prob()] compute against the sorted order too. Text is sorted byte
 #'   by byte, as in the C locale, so the walk is the same in every session;
-#'   ties keep frame order.
+#'   ties keep frame order. One column: to walk by several, add a column of
+#'   ranks built from them and give its name, as in the examples.
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`
 #'   instead of raising an error.
 #' @param n Number of rows to draw, in place of `interval`. With `N` rows
@@ -30,6 +34,13 @@
 #'   `u + 1`, ..., `u + n - 1` are taken. The step is `N / n` rows, every row
 #'   has probability `n / N`, and the sample always holds `n` rows. When `n`
 #'   divides `N` the probabilities are those of `interval = N / n`.
+#' @param n_starts Number of random starts, 1 by default. With
+#'   `n_starts = m` and `interval = k`, `m` different starts are drawn from
+#'   `1:(m * k)` and each is walked at a step of `m * k` rows. Every row
+#'   still has probability `1 / k`, and the expected sample size is that of
+#'   one start at `interval`. Each start gives a replicate, a systematic
+#'   sample of its own, and two or more of them give a design-unbiased
+#'   variance (see "Variance"). Needs `interval`, and a random `start`.
 #'
 #' @section Variance:
 #' A systematic sample has a single random start, so no design-unbiased
@@ -42,6 +53,22 @@
 #' is random, and a term for that is added to the variance. A design given
 #' `n` has a fixed size and needs no such term.
 #'
+#' With `n_starts = m` of 2 or more, the `m` starts are a simple random
+#' sample of the `m * k` possible ones, and each replicate `r` gives a total
+#' of its own, `t_r`, which is `m` times the sum of `y / pi` over its rows.
+#' The sample's total is their mean, and [ht_total()] uses the random group
+#' variance (Wolter 2007), `(1 - 1 / k) * var(t_r) / m`, on `m - 1` degrees
+#' of freedom. It is design-unbiased whether or not `m * k` divides the rows
+#' walked, a replicate that drew no rows counting with a total of 0, and
+#' [as_svydesign()] gives the same standard error with each replicate as a
+#' primary sampling unit. The price is precision: `m` starts spread the
+#' sample over the walk less evenly than one start at `interval` does, and
+#' few replicates give few degrees of freedom and a wide interval.
+#'
+#' Within strata, as `design_stratified(within = design_systematic())`, each
+#' stratum has a start of its own and the variance is the sum of the
+#' strata's successive-difference approximations; see [design_stratified()].
+#'
 #' @return A design object, for use with [draw()].
 #'
 #' @references
@@ -52,25 +79,35 @@
 #' Springer.
 #'
 #' @examples
-#' df <- data.frame(id = 1:100, value = (1:100) / 10)
+#' df <- data.frame(id = 1:100, value = (1:100) / 10,
+#'                  site = rep(c("b", "a"), each = 50))
 #' draw(df, design_systematic(interval = 10, start = 3))
 #' draw(df, design_systematic(interval = 25, order_by = "value"), seed = 1)
 #'
 #' # 30 rows from 100, a step of 3.33
 #' draw(df, design_systematic(n = 30), seed = 1)$id
 #'
+#' # Four starts from 1:40, each walked at a step of 40: ten rows on
+#' # average, as with one start, and a variance from the spread of the four
+#' # replicates
+#' s <- draw(df, design_systematic(interval = 10, n_starts = 4), seed = 1,
+#'           weights = TRUE)
+#' ht_total(s, "value")
+#'
+#' # Walking by two columns: rank the rows by both, then walk the ranks
+#' df$walk <- order(order(df$site, -df$value, method = "radix"))
+#' draw(df, design_systematic(interval = 20, order_by = "walk"), seed = 1)
+#'
 #' @family designs
-#' @seealso [draw()]
+#' @seealso [draw()], [design_stratified()]
 #' @export
 design_systematic <- function(interval = NULL, start = NULL, order_by = NULL,
-                              na_rm = FALSE, n = NULL) {
-  if (is.null(interval) == is.null(n)) {
-    stop(if (is.null(n)) {
-      "`design_systematic()` needs `interval` or `n`, and has neither. "
-    } else {
-      "`design_systematic()` takes `interval` or `n`, not both. "
-    }, "Give `interval` for every k-th row, or `n` for a fixed sample size.",
-    call. = FALSE)
+                              na_rm = FALSE, n = NULL, n_starts = 1L) {
+  n_starts <- check_count(n_starts, "n_starts", allow_zero = FALSE)
+  if (!is.null(interval) && !is.null(n)) {
+    stop("`design_systematic()` takes `interval` or `n`, not both. ",
+         "Give `interval` for every k-th row, or `n` for a fixed sample size.",
+         call. = FALSE)
   }
   if (!is.null(n)) {
     n <- check_count(n, "n")
@@ -79,7 +116,7 @@ design_systematic <- function(interval = NULL, start = NULL, order_by = NULL,
            "(0, 1). Leave `start` as NULL, or give `interval` instead of `n`.",
            call. = FALSE)
     }
-  } else {
+  } else if (!is.null(interval)) {
     if (is.numeric(interval) && length(interval) == 1L &&
         is.finite(interval) && interval > 1 && interval != trunc(interval)) {
       stop("`interval` must be a single whole number, not ", interval, ". ",
@@ -88,20 +125,68 @@ design_systematic <- function(interval = NULL, start = NULL, order_by = NULL,
     }
     interval <- check_count(interval, "interval", allow_zero = FALSE)
   }
+  if (n_starts > 1L) {
+    if (is.null(interval)) {
+      stop("`n_starts` (", n_starts, ") needs `interval`: the starts are ",
+           "drawn from 1:(n_starts * interval) and walked at that step. ",
+           if (is.null(n)) {
+             "Give `interval`."
+           } else {
+             "Give `interval` in place of `n`, or leave `n_starts` at 1."
+           }, call. = FALSE)
+    }
+    if (!is.null(start)) {
+      stop("`start` cannot be fixed with `n_starts` (", n_starts, "), whose ",
+           "starts are drawn at random. Leave `start` as NULL.",
+           call. = FALSE)
+    }
+    if (as.numeric(n_starts) * interval > .Machine$integer.max) {
+      stop("`n_starts * interval` (",
+           format(as.numeric(n_starts) * interval, scientific = FALSE),
+           ") must be at most ", .Machine$integer.max, ". Lower `n_starts` ",
+           "or `interval`.", call. = FALSE)
+    }
+  }
   if (!is.null(start)) {
+    if (is.null(interval)) {
+      stop("`start` needs `interval`, and it has none. Give `interval`, or ",
+           "leave `start` as NULL.", call. = FALSE)
+    }
     start <- check_count(start, "start", allow_zero = FALSE)
     if (start > interval) {
       stop("`start` (", start, ") must lie in 1:interval (1:", interval, ").",
            call. = FALSE)
     }
   }
+  if (is.character(order_by) && length(order_by) > 1L) {
+    stop("`order_by` names one column, not ", length(order_by), ". To walk ",
+         "by several, add a column of ranks built from them, such as ",
+         "data$walk <- order(order(data$", order_by[1], ", data$",
+         order_by[2], ", method = \"radix\")), and give order_by = \"walk\".",
+         call. = FALSE)
+  }
   new_design("systematic", list(
     interval = interval,
     n = n,
     start = start,
     order_by = if (is.null(order_by)) NULL else check_columns(order_by, "order_by", 1L),
-    na_rm = check_flag(na_rm, "na_rm")
+    na_rm = check_flag(na_rm, "na_rm"),
+    n_starts = n_starts
   ))
+}
+
+#' The number of random starts of a systematic design
+#'
+#' A design saved before `n_starts` existed has one.
+#'
+#' @noRd
+systematic_starts <- function(design) design$n_starts %||% 1L
+
+#' Does the design draw several random starts?
+#' @noRd
+replicated <- function(design) {
+  inherits(design, "drawn_design_systematic") &&
+    systematic_starts(design) > 1L
 }
 
 #' @export
@@ -124,15 +209,27 @@ draw_design.drawn_design_systematic <- function(design, data) {
     return(reindex(data, walk[taken], sort = TRUE))
   }
 
-  start <- design$start %||% sample.int(design$interval, 1L)
-
-  if (start > nrow(data)) {
-    warning("`start` (", start, ") is past the last row (", nrow(data),
-            "); returning no rows.", call. = FALSE)
+  # Each of the `m` starts is walked at a step of `m * interval`. One start
+  # is sample.int(interval, 1), as it always was, so a seed draws the same
+  # rows.
+  m <- systematic_starts(design)
+  step <- m * design$interval
+  starts <- design$start %||% sort(sample.int(step, m))
+  live <- starts[starts <= nrow(data)]
+  if (!length(live)) {
+    warning(if (m == 1L) {
+      paste0("`start` (", starts, ") is past the last row (", nrow(data),
+             "); returning no rows.")
+    } else {
+      paste0("Every start (", format_rows(starts), ") is past the last row (",
+             nrow(data), "); returning no rows.")
+    }, call. = FALSE)
     return(empty_like(data))
   }
 
-  picked <- walk[seq.int(from = start, to = nrow(data), by = design$interval)]
+  picked <- walk[unlist(lapply(live, function(s) {
+    seq.int(from = s, to = nrow(data), by = step)
+  }))]
   reindex(data, picked, sort = TRUE)
 }
 
@@ -161,12 +258,20 @@ fractional_walk <- function(u, n, N) {
 #' uses -- the sorted, NA-dropped frame -- not against frame order.
 #'
 #' It is also the design's one set of checks, shared by the draw, the
-#' probabilities and the successive-difference variance: an `order_by` column
-#' the frame lacks, which gave every row a probability of 0, the `na_rm`
-#' policy, a key missing in every row, and an `n` larger than the rows walked.
+#' probabilities and the successive-difference variance: a design with no
+#' `interval` or `n`, which only `design_stratified(within =)` can size, an
+#' `order_by` column the frame lacks, which gave every row a probability of
+#' 0, the `na_rm` policy, a key missing in every row, and an `n` larger than
+#' the rows walked.
 #'
 #' @noRd
 systematic_positions <- function(design, data) {
+  if (is.null(design$interval) && is.null(design$n)) {
+    stop("`design_systematic()` has no `interval` or `n`, so it sets no ",
+         "sample size. Give `interval` or `n` to draw it on its own, or use ",
+         "it as `within` in design_stratified(), which sets the size of ",
+         "each stratum.", call. = FALSE)
+  }
   n <- nrow(data)
   out <- seq_len(n)
   if (!is.null(design$order_by)) {
@@ -221,7 +326,22 @@ exact_inclusion.drawn_design_systematic <- function(design, data) {
     # uniform on (0, 1).
     return(ifelse(is.na(pos), 0, design$n / sum(!is.na(pos))))
   }
-  # Row j is selected exactly when start == ((j - 1) %% interval) + 1, which is
-  # one of the `interval` equally likely starts. Exact for any N.
+  # With `m` starts from 1:(m * interval), row j is selected exactly when
+  # ((j - 1) %% (m * interval)) + 1 is one of them, which happens m times in
+  # m * interval. One start is the case m = 1. Exact for any N.
   ifelse(is.na(pos), 0, 1 / design$interval)
+}
+
+#' The replicate each sampled row of a systematic design belongs to
+#'
+#' A row at walk position `p` is taken by the start
+#' `((p - 1) %% (m * interval)) + 1`, so that number names its replicate.
+#' `walk` is `systematic_positions()` over the frame and `rows` the sampled
+#' frame rows. With one start every row is in replicate 1.
+#'
+#' @noRd
+systematic_replicates <- function(design, walk, rows) {
+  if (!replicated(design)) return(rep(1L, length(rows)))
+  step <- systematic_starts(design) * design$interval
+  as.integer((walk[rows] - 1L) %% step) + 1L
 }

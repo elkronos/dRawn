@@ -24,7 +24,10 @@
 #'     `sum((1 - pi) / pi^2 * y^2)`; cluster designs apply the estimator at
 #'     the cluster level, because taking whole clusters makes the row count
 #'     random; certainty designs hand the problem to `rest`, since certainty
-#'     rows are in every sample and add nothing.}
+#'     rows are in every sample and add nothing. A [design_systematic()]
+#'     sample with `n_starts` of 2 or more uses the variance between its
+#'     replicates' totals, the random group estimator (Wolter 2007), on
+#'     `n_starts - 1` degrees of freedom.}
 #'   \item{`"deville"`}{Systematic probability-proportional-to-size
 #'     ([design_weighted()] with `method = "systematic"`). Its joint
 #'     probabilities have no closed form, so this uses Deville's (1999)
@@ -56,7 +59,9 @@
 #'     `y` had a standard error of 0, and a variable with a coefficient of
 #'     variation of 0.02 an interval that never covered the truth. A design
 #'     given `n` draws exactly `n` rows at a step of `N / n` and needs no
-#'     such term.}
+#'     such term. [design_stratified()] with
+#'     `within = design_systematic()` adds up this estimator over its
+#'     strata.}
 #'   \item{`"local mean"`}{[design_spread()]. A spatially balanced sample is
 #'     well spread precisely because neighbours are rarely taken together, so
 #'     this compares each sampled row with the local mean of its nearest
@@ -544,7 +549,8 @@ sub_context <- function(ctx, name) {
 #'
 #' @noRd
 ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
-                          psu = sample_units(parts$design, parts$units)) {
+                          psu = sample_units(parts$design, parts$units,
+                                             parts$pop, parts$rows)) {
   if (length(unique(psu[member])) >= 2L) return(NULL)
   pi_all <- parts$pi_all
   if (!is.null(pi_all) && !anyNA(frame)) {
@@ -572,21 +578,33 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
   list(variance = NA_real_, method = "none", note = note)
 }
 
-#' Each sampled row's primary sampling unit, as the jackknife deletes them
+#' Each sampled row's primary sampling unit
 #'
-#' Clusters for a cluster or multistage design, otherwise rows. Under a
-#' certainty design each row at or above the threshold is a unit of its own
-#' and the rows below it are grouped as `rest` groups them.
+#' Clusters for a cluster or multistage design, as the jackknife deletes
+#' them, the replicates of a systematic design with several starts, and
+#' otherwise rows. Under a certainty design each row at or above the
+#' threshold is a unit of its own and the rows below it are grouped as
+#' `rest` groups them. `pop` is the frame and `rows` the sampled frame rows,
+#' which place a systematic sample's rows on its walk.
 #'
 #' @noRd
-sample_units <- function(design, units) {
+sample_units <- function(design, units, pop, rows) {
+  if (replicated(design)) {
+    return(systematic_replicates(design, systematic_positions(design, pop),
+                                 rows))
+  }
   if (!inherits(design, "drawn_design_certainty")) {
     return(jackknife_groups(design, units))
   }
   v <- units[[design$above]]
   below <- !is.na(v) & v < design$threshold
   out <- -seq_len(nrow(units))
-  out[below] <- sample_units(design$rest, units[below, , drop = FALSE])
+  if (any(below)) {
+    sp <- certainty_split(design, pop)
+    out[below] <- sample_units(design$rest, units[below, , drop = FALSE],
+                               sp$data[sp$rest, , drop = FALSE],
+                               match(rows[below], sp$keep[sp$rest]))
+  }
   out
 }
 
@@ -595,8 +613,9 @@ sample_units <- function(design, units) {
 unit_noun <- function(design) {
   clustered <- c("drawn_design_cluster", "drawn_design_multistage")
   if (inherits(design, clustered)) return("cluster")
+  if (replicated(design)) return("replicate")
   if (inherits(design, "drawn_design_certainty") &&
-      inherits(design$rest, clustered)) {
+      (inherits(design$rest, clustered) || replicated(design$rest))) {
     return("primary sampling unit")
   }
   "row"
@@ -635,7 +654,8 @@ overflow_note <- function() {
 #' With no unit below certainty the variance is exactly 0 and the result is
 #' `Inf`. An empty sample, and a certainty design whose `rest` drew none of the
 #' rows below the threshold, have no variance to build an interval on and get
-#' 0.
+#' 0. A systematic design with `n_starts` of 2 or more has the number of
+#' starts less one, the degrees of freedom of its random group variance.
 #'
 #' `as_svydesign()` hands each group of certain units to `survey` as one
 #' primary sampling unit in a stratum of its own, so `survey::degf()` gives the
@@ -655,6 +675,11 @@ design_df <- function(design, units, pop, rows, pi_i) {
   }
   n <- nrow(units)
   if (n == 0L) return(0)
+  if (replicated(design)) {
+    # The random group variance has one degree of freedom fewer than the
+    # number of starts, counting a replicate that drew no rows.
+    return(if (any(!is_certain(pi_i))) systematic_starts(design) - 1 else Inf)
+  }
   psu <- switch(design_type(design),
     cluster = ,
     multistage = cluster_codes(units[[design$clusters]]),
@@ -1022,11 +1047,57 @@ srs_within_groups <- function(design, g, rows, y, domain, noun, fix) {
 #' @noRd
 ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i,
                                                 domain = NULL, ctx = NULL) {
+  if (walks_strata(design)) {
+    return(walk_strata_variance(design, data, rows, y, pi_i, domain, ctx))
+  }
   out <- srs_within_groups(
     design, srs_groups(design, data, ctx), rows, y, domain,
     c("stratum", "strata"), lonely_fix(design))
   if (is.null(out)) return(NextMethod())
   out
+}
+
+#' Successive-difference variance of a sample walked within strata
+#'
+#' Each stratum is a systematic sample of its `n_h` rows from its `N_h` at a
+#' step of `N_h / n_h`, from a start of its own, so the variance is the sum
+#' over strata of `(1 - n_h / N_h) * n_h / (2 * (n_h - 1)) * sum(diff(u)^2)`,
+#' `u` being `y / pi` over the stratum's sampled rows in walk order. That is
+#' the systematic estimator with `n` applied to each stratum. A lonely
+#' stratum is refused first, as for simple random sampling within strata,
+#' and a stratum taken whole adds 0.
+#'
+#' @noRd
+walk_strata_variance <- function(design, data, rows, y, pi_i, domain = NULL,
+                                 ctx = NULL) {
+  g <- srs_groups(design, data, ctx)
+  group <- structure(g$code, levels = g$labels, class = "factor")
+  note <- lonely_note(group, rows, c("stratum", "strata"), lonely_fix(design),
+                      domain)
+  if (!is.null(note)) return(list(variance = NA_real_, note = note))
+  k <- length(g$N_g)
+  pos <- from_context(ctx, "walk", walk_positions(design, data, g$code, k))
+  h <- g$code[rows]
+  o <- order(h, pos[rows])
+  h <- h[o]
+  u <- as.numeric(y / pi_i)[o]
+  # Successive differences within a stratum, never across two.
+  same <- h[-1L] == h[-length(h)]
+  ss <- vapply(split(diff(u)[same]^2,
+                     factor(h[-1L][same], levels = seq_len(k))),
+               sum, numeric(1), USE.NAMES = FALSE)
+  m <- tabulate(h, k)
+  f <- as.numeric(g$n_g) / as.numeric(g$N_g)
+  use <- m >= 2L
+  list(variance = sum(((1 - f) * m / (2 * (m - 1)) * ss)[use]),
+       method = "successive difference",
+       note = paste0("Systematic sampling within strata has no ",
+                     "design-unbiased variance estimator; this is the sum ",
+                     "over strata of the successive-difference ",
+                     "approximation. It would be understated if a stratum ",
+                     "cycled with a period matching its step, or if a ",
+                     "smooth trend along the sort order swamped all other ",
+                     "variation."))
 }
 
 #' Temporal variance: intervals are strata
@@ -1045,7 +1116,8 @@ ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i,
 #' Each sampled row's group, for every domain's variance in one pass
 #'
 #' Returns `NULL` when the design's analytic variance is not `srs_variance()`
-#' over the groups of `srs_groups()`, or when it declines for the whole
+#' over the groups of `srs_groups()`, as for a stratified design that walks
+#' its strata, or when it declines for the whole
 #' sample, as with one sampled row from a group of several. Otherwise
 #' `group` gives each sampled row's position in `n_g` and `N_g`, `NA` for a
 #' row taken with certainty above a certainty design's threshold, and
@@ -1067,7 +1139,7 @@ srs_layout <- function(design, data, rows, ctx = NULL) {
     out$lonely_rows <- sp$keep[sp$rest][out$lonely_rows]
     return(out)
   }
-  if (isTRUE(design$replace)) return(NULL)
+  if (isTRUE(design$replace) || walks_strata(design)) return(NULL)
   g <- srs_groups(design, data, ctx)
   if (is.null(g)) return(NULL)
   if (is.null(g$code)) {
@@ -1306,10 +1378,17 @@ deville_variance <- function(y, pi_i) {
 #' A design given `n` walks at a step of `N / n` rows and always draws `n`,
 #' so `f` is `n / N` and no term is added.
 #'
+#' A design with `n_starts` of 2 or more has the exact random group variance
+#' of `replicate_variance()` instead.
+#'
 #' @noRd
 ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
                                                 domain = NULL, ctx = NULL) {
   refuse_fixed_start(design)
+  if (replicated(design)) {
+    walk <- from_context(ctx, "walk", systematic_positions(design, data))
+    return(replicate_variance(design, walk, rows, y, pi_i))
+  }
   n <- length(rows)
   if (n < 2L) {
     return(list(variance = NA_real_,
@@ -1347,6 +1426,31 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
                               " rows, and the variance includes a term for ",
                               "that.")
                      }))
+}
+
+#' Random group variance of a systematic sample with several starts
+#'
+#' The `m` starts are a simple random sample of the `m * k` residue classes
+#' modulo `m * k`, `k` the interval, and each replicate's total `t_r`, `m`
+#' times the sum of `y / pi` over its rows, is the Horvitz-Thompson total of
+#' a systematic sample at a step of `m * k`. Their mean is the sample's
+#' total, and `(1 - 1 / k) * var(t_r) / m` is the textbook unbiased variance
+#' of a mean of `m` units drawn from `m * k` without replacement. Over the
+#' sampled rows it is the Horvitz-Thompson variance estimator with the exact
+#' joint probabilities of `joint_inclusion()`, and, when `m * k` divides the
+#' rows walked and the size is fixed, the Sen-Yates-Grundy one too, computed
+#' from the `m` replicate totals alone. A replicate whose start fell past the
+#' last row walked drew nothing, and its total of 0 counts among the `m`.
+#'
+#' @noRd
+replicate_variance <- function(design, walk, rows, y, pi_i) {
+  if (all(is_certain(pi_i))) return(all_certain())
+  m <- systematic_starts(design)
+  rep_id <- systematic_replicates(design, walk, rows)
+  t_r <- m * rowsum(as.numeric(y / pi_i), rep_id, reorder = FALSE)[, 1L]
+  t_r <- c(t_r, numeric(m - length(t_r)))
+  list(variance = (1 - 1 / design$interval) * stats::var(t_r) / m,
+       note = NULL)
 }
 
 # ---- jackknife --------------------------------------------------------------
@@ -1494,9 +1598,21 @@ jackknife_certainty <- function(design, units, pop, y, pi_i, domain = NULL,
 #'
 #' @noRd
 jackknife_refusal <- function(design) {
+  if (replicated(design)) {
+    return(paste0("A systematic sample with several starts has the starts as ",
+                  "its primary sampling units, not the rows, so deleting ",
+                  "rows does not reflect the design's randomness and the ",
+                  "jackknife is not valid here. variance = \"analytic\" ",
+                  "gives the exact variance between the replicates."))
+  }
   if (inherits(design, "drawn_design_systematic")) {
     return(paste0("A systematic sample has one primary sampling unit -- the ",
                   "random start -- so deleting rows does not reflect the ",
+                  "design's randomness and the jackknife is not valid here."))
+  }
+  if (walks_strata(design)) {
+    return(paste0("Each stratum of a systematic sample within strata has one ",
+                  "random start, so deleting rows does not reflect the ",
                   "design's randomness and the jackknife is not valid here."))
   }
   if (inherits(design, "drawn_design_weighted") && design$method == "poisson") {
@@ -1647,7 +1763,7 @@ reachable_rows <- function(design, pop) {
       }
       sum(!bad)
     },
-    stratified = keyed(design$strata),
+    stratified = keyed(c(design$strata, design$within$order_by)),
     cluster = ,
     multistage = keyed(design$clusters),
     certainty = {
