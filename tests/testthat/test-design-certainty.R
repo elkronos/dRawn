@@ -231,6 +231,60 @@ test_that("every sampled row certain means an exact total, variance 0", {
   expect_match(r$note, "exact rather than estimated")
 })
 
+test_that("a random-size `rest` that drew nothing gives no variance", {
+  # With a Poisson `rest` the rows below the threshold can all be missed.
+  # They went unobserved, and the total was reported as exact with se 0.
+  d <- cert_pop(300)
+  des <- design_certainty("value", 2500,
+                          design_weighted("value", n = 1, method = "poisson"))
+  n_below <- sum(d$value < 2500)
+  for (i in 1:50) {
+    s <- draw(d, des, seed = i, weights = TRUE)
+    if (all(s$.prob == 1)) break
+  }
+  expect_true(all(s$.prob == 1))
+
+  r <- ht_total(s, "value")
+  expect_true(is.na(r$variance))
+  expect_equal(r$method, "none")
+  expect_true(all(is.na(r$ci)))
+  expect_match(r$note, paste0("the ", n_below, " rows with `value` below ",
+                              "2,500, because `rest` drew none of them"),
+               fixed = TRUE)
+  # The reason is given once, though both estimators gave it
+  expect_length(gregexpr("drew none", r$note)[[1]], 1L)
+
+  expect_true(is.na(ht_total(s, "value", variance = "analytic")$variance))
+  expect_true(is.na(ht_total(s, "value", variance = "jackknife")$variance))
+  expect_true(is.na(ht_mean(s, "value")$se))
+})
+
+test_that("weights are refused when `rest` can never draw a row", {
+  d <- cert_pop(100)
+  des <- design_certainty("value", 2500, design_simple(n = 0))
+  expect_error(draw(d, des, seed = 1, weights = TRUE),
+               paste0("`rest` gives all ", sum(d$value < 2500), " rows with ",
+                      "`value` below 2,500 an inclusion probability of 0"),
+               fixed = TRUE)
+  expect_error(draw(d, des, seed = 1, weights = TRUE), "weights = FALSE")
+  # Without weights the draw is a cut-off sample of the certainty rows
+  s <- draw(d, des, seed = 1)
+  expect_equal(s$id, d$id[d$value >= 2500])
+})
+
+test_that("an error from `rest` says which rows it was given", {
+  d <- cert_pop(100)
+  n_below <- sum(d$value < 500)
+  des <- design_certainty("value", 500, design_simple(n = n_below + 1))
+  prefix <- paste0("In `rest`, applied to the ", n_below,
+                   " rows with `value` below 500: ")
+  expect_error(draw(d, des, seed = 1), prefix, fixed = TRUE)
+  expect_error(inclusion_prob(d, design_certainty("value", 500,
+                                                  design_weighted("value",
+                                                                  n = 5))),
+               prefix, fixed = TRUE)
+})
+
 test_that("dropping missing sizes does not shift the probabilities", {
   # certainty_split() removes rows, so positions in the reduced frame are not
   # positions in the original one. Getting that wrong shifts every probability

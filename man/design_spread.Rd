@@ -72,7 +72,10 @@ mean variance estimator (Stevens and Olsen 2003; Grafström and Schelin
 nearest sampled neighbours. It is an approximation, reported as
 \code{method = "local mean"}, and errs on the conservative side: in the
 package's simulations it runs from about 1 to 1.6 times the true variance,
-higher for small samples and large sampling fractions.
+higher for small samples and large sampling fractions. Rows taken with
+certainty, because their \code{size} puts them past it or because \code{n} is the
+whole frame, are in every sample and add no variance, so the estimator
+leaves them out.
 }
 
 \section{Cost}{

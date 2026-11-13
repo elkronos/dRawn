@@ -32,6 +32,14 @@ Certainty rows have an inclusion probability of exactly 1, so they contribute
 their own value to a Horvitz-Thompson total with a weight of 1 and add
 nothing to its variance. That is the whole point: the uncertainty in the
 estimate comes only from the part you sampled.
+
+A \code{rest} with a random sample size, such as
+\code{design_weighted(method = "poisson")} with a small \code{n}, can draw none of the
+rows below the threshold. Those rows then went unobserved, so \code{\link[=ht_total]{ht_total()}}
+and \code{\link[=ht_mean]{ht_mean()}} report no variance rather than an exact total.
+\code{draw(weights = TRUE)} refuses a \code{rest} that can never draw any of them,
+such as one with \code{n = 0}; without weights the draw is a cut-off sample of
+the rows above the threshold.
 }
 \examples{
 set.seed(1)

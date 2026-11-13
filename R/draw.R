@@ -145,6 +145,9 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   # Probabilities first, so a design with no closed form fails before any
   # sampling happens rather than after.
   p_all <- exact_inclusion(design, data)
+  if (inherits(design, "drawn_design_certainty")) {
+    check_rest_reach(design, data, p_all)
+  }
 
   # Tag the population, draw from the tagged copy, then read the source row off
   # each drawn row. Matching on values afterwards would misattribute duplicate

@@ -50,6 +50,14 @@
 #'     Used when requested, and as the fallback under `variance = "auto"`.}
 #' }
 #'
+#' Rows taken with certainty are in every possible sample and add nothing to
+#' the variance. That covers rows above a [design_certainty()] threshold, rows
+#' whose size puts them past certainty in [design_weighted()] or
+#' [design_spread()], strata taken whole and a census. Every estimator leaves
+#' them out. The jackknife holds them fixed instead of deleting them, and its
+#' finite population correction counts only the other units. A sample made of
+#' nothing else reports a variance of 0, with a note that the total is exact.
+#'
 #' The analytic estimator declines — returning `NA` with the reason in `note`
 #' — rather than understate. Two cases matter in practice:
 #'
@@ -278,7 +286,10 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance) {
     # claiming a fallback that did not happen.
     return(list(variance = NA_real_, method = "none",
                 note = paste0("No variance is available for this sample. ",
-                              first, " ", jk$note)))
+                              first,
+                              if (!identical(jk$note, first)) {
+                                paste0(" ", jk$note)
+                              })))
   }
   jk$note <- paste0("The design's own estimator declined, so the jackknife ",
                     "was used instead. ", first, " ", jk$note)
@@ -329,6 +340,21 @@ ht_variance.default <- function(design, data, rows, y, pi_i) {
                 note = "A variance needs at least two sampled rows."))
   }
   syg_variance(y, pi_i, pij)
+}
+
+#' The variance of a sample whose rows were all taken with certainty
+#'
+#' Every such row is in every possible sample, so the total is known exactly.
+#' `method` names the estimator that found this, or is left unset for the
+#' design's own exact one.
+#'
+#' @noRd
+all_certain <- function(method = NULL) {
+  out <- list(variance = 0, note = paste0(
+    "Every sampled row was taken with certainty, so the total is exact ",
+    "rather than estimated."))
+  out$method <- method
+  out
 }
 
 #' @noRd
@@ -475,12 +501,8 @@ ht_variance.drawn_design_weighted <- function(design, data, rows, y, pi_i) {
 #'
 #' @noRd
 deville_variance <- function(y, pi_i) {
-  c_k <- 1 - pi_i
-  if (sum(c_k) <= 0) {
-    return(list(variance = 0, method = "deville", note = paste0(
-      "Every sampled row was taken with certainty, so the total is exact ",
-      "rather than estimated.")))
-  }
+  c_k <- ifelse(is_certain(pi_i), 0, 1 - pi_i)
+  if (sum(c_k) <= 0) return(all_certain("deville"))
   a <- c_k / sum(c_k)
   denom <- 1 - sum(a^2)
   if (denom <= 0) {
@@ -548,45 +570,47 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i) {
 #' reflect its randomness at all. Poisson sampling has an exact variance and a
 #' random size; deleting rows from it understates by a factor of three.
 #'
+#' Units taken with certainty are held fixed. They are in every possible
+#' sample, so deleting one and inflating the rest invents variance the design
+#' does not have. On a frame with six dominant units, systematic PPS samples
+#' got 181 times the true variance on average that way. The rule covers the
+#' units `design_weighted()` and `design_spread(size =)` take with certainty,
+#' strata taken whole and a census. A cluster is held fixed when every one of
+#' its sampled rows is certain. The finite population correction counts only
+#' the units that were not certain, in the sample and in the frame.
+#'
 #' @noRd
 jackknife_variance <- function(design, units, pop, y, pi_i) {
   refusal <- jackknife_refusal(design)
   if (!is.null(refusal)) {
     return(list(variance = NA_real_, method = "jackknife", note = refusal))
   }
-  # Certainty rows are in every possible sample. Deleting one and inflating the
-  # rest invents variance the design does not have -- four times too much on a
-  # sample that is a third certainty -- so hand the whole problem to `rest`.
   if (inherits(design, "drawn_design_certainty")) {
-    keep <- pi_i < 1
-    if (!any(keep)) {
-      return(list(variance = 0, method = "jackknife", note = paste0(
-        "Every sampled row was taken with certainty, so the total is exact ",
-        "rather than estimated.")))
-    }
-    sp <- certainty_split(design, pop)
-    return(jackknife_variance(design$rest, units[keep, , drop = FALSE],
-                              sp$data[sp$rest, , drop = FALSE],
-                              y[keep], pi_i[keep]))
+    return(jackknife_certainty(design, units, pop, y, pi_i))
   }
 
   psu <- jackknife_groups(design, units)
-  st <- jackknife_strata(design, units, pop, psu)
+  fixed <- !(psu %in% psu[!is_certain(pi_i)])
+  if (all(fixed)) return(all_certain("jackknife"))
+  n_fixed <- length(unique(psu[fixed]))
+
+  st <- jackknife_strata(design, units, pop, psu, fixed)
   base <- y / pi_i
   total <- sum(base)
+  code <- match(st$stratum, st$levels)
 
   v <- 0
   n_psu <- 0L
   lonely <- character(0)
-  for (h in unique(st$stratum)) {
-    in_h <- st$stratum == h
+  for (k in seq_along(st$levels)) {
+    in_h <- which(!fixed & code == k)
     g <- psu[in_h]
     ug <- unique(g)
     m <- length(ug)
-    f <- st$fpc[[h]]
+    f <- st$fpc[k]
     n_psu <- n_psu + m
     if (m < 2L) {
-      if (f > 0) lonely <- c(lonely, h)
+      if (f > 0) lonely <- c(lonely, st$levels[k])
       next
     }
     sums <- vapply(ug, function(u) sum(base[in_h][g == u]), numeric(1))
@@ -594,11 +618,15 @@ jackknife_variance <- function(design, units, pop, y, pi_i) {
     v <- v + f * (m - 1) / m * sum((reps - mean(reps))^2)
   }
 
-  n_strata <- length(unique(st$stratum))
+  n_strata <- length(st$levels)
   if (n_strata == 1L && n_psu < 2L) {
     return(list(variance = NA_real_, method = "jackknife",
                 note = paste0("The jackknife needs at least two primary ",
-                              "sampling units; this sample has ", n_psu, ".")))
+                              "sampling units; this sample has ", n_psu,
+                              if (n_fixed > 0L) {
+                                paste0(" besides the ", n_fixed, " taken ",
+                                       "with certainty")
+                              }, ". Draw more units below certainty.")))
   }
   if (length(lonely)) {
     return(list(variance = NA_real_, method = "jackknife", note = paste0(
@@ -614,8 +642,38 @@ jackknife_variance <- function(design, units, pop, y, pi_i) {
        note = paste0("Jackknife over ", n_psu, " primary sampling unit(s)",
                      if (n_strata > 1L) paste0(" in ", n_strata, " strata")
                      else "",
-                     if (any(unlist(st$fpc) < 1)) ", with a finite population correction"
-                     else "", "."))
+                     if (any(st$fpc < 1)) ", with a finite population correction"
+                     else "",
+                     if (n_fixed > 0L) {
+                       paste0("; the ", n_fixed, " taken with certainty add ",
+                              "no variance and were held fixed")
+                     }, "."))
+}
+
+#' The jackknife for a certainty design
+#'
+#' Rows at or above the threshold are in every sample, so the whole problem is
+#' handed to `rest`, over the rows below the threshold. Those are found from
+#' the frame's copy of the sampled rows, which holds the `above` column. Rows
+#' that `rest` itself takes with certainty go along and are held fixed there,
+#' so its finite population correction counts them correctly.
+#'
+#' @noRd
+jackknife_certainty <- function(design, units, pop, y, pi_i) {
+  sp <- certainty_split(design, pop)
+  v <- units[[design$above]]
+  below <- !is.na(v) & v < design$threshold
+  if (!any(below)) {
+    if (length(sp$rest)) {
+      out <- empty_rest(design, length(sp$rest))
+      out$method <- "jackknife"
+      return(out)
+    }
+    return(all_certain("jackknife"))
+  }
+  jackknife_variance(design$rest, units[below, , drop = FALSE],
+                     sp$data[sp$rest, , drop = FALSE],
+                     y[below], pi_i[below])
 }
 
 #' Designs the jackknife should decline rather than approximate
@@ -640,10 +698,16 @@ jackknife_refusal <- function(design) {
 #'
 #' Stratified and temporal designs delete within strata, with each stratum's
 #' own `1 - n_h / N_h`. Everything else is a single stratum, corrected by
-#' `jackknife_fpc()`.
+#' `jackknife_fpc()`. Only strata holding a unit that is not `fixed` are
+#' listed, and both counts leave the fixed units out. A unit taken with
+#' certainty is in every sample, so the fixed units in the frame are the ones
+#' in the sample. A stratum taken whole drops out.
+#'
+#' Returns each row's `stratum`, the `levels` listed and their `fpc`, in the
+#' same order.
 #'
 #' @noRd
-jackknife_strata <- function(design, units, pop, psu) {
+jackknife_strata <- function(design, units, pop, psu, fixed) {
   grp <- switch(design_type(design),
     stratified = list(
       sample = as.character(group_key(units, design$strata)),
@@ -656,16 +720,17 @@ jackknife_strata <- function(design, units, pop, psu) {
     NULL
   )
   if (is.null(grp)) {
-    m <- length(unique(psu))
-    return(list(stratum = rep("all", nrow(units)),
-                fpc = list(all = jackknife_fpc(design, pop, m))))
+    m <- length(unique(psu[!fixed]))
+    n_fixed <- length(unique(psu[fixed]))
+    return(list(stratum = rep("all", nrow(units)), levels = "all",
+                fpc = jackknife_fpc(design, pop, m, n_fixed)))
   }
-  N_h <- table(grp$pop[!is.na(grp$pop)])
-  n_h <- table(grp$sample)
-  fpc <- lapply(stats::setNames(names(n_h), names(n_h)), function(h) {
-    max(0, 1 - n_h[[h]] / N_h[[h]])
-  })
-  list(stratum = grp$sample, fpc = fpc)
+  lev <- unique(grp$sample[!fixed])
+  N_h <- tabulate(match(grp$pop, lev), length(lev))
+  n_h <- tabulate(match(grp$sample[!fixed], lev), length(lev))
+  free_h <- N_h - tabulate(match(grp$sample[fixed], lev), length(lev))
+  list(stratum = grp$sample, levels = lev,
+       fpc = ifelse(free_h > n_h, 1 - n_h / free_h, 0))
 }
 
 #' The share of primary sampling units NOT taken
@@ -678,6 +743,11 @@ jackknife_strata <- function(design, units, pop, psu) {
 #' where the uncorrected one runs from 0.98 to 1.77, overstating badly once the
 #' sampling fraction gets large.
 #'
+#' `m` counts the sampled units that were not certain, and `n_fixed` the
+#' certain ones, which come off the frame's count. A census therefore gets 0.
+#' Without a finite count of units in the frame there is nothing to correct
+#' by, and the correction is 1.
+#'
 #' Deliberately not applied to multi-stage designs:
 #' the delete-a-cluster jackknife sees only between-cluster variation, so the
 #' second stage is already missing, and correcting for the first stage on top of
@@ -685,7 +755,7 @@ jackknife_strata <- function(design, units, pop, psu) {
 #' approximation, which errs conservative -- the usual choice in survey practice.
 #'
 #' @noRd
-jackknife_fpc <- function(design, pop, m) {
+jackknife_fpc <- function(design, pop, m, n_fixed = 0L) {
   if (inherits(design, "drawn_design_multistage")) return(1)
   total <- tryCatch({
     if (inherits(design, "drawn_design_cluster")) {
@@ -698,8 +768,10 @@ jackknife_fpc <- function(design, pop, m) {
       nrow(pop)
     }
   }, error = function(e) NA_real_)
-  if (!is.finite(total) || total <= m) return(1)
-  1 - m / total
+  if (!is.finite(total)) return(1)
+  free <- total - n_fixed
+  if (free <= m) return(0)
+  1 - m / free
 }
 
 #' Primary sampling units for the jackknife

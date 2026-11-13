@@ -40,6 +40,26 @@ test_that("certainty treatment iterates when removing units creates new ones", {
   expect_equal(p[4:5], c(1, 1))
 })
 
+test_that("a unit whose share comes to 1 gets exactly 1", {
+  # 5 * (2.3 / 11.5) is 1 in exact arithmetic and came out 1 - 1e-16 in
+  # floating point, while the same sizes times 10 gave exactly 1.
+  pop <- data.frame(id = 1:8, w = c(1.1, 0.2, 1.8, 1.3, 1.5, 1.6, 2.3, 1.7))
+  d <- design_weighted("w", n = 5, method = "systematic")
+  expect_identical(inclusion_prob(pop, d)[7], 1)
+  expect_identical(inclusion_prob(transform(pop, w = w * 10), d)[7], 1)
+  expect_equal(sum(inclusion_prob(pop, d)), 5)
+
+  # A census then reads as one: every .prob is 1 and the total is exact,
+  # where it had a small standard error under a Deville note.
+  pop3 <- data.frame(id = 1:41, w = 0.1, y = 100 + (1:41))
+  s <- draw(pop3, design_weighted("w", n = 41, method = "systematic"),
+            seed = 1, weights = TRUE)
+  expect_true(all(s$.prob == 1))
+  r <- ht_total(s, "y")
+  expect_equal(r$variance, 0)
+  expect_match(r$note, "exact rather than estimated")
+})
+
 test_that("realised inclusion matches the claim for systematic PPS", {
   df <- data.frame(id = 1:8, w = c(1, 1, 2, 2, 3, 3, 4, 4))
   d <- design_weighted("w", n = 3, method = "systematic")

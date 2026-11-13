@@ -4,6 +4,18 @@
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+#' Is an inclusion probability 1?
+#'
+#' The one test for certainty. `n * w / sum(w)` for a unit that is certain in
+#' exact arithmetic can come out a rounding error below 1, so a probability
+#' within `1e-9` of 1 counts as 1. The tolerance is the one the local pivotal
+#' method settles probabilities with.
+#'
+#' @noRd
+is_certain <- function(p) {
+  p >= 1 - 1e-9
+}
+
 #' Signal a warning with a class of its own
 #'
 #' The class is `c(class, "drawn_warning", "warning", "condition")`, so a

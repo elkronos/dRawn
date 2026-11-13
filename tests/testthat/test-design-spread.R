@@ -77,6 +77,66 @@ test_that("the local mean variance is conservative but in the right range", {
   expect_output(print(r), "local-mean approximation")
 })
 
+test_that("a spread census reports an exact total", {
+  # Every row is in the sample, so there is no variance. The local mean
+  # estimator compared each row with its neighbours anyway and reported a
+  # standard error of about 5% of the total.
+  d <- spread_pop(20)
+  s <- draw(d, design_spread(c("x", "y"), n = 20), seed = 1, weights = TRUE)
+  r <- ht_total(s, "smooth")
+  expect_equal(r$total, sum(d$smooth))
+  expect_equal(r$variance, 0)
+  expect_match(r$note, "exact rather than estimated")
+})
+
+dominant_spread <- function() {
+  d <- data.frame(x = (1:60 * 0.618) %% 1, y = (1:60 * 0.381) %% 1)
+  d$w <- c(500, 400, 300, 1 + (1:57 %% 7) * 0.5)
+  d$v <- 10 * d$w + 5 * sin(1:60)
+  d
+}
+
+test_that("rows a size column puts past certainty add no local-mean variance", {
+  d <- dominant_spread()
+  des <- design_spread(c("x", "y"), n = 10, size = "w", scale = FALSE)
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 3L)
+
+  # The estimator runs over the other rows only, as rows and as neighbours.
+  free <- s$.prob < 1
+  want <- drawn:::local_mean_variance(as.matrix(s[free, c("x", "y")]),
+                                      s$v[free], s$.prob[free])
+  r <- ht_total(s, "v")
+  expect_equal(r$method, "local mean")
+  expect_equal(r$variance, want$variance)
+
+  y2 <- s$v * ifelse(free, 1, 4)
+  expect_equal(ht_total(s, y2)$variance, r$variance)
+
+  # One row below certainty leaves nothing to compare it with
+  one <- draw(d, design_spread(c("x", "y"), n = 4, size = "w", scale = FALSE),
+              seed = 1, weights = TRUE)
+  expect_equal(sum(one$.prob < 1), 1L)
+  a <- ht_total(one, "v", variance = "analytic")
+  expect_true(is.na(a$variance))
+  expect_match(a$note, "Only one sampled row")
+  expect_true(is.na(ht_total(one, "v")$variance))
+})
+
+test_that("with certain rows the local mean variance stays near the truth", {
+  skip_on_cran()
+  # Counting the three dominant rows as random put this ratio above 5,000.
+  d <- dominant_spread()
+  des <- design_spread(c("x", "y"), n = 10, size = "w", scale = FALSE)
+  out <- vapply(1:300, function(i) {
+    r <- ht_total(draw(d, des, seed = i, weights = TRUE), "v")
+    c(r$total, r$variance)
+  }, numeric(2))
+  ratio <- mean(out[2, ]) / stats::var(out[1, ])
+  expect_gt(ratio, 0.6)
+  expect_lt(ratio, 1.6)
+})
+
 test_that("joint probabilities have no closed form, but can be simulated", {
   d <- spread_pop(60)
   des <- design_spread(c("x", "y"), n = 10)

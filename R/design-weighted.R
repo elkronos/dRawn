@@ -149,6 +149,9 @@ draw_design.drawn_design_weighted <- function(design, data) {
 #' redistribute the remaining sample size over the rest -- repeating, because
 #' removing units raises everyone else's share.
 #'
+#' A share that rounds to slightly below 1 is certain too, and gets exactly 1,
+#' so every check on `.prob` sees the same certainty units as the draw.
+#'
 #' @noRd
 pps_pi <- function(w, n) {
   pi <- rep(0, length(w))
@@ -160,7 +163,7 @@ pps_pi <- function(w, n) {
     if (n_free <= 0 || !any(free)) break
     p <- w[free] / sum(w[free])
     cand <- n_free * p
-    over <- cand >= 1
+    over <- is_certain(cand)
     if (!any(over)) {
       pi[free] <- cand
       break

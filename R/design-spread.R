@@ -39,7 +39,10 @@
 #' nearest sampled neighbours. It is an approximation, reported as
 #' `method = "local mean"`, and errs on the conservative side: in the
 #' package's simulations it runs from about 1 to 1.6 times the true variance,
-#' higher for small samples and large sampling fractions.
+#' higher for small samples and large sampling fractions. Rows taken with
+#' certainty, because their `size` puts them past it or because `n` is the
+#' whole frame, are in every sample and add no variance, so the estimator
+#' leaves them out.
 #'
 #' @section Cost:
 #' Each step finds a nearest neighbour among the rows still undecided, so the
@@ -282,6 +285,16 @@ local_mean_variance <- function(x, y, pi_i, k = 4L) {
                      "joint inclusion probabilities."))
 }
 
+#' Variance of a spread sample
+#'
+#' Rows taken with certainty, in a census or because a `size` column puts them
+#' past it, are in every possible sample and add no variance. Kept in, each
+#' one's distance from its neighbours' mean counted as sampling variation. A
+#' census then reported a standard error of about 5% of its exact total, and
+#' on a frame with three dominant sizes the estimate averaged 1,270 times the
+#' true variance. They are left out, both as rows and as neighbours, and the
+#' estimator runs over the rest.
+#'
 #' @noRd
 ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i) {
   fr <- spread_frame(design, data)
@@ -291,5 +304,12 @@ ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i) {
       "Some sampled rows were dropped by this design's `na_rm`, so they have ",
       "no place in the space the variance is computed over.")))
   }
-  local_mean_variance(fr$x[pos, , drop = FALSE], y, pi_i)
+  free <- !is_certain(pi_i)
+  if (!any(free)) return(all_certain())
+  if (sum(free) < 2L) {
+    return(list(variance = NA_real_, method = "local mean", note = paste0(
+      "Only one sampled row was not taken with certainty, so the local mean ",
+      "estimator has no neighbour to compare it with. Draw a larger `n`.")))
+  }
+  local_mean_variance(fr$x[pos[free], , drop = FALSE], y[free], pi_i[free])
 }

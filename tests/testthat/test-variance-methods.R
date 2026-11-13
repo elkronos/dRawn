@@ -239,6 +239,111 @@ test_that("certainty rows add nothing to Deville's approximation", {
   expect_equal(r$variance, sum(c_k * (u - sum(a * u))^2) / (1 - sum(a^2)))
 })
 
+# ---- units taken with certainty in the jackknife -----------------------------
+
+dominant_pop <- function() {
+  # Six units heavy enough that systematic PPS takes them with certainty.
+  pop <- data.frame(id = 1:60, w = c(rep(500, 6), 1 + (1:54 %% 9) * 0.8))
+  pop$y <- 1.5 * pop$w + 3 * cos(1:60)
+  pop
+}
+
+test_that("a census has a jackknife variance of 0", {
+  # With every unit taken there is nothing random. The jackknife applied no
+  # finite population correction at n = N and gave a six-cluster census a
+  # standard error of 114.
+  pop <- data.frame(id = 1:30, cl = rep(letters[1:6], each = 5),
+                    g = rep(c("a", "b"), 15), w = 1:30, y = (1:30)^1.5)
+  for (des in list(design_simple(n = 30), design_stratified("g", n = 30),
+                   design_cluster("cl", n_clusters = 6),
+                   design_weighted("w", n = 30, method = "systematic"),
+                   design_reservoir(n = 30))) {
+    s <- draw(pop, des, seed = 1, weights = TRUE)
+    r <- ht_total(s, "y", variance = "jackknife")
+    expect_equal(r$total, sum(pop$y))
+    expect_equal(r$variance, 0)
+    expect_match(r$note, "exact rather than estimated")
+  }
+})
+
+test_that("the jackknife's finite population correction is 0 at a census", {
+  pop <- data.frame(cl = rep(letters[1:6], each = 5))
+  expect_equal(drawn:::jackknife_fpc(design_cluster("cl", n_clusters = 6),
+                                     pop, 6), 0)
+  expect_equal(drawn:::jackknife_fpc(design_simple(n = 10), pop, 10), 2 / 3)
+  # Certain units come off the frame's count as well as the sample's
+  expect_equal(drawn:::jackknife_fpc(design_simple(n = 10), pop, 6, 4),
+               1 - 6 / 26)
+  # The ultimate-cluster approximation keeps no correction
+  expect_equal(drawn:::jackknife_fpc(
+    design_multistage("cl", n_clusters = 6, n = 12), pop, 6), 1)
+})
+
+test_that("units systematic PPS takes with certainty are held fixed", {
+  pop <- dominant_pop()
+  d <- design_weighted("w", n = 15, method = "systematic")
+  s <- draw(pop, d, seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 6L)
+
+  # Deleting a dominant unit and inflating the rest made the jackknife 1,700
+  # times Deville's figure here. Held fixed, the two agree closely.
+  jk <- ht_total(s, "y", variance = "jackknife")
+  dev <- ht_total(s, "y")
+  expect_equal(dev$method, "deville")
+  expect_gt(jk$variance / dev$variance, 0.8)
+  expect_lt(jk$variance / dev$variance, 1.25)
+  expect_match(jk$note, "Jackknife over 9 primary sampling unit")
+  expect_match(jk$note, "the 6 taken with certainty")
+
+  # The certain units' own values do not move the variance
+  y2 <- s$y * ifelse(s$.prob == 1, 3, 1)
+  expect_equal(ht_total(s, y2, variance = "jackknife")$variance, jk$variance)
+})
+
+test_that("the PPS jackknife tracks the sampling variance with certain units", {
+  skip_on_cran()
+  pop <- dominant_pop()
+  d <- design_weighted("w", n = 15, method = "systematic")
+  out <- vapply(1:400, function(i) {
+    s <- draw(pop, d, seed = i, weights = TRUE)
+    c(sum(s$y / s$.prob), ht_total(s, "y", variance = "jackknife")$variance)
+  }, numeric(2))
+  ratio <- mean(out[2, ]) / stats::var(out[1, ])
+  expect_gt(ratio, 0.7)
+  expect_lt(ratio, 1.3)
+})
+
+test_that("one unit below certainty gives no variance, not a jackknife figure", {
+  # Deville declines with one free row, and `auto` fell back to a jackknife
+  # that deleted the certain units too: a standard error of 1,518 on a
+  # sample whose true one is 14.
+  pop <- data.frame(id = 1:10, w = c(1000, 1000, 1000, rep(1, 7)))
+  pop$y <- pop$w * 2 + (1:10)
+  s <- draw(pop, design_weighted("w", n = 4, method = "systematic"), seed = 1,
+            weights = TRUE)
+  expect_equal(sum(s$.prob < 1), 1L)
+  r <- ht_total(s, "y")
+  expect_true(is.na(r$variance))
+  expect_equal(r$method, "none")
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_true(is.na(jk$variance))
+  expect_match(jk$note, "has 1 besides the 3 taken with certainty")
+})
+
+test_that("a stratum taken whole adds nothing to the jackknife", {
+  pop <- data.frame(g = c(rep("all", 5), rep("big", 60)),
+                    y = c(1000 * (1:5), 1:60))
+  s <- draw(pop, design_stratified("g", n = 25, allocation = "equal"),
+            seed = 2, weights = TRUE)
+  expect_true(all(s$.prob[s$g == "all"] == 1))
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_equal(jk$variance, ht_total(s, "y", variance = "analytic")$variance)
+  expect_match(jk$note, "the 5 taken with certainty")
+
+  y2 <- s$y * ifelse(s$g == "all", 10, 1)
+  expect_equal(ht_total(s, y2, variance = "jackknife")$variance, jk$variance)
+})
+
 # ---- successive differences for systematic ---------------------------------
 
 test_that("successive differences follow the walk order, not frame order", {

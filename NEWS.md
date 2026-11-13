@@ -50,6 +50,35 @@
   inclusion probabilities it gave at draw time, and refuse the sample when it
   does not, naming `sf::sf_use_s2()` for a spatial design. `?design_spatial`
   says the setting must be the same at draw time and after.
+* **The jackknife and the local-mean variance treated rows taken with
+  certainty as random.** A row that is in every possible sample was deleted,
+  or compared with its neighbours, as if it could have been left out. With
+  the units `design_weighted(method = "systematic")` takes with certainty,
+  the jackknife averaged 181 times the true variance on one frame, and
+  `variance = "auto"` fell back to it when one sampled row was below
+  certainty. `design_spread(size =)` with dominant sizes averaged 1,270 times
+  the true variance. Both estimators now hold certain units fixed, and the
+  jackknife's finite population correction counts only the other units. With
+  one unit below certainty the variance is reported as missing instead.
+* **A census got a nonzero jackknife or local-mean standard error.**
+  `variance = "jackknife"` on a sample of every row or every cluster applied
+  no finite population correction, giving 114 for a six-cluster census in one
+  example, and `design_spread()` with `n` equal to the frame reported a
+  standard error of about 5% of the exact total. Both now give 0, as the
+  analytic estimators did.
+* **`design_weighted()` could give a certain unit a probability a rounding
+  error below 1.** Depending on the scale of the sizes, a unit whose share came to
+  exactly 1 got `1 - 1e-16`, so `.prob == 1` missed it and a census reported
+  a small standard error under a "Deville approximation" note. A share within
+  `1e-9` of 1 is now taken with certainty at exactly 1, in
+  `design_weighted()` and `design_spread(size =)`.
+* **A certainty design whose `rest` drew no rows reported an exact total.**
+  When a `rest` of random size, such as Poisson sampling with a small `n`,
+  drew none of the rows below the threshold, `ht_total()` and `ht_mean()`
+  gave a standard error of 0 and a zero-width interval although those rows
+  went unobserved. The total is exact only when no row lies below the
+  threshold. Otherwise the variance is now missing, with a note naming the
+  rows `rest` did not reach.
 
 ## Refusals and clearer errors
 
@@ -81,6 +110,15 @@
   sample is grouped with `dplyr::group_by()`, which they ignore, and give the
   `by` that estimates per group.
 * A `by` column that the sample does not have is named in the error.
+* `draw(weights = TRUE)` refuses a `design_certainty()` whose `rest` gives
+  every row below the threshold a probability of 0, such as one with
+  `n = 0`, because the weighted total would leave those rows out. Drawing
+  without weights still gives the cut-off sample of the rows above the
+  threshold.
+* An error raised by a certainty design's `rest` in `draw()` or
+  `inclusion_prob()` now says which rows `rest` was given, as in "In `rest`,
+  applied to the 230 rows with `w` below 100". `rest` counts only those rows,
+  so its own message spoke of 230 rows on a frame of 240.
 
 ## Behaviour changes
 

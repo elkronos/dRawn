@@ -165,7 +165,9 @@ $$\hat V = \sum_{k \in s} \frac{|N_k|}{|N_k| - 1}
 \frac{y_l}{\pi_l}\right)^2$$
 
 (Stevens and Olsen 2003; Grafström and Schelin 2014). It errs conservative,
-more so as the sampling fraction grows.
+more so as the sampling fraction grows. Rows that a `size` column puts past
+certainty are in every sample, so the sum leaves them out, as rows and as
+neighbours.
 
 ### The jackknife
 
@@ -175,6 +177,9 @@ they are deleted *within* their stratum, with only that stratum reweighted —
 the stratified or JKn jackknife (Wolter 2007, chapter 4). Deleting across strata
 would count the differences between strata as sampling variance, which is what
 stratifying removes. Each stratum carries its own finite population correction.
+Units taken with certainty, whether past certainty on size, in a stratum taken
+whole or in a census, are in every sample, so they are held fixed instead of
+deleted and the correction counts only the other units.
 For a stratified design the result equals the analytic figure exactly:
 
 ```{r jkn}
