@@ -280,6 +280,27 @@
 #' A `by` column named `variable` is refused, and so is `contrast`. The
 #' table has no design effect.
 #'
+#' @section Categories:
+#' A factor or character column named as `y`, or a factor as long as
+#' `sample`, is split into a 0/1 indicator for each of its levels:
+#' `ht_total()` gives the estimated number of frame rows at each level, and
+#' [ht_mean()] the share of each, with a proportion's interval. The result
+#' is the table of "Several variables" with a row for each level, or each
+#' level and domain with `by`, led by a `level` column in place of
+#' `variable`, and `vcov()` holds the covariances between levels. The
+#' levels are a factor's levels, unused ones included, and the values of a
+#' character column sorted byte by byte. A missing value is a missing `y`.
+#' For the designs [as_svydesign()] maps with identical standard errors, the
+#' estimates and `vcov()` equal those of `survey::svytotal(~f, design)` and
+#' `survey::svymean(~f, design)`. A character vector given as `y` is read
+#' as column names, so pass categories held in a vector as a factor. A
+#' `by` column named `level` is refused, and so is `contrast`; the
+#' indicator of one level, such as `sample$f == "a"`, takes it.
+#'
+#' A single number as `y` stands for that value in every row:
+#' `ht_total(sample, 1)` estimates the number of frame rows the design can
+#' reach, and with `by` the number in each domain.
+#'
 #' @section Working with the result:
 #' `coef()` gives the estimate, named after `y` when `y` is a column name,
 #' `vcov()` its variance as a 1 by 1 matrix, and `confint()` its interval as
@@ -369,8 +390,11 @@
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
 #'   "Which columns are read".
-#' @param y The variable to total: a column name, several column names, or a
-#'   numeric vector as long as `sample`. See "Several variables".
+#' @param y The variable to total: a column name, several column names, a
+#'   numeric vector as long as `sample`, or a single number, which stands
+#'   for that value in every row. A factor or character column, or a factor
+#'   as long as `sample`, gives the count of each level. See "Several
+#'   variables" and "Categories".
 #' @param variance How to compute it. `"auto"` uses the design's own estimator
 #'   (see "Variance") and falls back to the jackknife when that declines;
 #'   `"analytic"` insists on the design's own estimator, returning `NA` with
@@ -441,7 +465,9 @@
 #'
 #'   With several column names as `y`, a `drawn_by` table with a row for
 #'   each variable, or each variable and domain, led by a `variable` column;
-#'   see "Several variables".
+#'   see "Several variables". With a factor or character `y`, the same
+#'   table with a row for each level, led by a `level` column; see
+#'   "Categories".
 #'
 #'   Each has `coef()`, `vcov()`, `confint()`, `as.data.frame()` and
 #'   `tidy()` methods; see "Working with the result".
@@ -506,8 +532,8 @@
 #' both
 #' vcov(both)
 #'
-#' @seealso [ht_mean()], [ht_ratio()], [deff()], [joint_prob()],
-#'   [inclusion_prob()]
+#' @seealso [ht_mean()], [ht_ratio()], [ht_quantile()], [deff()],
+#'   [joint_prob()], [inclusion_prob()]
 #' @export
 ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
                                             "none"), level = 0.95,
@@ -524,6 +550,10 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
   if (several_names(y)) {
     return(estimate_several(sample, y, "total", variance, level, by, df,
                             alternative, contrast, ratio = ratio))
+  }
+  if (categorical(sample, y)) {
+    return(estimate_levels(sample, y, "total", variance, level, by, df,
+                           alternative, contrast, ratio = ratio))
   }
   parts <- ht_prepare(sample, y, level, df, na_rm = NULL)
   parts$ratio <- ratio_parts(parts, ratio)
@@ -735,13 +765,7 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                             paste0("The domain `", label, "`")
                           }, estimate = "Hajek mean") {
   if (length(unique(psu[member])) >= 2L) return(NULL)
-  pi_all <- parts$pi_all
-  if (!is.null(pi_all) && !anyNA(frame)) {
-    # A conditional sample's unselected clusters have no recorded
-    # probability, and were not taken with certainty.
-    reach <- reachable(pi_all) & frame
-    if (!anyNA(pi_all[reach]) && all(is_certain(pi_all[reach]))) return(NULL)
-  }
+  if (certain_domain(parts, frame)) return(NULL)
   unit <- unit_noun(parts$design)
   core <- paste0("A ", estimate, "'s linearised residuals sum to zero over ",
                  "it, so every variance estimator would give a standard ",
@@ -761,6 +785,24 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
            })
   }
   list(variance = NA_real_, method = "none", note = note)
+}
+
+#' Whether every frame row of a domain the design can reach was certain
+#'
+#' Read from the draw-time probabilities over `frame`, a logical vector
+#' marking the domain's frame rows, `TRUE` for the whole frame or `NA` when
+#' the frame cannot say. Then every such row is in every sample, and an
+#' estimate over the domain is exact. `FALSE` when the frame cannot say, and
+#' for a sample saved by drawn 0.2.0, which records no probabilities.
+#'
+#' @noRd
+certain_domain <- function(parts, frame) {
+  pi_all <- parts$pi_all
+  if (is.null(pi_all) || anyNA(frame)) return(FALSE)
+  # A conditional sample's unselected clusters have no recorded
+  # probability, and were not taken with certainty.
+  reach <- reachable(pi_all) & frame
+  !anyNA(pi_all[reach]) && all(is_certain(pi_all[reach]))
 }
 
 #' Each sampled row's primary sampling unit

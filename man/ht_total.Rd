@@ -20,8 +20,11 @@ ht_total(
 \item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. See
 "Which columns are read".}
 
-\item{y}{The variable to total: a column name, several column names, or a
-numeric vector as long as \code{sample}. See "Several variables".}
+\item{y}{The variable to total: a column name, several column names, a
+numeric vector as long as \code{sample}, or a single number, which stands
+for that value in every row. A factor or character column, or a factor
+as long as \code{sample}, gives the count of each level. See "Several
+variables" and "Categories".}
 
 \item{variance}{How to compute it. \code{"auto"} uses the design's own estimator
 (see "Variance") and falls back to the jackknife when that declines;
@@ -100,7 +103,9 @@ the weight and estimate of each domain it weighs; \code{what} (\code{"total"} or
 
 With several column names as \code{y}, a \code{drawn_by} table with a row for
 each variable, or each variable and domain, led by a \code{variable} column;
-see "Several variables".
+see "Several variables". With a factor or character \code{y}, the same
+table with a row for each level, led by a \code{level} column; see
+"Categories".
 
 Each has \code{coef()}, \code{vcov()}, \code{confint()}, \code{as.data.frame()} and
 \code{tidy()} methods; see "Working with the result".
@@ -401,6 +406,29 @@ A \code{by} column named \code{variable} is refused, and so is \code{contrast}. 
 table has no design effect.
 }
 
+\section{Categories}{
+
+A factor or character column named as \code{y}, or a factor as long as
+\code{sample}, is split into a 0/1 indicator for each of its levels:
+\code{ht_total()} gives the estimated number of frame rows at each level, and
+\code{\link[=ht_mean]{ht_mean()}} the share of each, with a proportion's interval. The result
+is the table of "Several variables" with a row for each level, or each
+level and domain with \code{by}, led by a \code{level} column in place of
+\code{variable}, and \code{vcov()} holds the covariances between levels. The
+levels are a factor's levels, unused ones included, and the values of a
+character column sorted byte by byte. A missing value is a missing \code{y}.
+For the designs \code{\link[=as_svydesign]{as_svydesign()}} maps with identical standard errors, the
+estimates and \code{vcov()} equal those of \code{survey::svytotal(~f, design)} and
+\code{survey::svymean(~f, design)}. A character vector given as \code{y} is read
+as column names, so pass categories held in a vector as a factor. A
+\code{by} column named \code{level} is refused, and so is \code{contrast}; the
+indicator of one level, such as \code{sample$f == "a"}, takes it.
+
+A single number as \code{y} stands for that value in every row:
+\code{ht_total(sample, 1)} estimates the number of frame rows the design can
+reach, and with \code{by} the number in each domain.
+}
+
 \section{Working with the result}{
 
 \code{coef()} gives the estimate, named after \code{y} when \code{y} is a column name,
@@ -556,6 +584,6 @@ Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Surve
 Sampling}. Springer.
 }
 \seealso{
-\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=deff]{deff()}}, \code{\link[=joint_prob]{joint_prob()}},
-\code{\link[=inclusion_prob]{inclusion_prob()}}
+\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=ht_quantile]{ht_quantile()}}, \code{\link[=deff]{deff()}},
+\code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
 }

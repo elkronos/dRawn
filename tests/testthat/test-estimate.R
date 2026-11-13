@@ -93,7 +93,8 @@ test_that("ht_mean refuses samples it cannot estimate from", {
 
   s <- draw(d, design_simple(n = 20), seed = 1, weights = TRUE)
   expect_error(ht_mean(s, "nope"), "no column")
-  expect_error(ht_mean(s, "site"), "numeric")
+  s$when <- as.Date("2024-01-01") + seq_len(nrow(s))
+  expect_error(ht_mean(s, "when"), "numeric")
   expect_error(ht_mean(s, "y", level = 1), "between 0 and 1")
 
   na_y <- s
@@ -1001,10 +1002,216 @@ test_that("a y that is not a column name or a numeric vector says so", {
   expect_error(ht_total(s, 1:3),
                "an integer vector of length 3, and `sample` has 20 rows")
   expect_error(ht_total(s, list(1)), forms, fixed = TRUE)
-  expect_error(ht_mean(s, "site"), "`y` names `site`, a character column")
+  expect_error(ht_mean(s, c("y", "site")),
+               "`y` names `site`, a character column, among several")
   expect_error(ht_total(s, c("y", "y")), "`y` names `y` more than once")
   expect_error(ht_total(s, c("y", "nope")), "`sample` has no column `nope`")
   expect_error(ht_total(s, c("y", "w"), by = "site",
                         contrast = c(a = 1, b = -1)),
                "`contrast` weighs the domains of one variable")
+})
+
+test_that("a factor y gives the share or count of each level, as survey's", {
+  pop <- est_pop()
+  pop$band <- factor(ifelse(pop$y < 150, "low",
+                            ifelse(pop$y < 300, "mid", "high")),
+                     levels = c("low", "mid", "high", "none"))
+  pop$band_chr <- as.character(pop$band)
+  s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  m <- ht_mean(s, "band")
+  expect_s3_class(m, "drawn_by")
+  expect_equal(names(m), c("level", "n", "mean", "variance", "se",
+                           "ci_lower", "ci_upper", "method"))
+  expect_equal(levels(m$level), levels(pop$band))
+  expect_equal(as.character(m$level), levels(pop$band))
+  expect_equal(sum(m$mean), 1)
+  expect_equal(attr(m, "ci_scale"), "logit")
+  # Each row is the mean of the level's indicator.
+  one <- ht_mean(s, s$band == "mid")
+  expect_equal(m$mean[2], one$mean)
+  expect_equal(c(m$ci_lower[2], m$ci_upper[2]), one$ci)
+  # A level no sampled row has is a share of 0, with a beta interval.
+  expect_equal(m$mean[4], 0)
+  expect_gt(m$ci_upper[4], 0)
+  expect_equal(ht_mean(s, s$band)$mean, m$mean)
+  # A character column's levels are its values, sorted.
+  t <- ht_total(s, "band_chr")
+  expect_equal(t$level, c("high", "low", "mid"))
+  expect_equal(sum(t$total), sum(1 / s$.prob))
+  expect_output(print(m), "Hajek mean of `band` by level")
+  expect_output(print(ht_total(s, "band", by = "site")),
+                "total of `band` by level and domain")
+  expect_error(deff(m), "levels of `y`")
+  expect_error(ht_mean(s, "band", by = "site", contrast = c(a = 1, b = -1)),
+               "Pass the indicator of one level as `y`")
+  s$level <- s$site
+  expect_error(ht_mean(s, "band", by = "level"), "uses for its own column")
+
+  skip_if_not_installed("survey")
+  svd <- as_svydesign(s)
+  sm <- survey::svymean(~band, svd)
+  expect_equal(unname(coef(m)), unname(coef(sm)))
+  expect_equal(unname(vcov(m)), unname(matrix(vcov(sm), 4)))
+  st <- survey::svytotal(~band_chr, svd)
+  expect_equal(unname(coef(t)), unname(coef(st)))
+  expect_equal(unname(vcov(t)), unname(matrix(vcov(st), 3)))
+  # By domain, each level's share in each site.
+  b <- ht_mean(s, "band", by = "site")
+  sb <- survey::svyby(~band, ~site, svd, survey::svymean)
+  at <- paste0(b$site, ":band", b$level)
+  expect_equal(b$mean, unname(coef(sb)[at]))
+  # survey's standard errors come a column per level, a row per site.
+  expect_equal(b$se, c(as.matrix(survey::SE(sb))))
+})
+
+test_that("a single number as y stands for that value in every row", {
+  s <- draw(est_pop(), design_weighted("w", n = 40, method = "poisson"),
+            seed = 1, weights = TRUE)
+  ones <- rep(1, nrow(s))
+  n_hat <- ht_total(s, 1)
+  expect_equal(n_hat$total, sum(1 / s$.prob))
+  expect_equal(n_hat$se, ht_total(s, ones)$se)
+  expect_equal(ht_total(s, 1, by = "site")$total,
+               ht_total(s, ones, by = "site")$total)
+  expect_equal(ht_ratio(s, "y", 1)$ratio, ht_mean(s, "y")$mean)
+  # A single string is still a column name.
+  expect_error(ht_total(s, "nope"), "`sample` has no column `nope`")
+  expect_error(ht_total(s, letters[seq_len(nrow(s))]), "pass it as a factor")
+})
+
+test_that("ht_quantile() gives survey's quantiles and Woodruff intervals", {
+  skip_if_not_installed("survey")
+  pop <- est_pop()
+  probs <- c(0.25, 0.5, 0.75)
+  for (des in list(design_stratified("site", n = 40),
+                   design_cluster("cl", n_clusters = 6),
+                   design_multistage("cl", n_clusters = 8, n = 40))) {
+    s <- draw(pop, des, seed = 2, weights = TRUE)
+    q <- ht_quantile(s, "y", probs = probs)
+    sq <- survey::svyquantile(~y, as_svydesign(s), probs, ci = TRUE,
+                              interval.type = "mean")$y
+    expect_equal(q$quantile, unname(sq[, 1]))
+    expect_equal(cbind(q$ci_lower, q$ci_upper), unname(sq[, 2:3]))
+    expect_equal(q$se, unname(sq[, 4]))
+    expect_equal(attr(q, "df"), survey::degf(as_svydesign(s)))
+    med <- ht_quantile(s, "y")
+    expect_equal(c(med$quantile, med$ci, med$se),
+                 unname(c(sq[2, 1], sq[2, 2:3], sq[2, 4])))
+  }
+  # By domain, with the normal interval survey also gives each domain.
+  s <- draw(pop, design_stratified("site", n = 60), seed = 2, weights = TRUE)
+  b <- ht_quantile(s, "y", probs = c(0.5, 0.75), by = "site", df = Inf)
+  sb <- survey::svyby(~y, ~site, as_svydesign(s), survey::svyquantile,
+                      quantiles = c(0.5, 0.75), ci = TRUE, df = Inf)
+  expect_equal(b$quantile, c(t(as.matrix(sb[c("y.0.5", "y.0.75")]))),
+               ignore_attr = TRUE)
+  expect_equal(b$se, c(t(as.matrix(sb[c("se.y.0.5", "se.y.0.75")]))),
+               ignore_attr = TRUE)
+})
+
+test_that("ht_quantile() follows the quantile rule and the indicator's mean", {
+  pop <- est_pop()
+  # With equal weights the rule is quantile(type = 1).
+  sr <- draw(pop, design_simple(n = 30), seed = 3, weights = TRUE)
+  p <- c(0, 0.1, 1 / 3, 0.5, 0.9, 1)
+  q <- ht_quantile(sr, "y", p, variance = "none")
+  expect_equal(q$quantile, unname(stats::quantile(sr$y, p, type = 1)))
+  # F(q) and its standard error are the Hajek mean of y <= q, for a design
+  # survey has no estimator for.
+  sy <- draw(pop, design_systematic(interval = 7), seed = 1, weights = TRUE)
+  med <- ht_quantile(sy, "y")
+  ind <- ht_mean(sy, sy$y <= med$quantile, proportion = FALSE)
+  expect_equal(med$cdf, ind$mean)
+  expect_equal(med$cdf_se, ind$se)
+  expect_equal(med$method, "successive difference")
+  expect_gte(med$cdf, 0.5)
+  expect_lte(med$ci[1], med$quantile)
+  expect_gte(med$ci[2], med$quantile)
+})
+
+test_that("a quantile has coef(), vcov(), confint(), a frame and tidy()", {
+  s <- draw(est_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  q <- ht_quantile(s, "y")
+  expect_s3_class(q, "drawn_quantile")
+  expect_equal(coef(q), c(y = q$quantile))
+  expect_equal(vcov(q), matrix(q$se^2, 1, 1, dimnames = list("y", "y")))
+  expect_equal(unname(confint(q)[1, ]), q$ci)
+  expect_equal(unname(confint(q, level = 0.8)[1, ]),
+               ht_quantile(s, "y", level = 0.8)$ci)
+  expect_equal(names(as.data.frame(q)),
+               c("variable", "prob", "n", "quantile", "variance", "se",
+                 "ci_lower", "ci_upper", "level", "df", "deff", "method"))
+  expect_true(is.na(deff(q)))
+  expect_output(print(q), "Quantile of `y`")
+  expect_output(print(q), "Woodruff, t, 57 df", fixed = TRUE)
+
+  b <- ht_quantile(s, "y", c(0.25, 0.5), by = "site")
+  expect_equal(names(b), c("site", "prob", "n", "quantile", "variance", "se",
+                           "ci_lower", "ci_upper", "method"))
+  expect_equal(names(coef(b))[1:2], c("a . 0.25", "a . 0.5"))
+  at <- ht_quantile(s, "y", c(0.25, 0.5), by = "site", level = 0.8)
+  expect_equal(unname(confint(b, level = 0.8)),
+               cbind(at$ci_lower, at$ci_upper))
+  # Selected rows keep their own intervals at another level.
+  expect_equal(unname(confint(b[3:4, ], level = 0.8)),
+               cbind(at$ci_lower, at$ci_upper)[3:4, ])
+  expect_equal(unname(diag(vcov(b))), b$variance)
+  expect_output(print(b), "Quantiles of `y` by domain")
+  expect_output(print(ht_quantile(s, "y", c(0.25, 0.75))),
+                "Quantiles of `y`  (stratified", fixed = TRUE)
+  expect_error(deff(b), "table of quantiles")
+  skip_if_not_installed("generics")
+  expect_equal(generics::tidy(q, conf.int = TRUE)$conf.low, q$ci[1])
+  expect_equal(names(generics::tidy(b)),
+               c("site", "prob", "term", "estimate", "std.error"))
+})
+
+test_that("ht_quantile() declines what it cannot measure", {
+  pop <- est_pop()
+  s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  # At the largest value F(q) is 1, with a variance of 0 whatever y does.
+  top <- ht_quantile(s, "y", 0.99)
+  expect_equal(top$quantile, max(s$y))
+  expect_true(is.na(top$se))
+  expect_equal(top$method, "none")
+  expect_match(top$note, "largest sampled value")
+  b <- ht_quantile(s, "y", c(0.5, 0.99), by = "site")
+  expect_equal(is.na(b$se), rep(c(FALSE, TRUE), 3))
+  expect_match(attr(b, "notes"), "`a . 0.99`, `b . 0.99`", all = FALSE)
+  # A census is exact there.
+  cen <- draw(pop, design_simple(n = 300), seed = 1, weights = TRUE)
+  ex <- ht_quantile(cen, "y", 1)
+  expect_equal(ex$se, 0)
+  expect_equal(ex$ci, rep(max(pop$y), 2))
+  # An interval for F(q) below 0 bounds the quantile from above only.
+  low <- ht_quantile(s, "y", 0.01)
+  expect_true(is.na(low$ci[1]))
+  expect_false(is.na(low$ci[2]))
+  expect_true(is.na(low$se))
+  expect_match(low$note, "bounds the quantile on one side only")
+  # One sampled row in a domain.
+  s$one <- c("x", rep("y", nrow(s) - 1L))
+  expect_match(attr(ht_quantile(s, "y", by = "one"), "notes"),
+               "A quantile's linearised residuals sum to zero",
+               all = FALSE)
+})
+
+test_that("ht_quantile() refuses what it cannot read", {
+  s <- draw(est_pop(), design_stratified("site", n = 40), seed = 1,
+            weights = TRUE)
+  s$gap <- s$y
+  s$gap[3] <- NA
+  expect_error(ht_quantile(s, "gap"), "`y` is missing in 1 of the 40")
+  expect_error(ht_quantile(s, "site"), "a character column")
+  expect_error(ht_quantile(s, c("y", "w")), "one column name or a numeric")
+  expect_error(ht_quantile(s, "y", probs = 1.5),
+               "`probs` must be one or more numbers from 0 to 1")
+  expect_error(ht_quantile(s, "y", probs = c(0.5, 0.5)), "more than once")
+  s$prob <- 1
+  expect_error(ht_quantile(s, "y", by = "prob"), "uses for its own column")
+  d <- data.frame(y = 1:10)
+  e <- suppressWarnings(draw(d, design_systematic(interval = 20), seed = 2,
+                             weights = TRUE))
+  expect_error(ht_quantile(e, "y"), "no rows, so there is no quantile")
 })

@@ -907,6 +907,34 @@
   vector as long as the sample is refused with a message that lists those
   forms and says what `y` was, and a column that is not numeric is named
   with its type.
+* `ht_quantile()` estimates medians, quartiles and other quantiles, overall
+  or by domain, from the Hajek estimate of the distribution function. The
+  estimate at `p` is the smallest sampled value whose estimated
+  distribution function is `p` or more, `survey::svyquantile()`'s default
+  rule. Its interval is Woodruff's: the interval for the distribution
+  function at the estimate, from the design's own variance estimator, is
+  carried back to the scale of `y`, and the standard error is that
+  interval's width over `2 t`. For the designs `as_svydesign()` maps with
+  identical standard errors it equals
+  `survey::svyquantile(interval.type = "mean")`, and systematic, spread and
+  systematic PPS samples get the estimators `ht_total()` uses for them. A
+  quantile at the largest sampled value, where that variance is 0 whatever
+  `y` does, gets no standard error, with a note, where `survey` gives an
+  interval of no width. Quantiles were available only through
+  `as_svydesign()`. The result has `coef()`, `vcov()`, `confint()`,
+  `as.data.frame()` and `tidy()` methods, and `confint()` at another level
+  forms the Woodruff interval again.
+* `ht_total()` and `ht_mean()` take a factor or character column as `y`,
+  or a factor as long as the sample, and return the estimated count or
+  share of each level as a table led by a `level` column, with a
+  proportion's interval for each share and the covariances between levels
+  in `vcov()`, as `survey::svytotal(~f)` and `survey::svymean(~f)` give
+  them. Such a `y` was refused, and shares took one call per level with an
+  indicator such as `s$f == "a"`, which `?ht_mean` now shows.
+* `ht_total()`, `ht_mean()` and `ht_ratio()` take a single number as `y`
+  or `x` and use it for every row, so `ht_total(s, 1)` estimates the number
+  of frame rows the design can reach, and with `by` the number in each
+  domain. A single number was refused.
 
 ## Speed and memory
 

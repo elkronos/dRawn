@@ -37,12 +37,13 @@ reference:
 
 - title: Estimating from a sample
   desc: >
-    Totals, means, ratios and proportions, overall or by domain, with the
-    variance estimator the design calls for and a design effect.
+    Totals, means, ratios, proportions and quantiles, overall or by domain,
+    with the variance estimator the design calls for and a design effect.
   contents:
   - ht_total
   - ht_mean
   - ht_ratio
+  - ht_quantile
   - deff
 
 - title: From fieldwork to estimate

@@ -7,8 +7,8 @@
 deff(object, ...)
 }
 \arguments{
-\item{object}{A result from \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}} or \code{\link[=ht_ratio]{ht_ratio()}}, or
-an object from \code{survey} that holds a design effect.}
+\item{object}{A result from \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_ratio]{ht_ratio()}} or
+\code{\link[=ht_quantile]{ht_quantile()}}, or an object from \code{survey} that holds a design effect.}
 
 \item{...}{Passed to \code{survey::deff()} for an object from \code{survey}, such as
 its \code{quietly}. Not used for an estimate made here.}
@@ -47,12 +47,14 @@ The design effect is \code{NA} when there is no variance, and when \code{y} take
 one value in every sampled row, where there is no spread for a simple
 random sample to be measured by.
 
-A table of domain estimates from \code{by}, or of several variables, carries
-no design effect, and \code{deff()} refuses it with a message saying so. A
-contrast's design effect is \code{NA}. A ratio from \code{\link[=ht_ratio]{ht_ratio()}}, and a total
-from the ratio estimator, are measured against the same estimator from a
-simple random sample, through the variance of its linearised residuals,
-as \code{survey::svyratio(deff = TRUE)} measures a ratio.
+A table of domain estimates from \code{by}, of several variables, of the
+levels of a factor or of quantiles carries no design effect, and \code{deff()}
+refuses it with a message saying so. A contrast's design effect is \code{NA},
+and so is a quantile's from \code{\link[=ht_quantile]{ht_quantile()}}. A ratio from \code{\link[=ht_ratio]{ht_ratio()}},
+and a total from the ratio estimator, are measured against the same
+estimator from a simple random sample, through the variance of its
+linearised residuals, as \code{survey::svyratio(deff = TRUE)} measures a
+ratio.
 
 \code{survey} has a \code{deff()} of its own, and whichever of the two packages is
 attached last masks the other's. Either one answers for both. This

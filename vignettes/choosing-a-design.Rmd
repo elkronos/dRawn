@@ -725,10 +725,10 @@ ht_total(s, "value", by = "site")
 
 ## Where this package stops
 
-`drawn` draws samples and estimates totals, means and proportions from them,
-overall or by group. It does not do regression, calibration, or quantiles with
-proper standard errors — [`survey`](https://cran.r-project.org/package=survey)
-does all of that, and `as_svydesign()` hands a sample straight over.
+`drawn` draws samples and estimates totals, means, proportions, ratios and
+quantiles from them, overall or by group. It does not do regression or
+calibration — [`survey`](https://cran.r-project.org/package=survey) does both,
+and `as_svydesign()` hands a sample straight over.
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE), message = FALSE}
 library(survey)
@@ -750,7 +750,7 @@ c(drawn  = ht_total(s, "value")$se,
 From there it is `survey`'s vocabulary:
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE)}
-svyquantile(~value, des, quantiles = c(0.25, 0.5, 0.75))
+coef(summary(svyglm(value ~ site, des)))
 ```
 
 Draw here, analyse there.

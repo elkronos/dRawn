@@ -113,9 +113,9 @@ sample_summary(s)
 #>     west       3       30  0.100
 ```
 
-**5. Estimate** a total, a mean or a proportion, overall or by domain.
-Domain estimates use the whole sample, not a subset of it, which is what
-keeps their standard errors right:
+**5. Estimate** a total, a mean, a proportion or a quantile, overall or
+by domain. Domain estimates use the whole sample, not a subset of it,
+which is what keeps their standard errors right:
 
 ``` r
 ht_mean(s, "value", by = "site")
@@ -131,7 +131,7 @@ ht_mean(s, "value", by = "site")
 
 ``` r
 des <- as_svydesign(s)             # a survey.design, with matching SEs
-survey::svyquantile(~value, des, 0.5)
+survey::svyglm(value ~ site, des)
 ```
 
 ## The designs

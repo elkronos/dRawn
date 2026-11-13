@@ -24,9 +24,11 @@ ht_mean(
 read as \code{\link[=ht_total]{ht_total()}} reads it: \code{.prob} for the probabilities, and the
 stored frame for the design's columns. See "Which columns are read" there.}
 
-\item{y}{The variable to average: a column name, several column names, or
-a numeric vector as long as \code{sample}. See "Several variables" in
-\code{\link[=ht_total]{ht_total()}}.}
+\item{y}{The variable to average: a column name, several column names, a
+numeric vector as long as \code{sample}, or a single number, which stands
+for that value in every row. A factor or character column, or a factor
+as long as \code{sample}, gives the share of each level. See "Several
+variables" and "Categories" in \code{\link[=ht_total]{ht_total()}}.}
 
 \item{estimator}{\code{"hajek"} or \code{"ht"}. See above.}
 
@@ -56,7 +58,8 @@ with \code{y} missing that \code{na_rm = TRUE} left out. See \code{\link[=ht_tot
 and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data frame with one row
 per domain, and with \code{contrast} a \code{drawn_contrast}, as for \code{\link[=ht_total]{ht_total()}}.
 With several column names as \code{y}, a \code{drawn_by} table with a row per
-variable, as for \code{\link[=ht_total]{ht_total()}}. Each has \code{coef()}, \code{vcov()}, \code{confint()},
+variable, and with a factor or character \code{y} one with a row per level,
+as for \code{\link[=ht_total]{ht_total()}}. Each has \code{coef()}, \code{vcov()}, \code{confint()},
 \code{as.data.frame()} and \code{tidy()} methods; see "Working with the result" in
 \code{\link[=ht_total]{ht_total()}}.
 }
@@ -160,6 +163,22 @@ left to rounding error, which gave standard errors near \code{1e-16} and design
 effects that changed from seed to seed. The design effect is then \code{NA}.
 }
 
+\section{Shares and counts of categories}{
+
+A factor or character column named as \code{y}, or a factor as long as
+\code{sample}, gives the share of each of its levels: a \code{drawn_by} table led
+by a \code{level} column, with a proportion's interval for each level and the
+covariances between the shares in \code{vcov()}. \code{\link[=ht_total]{ht_total()}} gives the
+estimated number of frame rows at each level the same way; see
+"Categories" there. The share of one level is also the mean of its
+indicator, \code{ht_mean(s, s$habitat == "forest")}, which takes \code{contrast}
+as any \code{y} does.
+
+A single number as \code{y} stands for that value in every row, so
+\code{ht_total(s, 1)} estimates the number of frame rows the design can
+reach, and \code{ht_total(s, 1, by = "habitat")} the number in each domain.
+}
+
 \section{Missing values}{
 
 A missing \code{y} is refused unless \code{na_rm = TRUE}. Then the mean is the
@@ -196,6 +215,12 @@ ht_mean(s, "spend", by = "site", contrast = c(a = 1, b = -1))
 # A proportion is the mean of a 0/1 variable
 ht_mean(s, s$spend > 250)
 
+# The share of each level of a factor, with the covariances between them
+s$band <- cut(s$spend, c(0, 100, 250, 500))
+shares <- ht_mean(s, "band")
+shares
+vcov(shares)
+
 # Stratified without replacement: the weights sum to N, so the two agree
 all.equal(ht_mean(s, "spend", estimator = "ht")$mean, ht_mean(s, "spend")$mean)
 
@@ -226,5 +251,6 @@ estimators: linearization and residual techniques. \emph{Survey Methodology},
 25, 193–203.
 }
 \seealso{
-\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=deff]{deff()}}, \code{\link[=sample_summary]{sample_summary()}}
+\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=ht_quantile]{ht_quantile()}}, \code{\link[=deff]{deff()}},
+\code{\link[=sample_summary]{sample_summary()}}
 }

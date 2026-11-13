@@ -92,6 +92,20 @@
 #' left to rounding error, which gave standard errors near `1e-16` and design
 #' effects that changed from seed to seed. The design effect is then `NA`.
 #'
+#' @section Shares and counts of categories:
+#' A factor or character column named as `y`, or a factor as long as
+#' `sample`, gives the share of each of its levels: a `drawn_by` table led
+#' by a `level` column, with a proportion's interval for each level and the
+#' covariances between the shares in `vcov()`. [ht_total()] gives the
+#' estimated number of frame rows at each level the same way; see
+#' "Categories" there. The share of one level is also the mean of its
+#' indicator, `ht_mean(s, s$habitat == "forest")`, which takes `contrast`
+#' as any `y` does.
+#'
+#' A single number as `y` stands for that value in every row, so
+#' `ht_total(s, 1)` estimates the number of frame rows the design can
+#' reach, and `ht_total(s, 1, by = "habitat")` the number in each domain.
+#'
 #' @section Missing values:
 #' A missing `y` is refused unless `na_rm = TRUE`. Then the mean is the
 #' Hajek mean over the rows with `y` present, treated as a domain of the
@@ -108,9 +122,11 @@
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. It is
 #'   read as [ht_total()] reads it: `.prob` for the probabilities, and the
 #'   stored frame for the design's columns. See "Which columns are read" there.
-#' @param y The variable to average: a column name, several column names, or
-#'   a numeric vector as long as `sample`. See "Several variables" in
-#'   [ht_total()].
+#' @param y The variable to average: a column name, several column names, a
+#'   numeric vector as long as `sample`, or a single number, which stands
+#'   for that value in every row. A factor or character column, or a factor
+#'   as long as `sample`, gives the share of each level. See "Several
+#'   variables" and "Categories" in [ht_total()].
 #' @param estimator `"hajek"` or `"ht"`. See above.
 #' @param variance,level,by,df,alternative,contrast As for [ht_total()].
 #' @param proportion Whether `y` is a proportion, which decides the shape of
@@ -134,7 +150,8 @@
 #'   and [deff()] for the design effect. With `by`, a data frame with one row
 #'   per domain, and with `contrast` a `drawn_contrast`, as for [ht_total()].
 #'   With several column names as `y`, a `drawn_by` table with a row per
-#'   variable, as for [ht_total()]. Each has `coef()`, `vcov()`, `confint()`,
+#'   variable, and with a factor or character `y` one with a row per level,
+#'   as for [ht_total()]. Each has `coef()`, `vcov()`, `confint()`,
 #'   `as.data.frame()` and `tidy()` methods; see "Working with the result" in
 #'   [ht_total()].
 #'
@@ -178,6 +195,12 @@
 #' # A proportion is the mean of a 0/1 variable
 #' ht_mean(s, s$spend > 250)
 #'
+#' # The share of each level of a factor, with the covariances between them
+#' s$band <- cut(s$spend, c(0, 100, 250, 500))
+#' shares <- ht_mean(s, "band")
+#' shares
+#' vcov(shares)
+#'
 #' # Stratified without replacement: the weights sum to N, so the two agree
 #' all.equal(ht_mean(s, "spend", estimator = "ht")$mean, ht_mean(s, "spend")$mean)
 #'
@@ -187,7 +210,8 @@
 #' c(hajek = ht_mean(p, "spend", variance = "none")$mean,
 #'   ht    = ht_mean(p, "spend", "ht", variance = "none")$mean)
 #'
-#' @seealso [ht_total()], [ht_ratio()], [deff()], [sample_summary()]
+#' @seealso [ht_total()], [ht_ratio()], [ht_quantile()], [deff()],
+#'   [sample_summary()]
 #' @export
 ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                     variance = c("auto", "analytic", "jackknife", "none"),
@@ -209,6 +233,12 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                             alternative, contrast, estimator = estimator,
                             proportion = proportion, ci_method = ci_method,
                             na_rm = na_rm))
+  }
+  if (categorical(sample, y)) {
+    return(estimate_levels(sample, y, "mean", variance, level, by, df,
+                           alternative, contrast, estimator = estimator,
+                           proportion = proportion, ci_method = ci_method,
+                           na_rm = na_rm))
   }
   parts <- ht_prepare(sample, y, level, df, na_rm = na_rm)
   parts <- mean_setup(parts, estimator, proportion, ci_method)
@@ -810,6 +840,18 @@ check_several_y <- function(sample, y) {
     stop("`sample` has no column", if (length(absent) > 1L) "s", " ",
          quote_names(absent), ".", call. = FALSE)
   }
+  kind <- vapply(y, function(v) {
+    col <- sample[[v]]
+    if (is.factor(col)) "factor" else if (is.character(col)) "character" else
+      ""
+  }, character(1))
+  hit <- which(nzchar(kind))
+  if (length(hit)) {
+    v <- y[hit[1]]
+    stop("`y` names `", v, "`, a ", kind[hit[1]], " column, among several. ",
+         "Estimate its levels in a call of their own, with `y = \"", v,
+         "\"`, which gives a row for each level.", call. = FALSE)
+  }
   invisible(NULL)
 }
 
@@ -852,6 +894,96 @@ estimate_several <- function(sample, y, what, variance, level, by, df,
                  label = paste0("`", y[i], "`"))
     })
   }
+  stack_estimates(sample, base, parts, what, variance, level, by, df,
+                  alternative, estimator, ci_method, ratio,
+                  lead = "variable", values = y, variable = y)
+}
+
+#' Whether `y` is a factor or character column, or a factor vector
+#'
+#' A character vector is taken for column names, so a vector of categories
+#' counts only as a factor.
+#'
+#' @noRd
+categorical <- function(sample, y) {
+  if (is.factor(y)) return(length(y) == nrow(sample))
+  if (!is.character(y) || length(y) != 1L || is.na(y) ||
+      !y %in% names(sample)) {
+    return(FALSE)
+  }
+  v <- sample[[y]]
+  is.factor(v) || is.character(v)
+}
+
+#' The levels of a categorical `y`, in the order its table lists them
+#'
+#' A factor's levels, unused ones included, as `survey::svymean()` lists
+#' them, kept as a factor of the same class; else the values present, sorted
+#' byte by byte.
+#'
+#' @noRd
+category_levels <- function(v) {
+  if (is.factor(v)) {
+    lev <- levels(v)
+    return(structure(seq_along(lev), levels = lev, class = class(v)))
+  }
+  sort(unique(v[!is.na(v)]), method = "radix")
+}
+
+#' Estimates for each level of a factor or character `y`
+#'
+#' Each level is a 0/1 indicator, missing where `y` is, estimated as one
+#' variable of several: a count with ht_total(), a share with ht_mean(),
+#' which reads the indicators as proportions. The table is led by a `level`
+#' column.
+#'
+#' @noRd
+estimate_levels <- function(sample, y, what, variance, level, by, df,
+                            alternative, contrast, estimator = "hajek",
+                            proportion = NULL, ci_method = "logit",
+                            na_rm = NULL, ratio = NULL) {
+  name <- if (is.character(y)) y
+  v <- if (is.null(name)) y else sample[[name]]
+  shown <- ratio_name(name, "y")
+  values <- category_levels(v)
+  if (!is.null(contrast)) {
+    stop("`contrast` weighs the domains of one variable, and ", shown,
+         " has ", length(values), " levels, each estimated as a variable of ",
+         "its own. Pass the indicator of one level as `y`, such as `",
+         if (is.null(name)) "y" else paste0("sample$", name), " == \"",
+         values[1], "\"`, with `contrast`.", call. = FALSE)
+  }
+  if (!length(values)) {
+    stop(shown, " has no value in any sampled row, so it has no levels to ",
+         "estimate.", call. = FALSE)
+  }
+  base <- prepare_sample(sample, level, df)
+  codes <- if (is.factor(v)) as.integer(v) else match(v, values)
+  parts <- lapply(seq_along(values), function(k) {
+    add_y(base, codes == k, na_rm, label = shown)
+  })
+  base <- finish_prepare(base)
+  if (what == "mean") {
+    parts <- lapply(parts, mean_setup, estimator = estimator,
+                    proportion = proportion, ci_method = ci_method,
+                    label = shown)
+  }
+  stack_estimates(sample, base, parts, what, variance, level, by, df,
+                  alternative, estimator, ci_method, ratio, lead = "level",
+                  values = values, variable = name)
+}
+
+#' Estimates of several variables, stacked into one table
+#'
+#' `parts` holds one variable each. `lead` names the column that leads the
+#' table, `"variable"` or `"level"`, `values` gives its value for each of
+#' `parts`, and `variable` is the table's `variable` attribute: the column
+#' names, or the name of the categorical `y`.
+#'
+#' @noRd
+stack_estimates <- function(sample, base, parts, what, variance, level, by,
+                            df, alternative, estimator, ci_method, ratio,
+                            lead, values, variable) {
   aux <- ratio_parts(base, ratio)
   for (i in seq_along(parts)) parts[[i]]["ratio"] <- list(aux)
   ctx <- variance_context()
@@ -883,7 +1015,7 @@ estimate_several <- function(sample, y, what, variance, level, by, df,
     fits <- lapply(parts, function(p) {
       estimate_by(p, by, variance, level, df, what, estimator = estimator,
                   ci_method = ci_method, alternative = alternative,
-                  ctx = ctx, reserved = "variable", keep = TRUE)
+                  ctx = ctx, reserved = lead, keep = TRUE)
     })
     tables <- lapply(fits, `[[`, "table")
     pieces <- lapply(tables, plain_frame)
@@ -892,18 +1024,18 @@ estimate_several <- function(sample, y, what, variance, level, by, df,
     df_use <- attr(tables[[1]], "df")
   }
   sizes <- vapply(pieces, nrow, integer(1))
-  out <- do.call(rbind, lapply(seq_along(y), function(i) {
-    cbind(data.frame(variable = rep(y[i], sizes[i]),
-                     stringsAsFactors = FALSE), pieces[[i]])
+  out <- do.call(rbind, lapply(seq_along(parts), function(i) {
+    first <- stats::setNames(list(values[rep(i, sizes[i])]), lead)
+    cbind(data.frame(first, stringsAsFactors = FALSE), pieces[[i]])
   }))
   rownames(out) <- NULL
   out <- structure(out, class = c("drawn_by", "data.frame"), what = what,
                    estimator = if (what == "mean") estimator, level = level,
                    alternative = alternative, df = df_use,
                    design = design_type(base$design),
-                   notes = several_notes(y, notes),
-                   unreachable = base$unreachable, variable = y,
-                   by = c("variable", by))
+                   notes = several_notes(group_label(values), notes),
+                   unreachable = base$unreachable, variable = variable,
+                   by = c(lead, by), lead = lead)
   if (!is.null(aux)) attr(out, "x") <- aux$name
   nm <- domain_names(out)
   # A proportion's interval is on the scale of `ci_method`, any other
@@ -1055,16 +1187,8 @@ estimate_by <- function(parts, by, variance, level, df, what,
                              df_use, what, estimator, alternative, ctx))
   }
   # The table's own columns would overwrite a `by` column of the same name.
-  own <- c(reserved, "n", what, "variance", "se", "ci_lower", "ci_upper",
-           "method")
-  clash <- intersect(by, own)
-  if (length(clash)) {
-    stop("`by` names ", paste0("`", clash, "`", collapse = ", "), ", which ",
-         "the table of domain estimates uses for its own column",
-         if (length(clash) > 1L) "s", ". Rename ",
-         if (length(clash) > 1L) "them" else "it", " in `sample` before ",
-         "estimating.", call. = FALSE)
-  }
+  check_table_names(by, c(reserved, "n", what, "variance", "se",
+                          "ci_lower", "ci_upper", "method"))
   linearised <- if (what == "ratio") {
     "ratio"
   } else if (what == "mean" && estimator == "hajek") {
@@ -1137,6 +1261,20 @@ estimate_by <- function(parts, by, variance, level, df, what,
     domain_names(out))
   if (keep) return(list(table = out, z = est$z, dom = dom))
   out
+}
+
+#' Refuse `by` columns that the table of estimates uses for its own
+#' @noRd
+check_table_names <- function(by, own) {
+  clash <- intersect(by, own)
+  if (length(clash)) {
+    stop("`by` names ", paste0("`", clash, "`", collapse = ", "), ", which ",
+         "the table of domain estimates uses for its own column",
+         if (length(clash) > 1L) "s", ". Rename ",
+         if (length(clash) > 1L) "them" else "it", " in `sample` before ",
+         "estimating.", call. = FALSE)
+  }
+  invisible(NULL)
 }
 
 #' The domains of `by`, keyed in the sample and, where it can be, the frame
@@ -1492,9 +1630,12 @@ print.drawn_by <- function(x, ...) {
     print(plain_frame(x), ...)
     return(invisible(x))
   }
-  label <- if (what == "ratio") {
-    paste("Ratio", ratio_name(attr(x, "variable"), "y"), "/",
-          ratio_name(attr(x, "x"), "x"))
+  lead <- attr(x, "lead") %||% if (several_y(x)) "variable"
+  y_name <- ratio_name(attr(x, "variable"), "y")
+  label <- if (what == "quantile") {
+    paste("Quantiles of", y_name)
+  } else if (what == "ratio") {
+    paste("Ratio", y_name, "/", ratio_name(attr(x, "x"), "x"))
   } else if (what == "total") {
     if (is.null(attr(x, "x"))) "Horvitz-Thompson total" else
       paste0("Ratio estimate of the total, to `", attr(x, "x"), "`,")
@@ -1503,15 +1644,26 @@ print.drawn_by <- function(x, ...) {
   } else {
     "Hajek mean"
   }
-  rows <- if (!several_y(x)) "domain" else
-    if (length(attr(x, "by")) > 1L) "variable and domain" else "variable"
+  if (identical(lead, "level")) label <- paste(label, "of", y_name)
+  # The `by` columns that are domains, and not the variable, level or
+  # probability each row is for.
+  domains <- setdiff(attr(x, "by"),
+                     c(lead, if (what == "quantile") "prob"))
+  rows <- if (is.null(lead)) {
+    if (length(domains)) "domain"
+  } else if (length(domains)) {
+    paste(lead, "and domain")
+  } else {
+    lead
+  }
   scale <- unique(attr(x, "ci_scale") %||% "linear")
   shown <- if (length(scale) > 1L) {
     paste0(setdiff(scale, "linear")[1], " for proportions, ")
   } else {
     scale_label(scale)
   }
-  cat(label, " by ", rows, "  (", attr(x, "design"), " design, ",
+  cat(label, if (!is.null(rows)) paste0(" by ", rows), "  (",
+      attr(x, "design"), " design, ",
       ci_label(attr(x, "level"), attr(x, "alternative")), ", ",
       shown, df_label(attr(x, "df")), ")\n", sep = "")
   # The standard error is shown; its square adds width and nothing else.
@@ -1563,7 +1715,8 @@ ci_label <- function(level, alternative) {
 #' The interval's scale, as it leads the bracket after an interval
 #' @noRd
 scale_label <- function(scale) {
-  switch(scale %||% "linear", logit = "logit, ", beta = "beta, ", "")
+  switch(scale %||% "linear", logit = "logit, ", beta = "beta, ",
+         woodruff = "Woodruff, ", "")
 }
 
 #' A line for frame rows the design could never select
@@ -1607,12 +1760,14 @@ print_unreachable <- function(n, what) {
 #' one value in every sampled row, where there is no spread for a simple
 #' random sample to be measured by.
 #'
-#' A table of domain estimates from `by`, or of several variables, carries
-#' no design effect, and `deff()` refuses it with a message saying so. A
-#' contrast's design effect is `NA`. A ratio from [ht_ratio()], and a total
-#' from the ratio estimator, are measured against the same estimator from a
-#' simple random sample, through the variance of its linearised residuals,
-#' as `survey::svyratio(deff = TRUE)` measures a ratio.
+#' A table of domain estimates from `by`, of several variables, of the
+#' levels of a factor or of quantiles carries no design effect, and `deff()`
+#' refuses it with a message saying so. A contrast's design effect is `NA`,
+#' and so is a quantile's from [ht_quantile()]. A ratio from [ht_ratio()],
+#' and a total from the ratio estimator, are measured against the same
+#' estimator from a simple random sample, through the variance of its
+#' linearised residuals, as `survey::svyratio(deff = TRUE)` measures a
+#' ratio.
 #'
 #' `survey` has a `deff()` of its own, and whichever of the two packages is
 #' attached last masks the other's. Either one answers for both. This
@@ -1620,8 +1775,8 @@ print_unreachable <- function(n, what) {
 #' `survey::svymean(..., deff = TRUE)`, to `survey::deff()`, and `survey`'s
 #' generic finds the methods for the estimates made here.
 #'
-#' @param object A result from [ht_total()], [ht_mean()] or [ht_ratio()], or
-#'   an object from `survey` that holds a design effect.
+#' @param object A result from [ht_total()], [ht_mean()], [ht_ratio()] or
+#'   [ht_quantile()], or an object from `survey` that holds a design effect.
 #' @param ... Passed to `survey::deff()` for an object from `survey`, such as
 #'   its `quietly`. Not used for an estimate made here.
 #'
@@ -1678,6 +1833,15 @@ deff.drawn_ratio <- function(object, quietly = FALSE, ...) object$deff
 #' @export
 #' @exportS3Method survey::deff
 deff.drawn_by <- function(object, quietly = FALSE, ...) {
+  if (identical(attr(object, "what"), "quantile")) {
+    stop("`object` is a table of quantiles, which carry no design effect.",
+         call. = FALSE)
+  }
+  if (identical(attr(object, "lead"), "level")) {
+    stop("`object` is a table of estimates for the levels of `y`, which ",
+         "carries no design effect. Call deff() on ht_total() or ht_mean() ",
+         "with the indicator of one level as `y`.", call. = FALSE)
+  }
   if (several_y(object)) {
     stop("`object` is a table of estimates for several variables, which ",
          "carries no design effect. Call deff() on ht_total() or ht_mean() ",
@@ -1831,6 +1995,11 @@ read_variable <- function(sample, y, arg, several = FALSE) {
            "`sample`. Name a numeric or logical column.", call. = FALSE)
     }
   }
+  # A single number stands for that value in every row, so a total of 1
+  # estimates the number of frame rows.
+  if (is.null(name) && is.numeric(v) && length(v) == 1L) {
+    v <- rep(v, nrow(sample))
+  }
   if (!(is.numeric(v) || is.logical(v)) || length(v) != nrow(sample)) {
     stop(variable_forms(y, arg, several, sample), call. = FALSE)
   }
@@ -1865,8 +2034,13 @@ variable_forms <- function(y, arg, several, sample) {
   } else {
     a(class(y)[1])
   }
+  # A character vector as long as the sample is more likely categories than
+  # column names.
+  hint <- if (several && is.character(y) && length(y) == nrow(sample)) {
+    " For the share or count of each of its values, pass it as a factor."
+  }
   paste0("`", arg, "` must be ", forms, " as long as `sample`. It is ",
-         what, ".")
+         what, ".", hint)
 }
 
 #' Refuse a variable that is infinite or `NaN` in some sampled row
@@ -2277,7 +2451,8 @@ plain_frame <- function(x) {
 estimate_field <- function(x) {
   if (inherits(x, "drawn_ht")) "total" else
     if (inherits(x, "drawn_mean")) "mean" else
-      if (inherits(x, "drawn_ratio")) "ratio" else "contrast"
+      if (inherits(x, "drawn_ratio")) "ratio" else
+        if (inherits(x, "drawn_quantile")) "quantile" else "contrast"
 }
 
 #' What coef() names each estimate
@@ -2365,6 +2540,15 @@ ci_matrix <- function(lo, hi, names, level, alternative, parm = NULL) {
 #' @noRd
 single_ci <- function(x, level) {
   if (same_level(level, x$level)) return(x$ci)
+  if (inherits(x, "drawn_quantile")) {
+    if (is.null(x$steps)) {
+      stop("`object` does not hold the distribution function its interval ",
+           "needs at another level. Estimate again with `level = ",
+           format(level), "`.", call. = FALSE)
+    }
+    return(woodruff(x$steps, x$quantile, x$cdf, x$cdf_se^2, level,
+                    x$df)$ci)
+  }
   scale <- x$ci_scale %||% "linear"
   if (scale == "beta" && is.null(x$n_random)) {
     stop("`object` does not hold the sample size its beta interval needs at ",
@@ -2382,6 +2566,7 @@ by_ci <- function(x, level) {
   if (same_level(level, attr(x, "level"))) {
     return(cbind(x$ci_lower, x$ci_upper))
   }
+  if (identical(attr(x, "what"), "quantile")) return(quantile_by_ci(x, level))
   est <- x[[attr(x, "what")]]
   v <- if ("variance" %in% names(x)) x$variance else x$se^2
   scale <- row_scales(x)
@@ -2509,6 +2694,7 @@ single_frame <- function(x, row.names = NULL) {
     out$domains <- contrast_label(x$weights, quote = FALSE)
   }
   if (inherits(x, "drawn_ratio")) out$x <- x$x %||% NA_character_
+  if (inherits(x, "drawn_quantile")) out$prob <- x$prob
   out$n <- x$n
   out[[estimate_field(x)]] <- x[[estimate_field(x)]]
   out$variance <- x$variance

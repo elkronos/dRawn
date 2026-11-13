@@ -20,8 +20,8 @@ A \code{survey.design} object.
 }
 \description{
 Builds a \code{\link[survey:svydesign]{survey::svydesign()}} object from a drawn sample, so the analysis
-this package does not do — regression, calibration, quantiles with proper
-standard errors, replicate weights — can be done by the package that does.
+this package does not do — regression, calibration, analysis with
+replicate weights — can be done by the package that does.
 }
 \details{
 The two packages compute variance from different starting points. This one
@@ -212,7 +212,7 @@ survey::svytotal(~spend, des)
 ht_total(s, "spend")
 
 # Now the analysis this package does not do
-survey::svyquantile(~spend, des, quantiles = 0.5)
+coef(summary(survey::svyglm(spend ~ site, des)))
 \dontshow{\}) # examplesIf}
 }
 \seealso{
