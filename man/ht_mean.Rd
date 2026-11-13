@@ -14,7 +14,8 @@ ht_mean(
   df = NULL,
   proportion = NULL,
   ci_method = c("logit", "beta"),
-  alternative = c("two.sided", "less", "greater")
+  alternative = c("two.sided", "less", "greater"),
+  contrast = NULL
 )
 }
 \arguments{
@@ -27,7 +28,7 @@ as \code{sample}.}
 
 \item{estimator}{\code{"hajek"} or \code{"ht"}. See above.}
 
-\item{variance, level, by, df, alternative}{As for \code{\link[=ht_total]{ht_total()}}.}
+\item{variance, level, by, df, alternative, contrast}{As for \code{\link[=ht_total]{ht_total()}}.}
 
 \item{proportion}{Whether \code{y} is a proportion, which decides the shape of
 the interval. \code{NULL} decides from \code{y}: a logical \code{y}, or a column of the
@@ -45,7 +46,8 @@ A list with a \code{print()} method, holding \code{mean}, \code{estimator},
 \code{deff}, \code{method}, \code{note}, \code{ci_scale} (\code{"linear"}, \code{"logit"} or \code{"beta"})
 and \code{unreachable}. See \code{\link[=ht_total]{ht_total()}} for what \code{method}, \code{df}, \code{note} and
 \code{unreachable} say, and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data
-frame with one row per domain.
+frame with one row per domain, and with \code{contrast} a \code{drawn_contrast}, as
+for \code{\link[=ht_total]{ht_total()}}.
 }
 \description{
 The Hajek estimator, \code{sum(y / pi) / sum(1 / pi)}, is the default. It divides
@@ -136,6 +138,10 @@ sampled row of the domain, so a Hajek mean over one unit, such as a domain
 with one sampled row or a Poisson sample of one row, gets no standard
 error. The "Domains" section of \code{\link[=ht_total]{ht_total()}} says more.
 
+\code{contrast} gives a weighted sum of domain means, such as the difference
+between two, with its standard error; see "Contrasts" in \code{\link[=ht_total]{ht_total()}}.
+Its interval is symmetric whatever \code{proportion} and \code{ci_method} say.
+
 When \code{y} has the same value in every sampled row, the residuals are 0 and
 the Hajek mean's variance is set to exactly 0, with a note, rather than
 left to rounding error, which gave standard errors near \code{1e-16} and design
@@ -156,6 +162,9 @@ mean(pop$spend)   # the truth
 
 # A mean for each site, estimated from the whole sample
 ht_mean(s, "spend", by = "site")
+
+# The difference between the two sites' means
+ht_mean(s, "spend", by = "site", contrast = c(a = 1, b = -1))
 
 # A proportion is the mean of a 0/1 variable
 ht_mean(s, s$spend > 250)

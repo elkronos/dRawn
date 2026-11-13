@@ -82,6 +82,10 @@
 #' with one sampled row or a Poisson sample of one row, gets no standard
 #' error. The "Domains" section of [ht_total()] says more.
 #'
+#' `contrast` gives a weighted sum of domain means, such as the difference
+#' between two, with its standard error; see "Contrasts" in [ht_total()].
+#' Its interval is symmetric whatever `proportion` and `ci_method` say.
+#'
 #' When `y` has the same value in every sampled row, the residuals are 0 and
 #' the Hajek mean's variance is set to exactly 0, with a note, rather than
 #' left to rounding error, which gave standard errors near `1e-16` and design
@@ -93,7 +97,7 @@
 #' @param y The variable to average: a column name, or a numeric vector as long
 #'   as `sample`.
 #' @param estimator `"hajek"` or `"ht"`. See above.
-#' @param variance,level,by,df,alternative As for [ht_total()].
+#' @param variance,level,by,df,alternative,contrast As for [ht_total()].
 #' @param proportion Whether `y` is a proportion, which decides the shape of
 #'   the interval. `NULL` decides from `y`: a logical `y`, or a column of the
 #'   frame whose values are all 0 or 1, is a proportion. `TRUE` treats `y` as
@@ -108,7 +112,8 @@
 #'   `deff`, `method`, `note`, `ci_scale` (`"linear"`, `"logit"` or `"beta"`)
 #'   and `unreachable`. See [ht_total()] for what `method`, `df`, `note` and
 #'   `unreachable` say, and [deff()] for the design effect. With `by`, a data
-#'   frame with one row per domain.
+#'   frame with one row per domain, and with `contrast` a `drawn_contrast`, as
+#'   for [ht_total()].
 #'
 #' @references
 #' Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
@@ -144,6 +149,9 @@
 #' # A mean for each site, estimated from the whole sample
 #' ht_mean(s, "spend", by = "site")
 #'
+#' # The difference between the two sites' means
+#' ht_mean(s, "spend", by = "site", contrast = c(a = 1, b = -1))
+#'
 #' # A proportion is the mean of a 0/1 variable
 #' ht_mean(s, s$spend > 250)
 #'
@@ -162,7 +170,8 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                     variance = c("auto", "analytic", "jackknife", "none"),
                     level = 0.95, by = NULL, df = NULL, proportion = NULL,
                     ci_method = c("logit", "beta"),
-                    alternative = c("two.sided", "less", "greater")) {
+                    alternative = c("two.sided", "less", "greater"),
+                    contrast = NULL) {
   estimator <- check_choice(estimator, c("hajek", "ht"), "estimator")
   variance <- check_choice(variance,
                            c("auto", "analytic", "jackknife", "none"),
@@ -170,6 +179,7 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
   ci_method <- check_choice(ci_method, c("logit", "beta"), "ci_method")
   alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
                               "alternative")
+  check_contrast_by(contrast, by)
   parts <- ht_prepare(sample, y, level, df)
   parts$proportion <- mean_is_proportion(parts, proportion)
   if (ci_method == "beta" && !parts$proportion) {
@@ -180,7 +190,7 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "mean",
                        estimator = estimator, ci_method = ci_method,
-                       alternative = alternative))
+                       alternative = alternative, contrast = contrast))
   }
   warn_grouped(sample, "ht_mean")
   if (!nrow(parts$sample) && estimator == "hajek") {
@@ -304,98 +314,50 @@ mean_is_proportion <- function(parts, proportion) {
 #' domain as fixed by design, which it is not, and would hand the variance
 #' estimator a sample the design never drew.
 #'
+#' Every domain's variance is computed against one `variance_context()`, so
+#' the strata, clusters and other pieces read from the frame are worked out
+#' once per call rather than once per domain. With `contrast`, the domains'
+#' estimates are combined by `estimate_contrast()` instead.
+#'
 #' @noRd
 estimate_by <- function(parts, by, variance, level, df, what,
                         estimator = "hajek", ci_method = "logit",
-                        alternative = "two.sided") {
-  if (!is.character(by) || !length(by) || anyNA(by)) {
-    stop("`by` must name one or more columns of `sample`.", call. = FALSE)
-  }
-  absent <- setdiff(by, names(parts$sample))
-  if (length(absent)) {
-    stop("`by` names ", paste0("`", absent, "`", collapse = ", "), ", which ",
-         "`sample` does not have.", call. = FALSE)
-  }
-  check_key_columns(parts$sample, by, "by")
-  # Columns are read one at a time, so an sf sample's geometry stays out.
-  if (any(vapply(by, function(b) anyNA(parts$sample[[b]]), logical(1)))) {
-    stop("`by` columns must not contain missing values.", call. = FALSE)
-  }
-  # Domains come out in key order: factor levels, else sorted values, with
-  # text in byte order whatever the locale.
-  if (all(by %in% names(parts$pop))) {
-    keys <- group_key2(parts$sample, parts$pop, by)
-    key <- as.integer(keys$x)
-    pop_key <- as.integer(keys$table)
-    labels <- group_label(levels(keys$x))
-  } else {
-    k <- group_key(parts$sample, by)
-    key <- as.integer(k)
-    pop_key <- NULL
-    labels <- group_label(levels(k))
-  }
-  levels_in <- which(tabulate(key, length(labels)) > 0L)
+                        alternative = "two.sided", contrast = NULL) {
+  dom <- domain_keys(parts, by)
+  est <- domain_estimates(parts, dom, what, estimator)
   pi_i <- parts$pi
-  yv <- parts$y
   df_use <- df %||% design_df(parts$design, parts$units, parts$pop,
                               parts$rows, pi_i)
-  # Which frame rows each domain holds, read from the frame's own `by`
-  # columns. Where those are missing, or disagree with the sample's values
-  # for the sampled rows, the frame cannot say and `domain` is NA.
-  aligned <- !is.null(pop_key) && identical(pop_key[parts$rows], key)
-  ratio <- what == "mean" && estimator == "hajek" && variance != "none"
-  psu <- if (ratio) sample_units(parts$design, parts$units)
+  ctx <- variance_context()
+  if (!is.null(contrast)) {
+    return(estimate_contrast(parts, dom, est, contrast, variance, level,
+                             df_use, what, estimator, alternative, ctx))
+  }
+  vars <- domain_variances(parts, dom, est, variance,
+                           ratio = what == "mean" && estimator == "hajek",
+                           ctx = ctx)
   proportion <- what == "mean" && isTRUE(parts$proportion)
+  labels <- dom$labels
+  levels_in <- dom$levels_in
 
-  rows <- lapply(levels_in, function(d) {
-    member <- key == d
-    ind <- as.numeric(member)
-    domain <- if (aligned) !is.na(pop_key) & pop_key == d else NA
-    constant <- FALSE
-    if (what == "total") {
-      est <- sum(ind * yv / pi_i)
-      z <- ind * yv
-    } else {
-      denom <- if (estimator == "hajek") {
-        sum(ind / pi_i)
-      } else {
-        if (is.null(pop_key)) {
-          stop("estimator = \"ht\" needs the domain's population size, and ",
-               "the `by` columns are not in the population.", call. = FALSE)
-        }
-        sum(pop_key == d, na.rm = TRUE)
-      }
-      est <- sum(ind * yv / pi_i) / denom
-      z <- if (estimator == "hajek") ind * (yv - est) / denom else ind * yv / denom
-      # A `y` constant over the domain has residuals of exactly 0, not the
-      # rounding error the subtraction leaves.
-      in_d <- yv[member]
-      constant <- estimator == "hajek" && all(in_d == in_d[1])
-      if (constant) {
-        est <- in_d[1]
-        z <- numeric(length(yv))
-      }
-    }
-    v <- if (ratio) ratio_decline(parts, member, domain, labels[d], psu)
-    v <- v %||% ht_variance_dispatch(parts$design, parts$units, parts$pop,
-                                     parts$rows, z, pi_i, variance, domain)
-    ci <- ci_for(est, v$variance, level, df_use, alternative, proportion,
-                 ci_method, pi_i[member])
-    list(n = sum(ind), est = est, se = if (is.finite(v$variance) &&
-                                             v$variance >= 0)
+  rows <- lapply(seq_along(levels_in), function(j) {
+    v <- vars[[j]]
+    ci <- ci_for(est$est[j], v$variance, level, df_use, alternative,
+                 proportion, ci_method, pi_i[dom$idx[[j]]])
+    list(se = if (is.finite(v$variance) && v$variance >= 0)
            sqrt(v$variance) else NA_real_,
          lo = ci$ci[1], hi = ci$ci[2], method = v$method %||% "analytic",
          note = v$note, edge = ci$edge,
-         constant = constant && identical(v$variance, 0) &&
+         constant = est$constant[j] && identical(v$variance, 0) &&
            !ci$edge && !ci$exact)
   })
 
-  first <- match(levels_in, key)
+  first <- match(levels_in, dom$key)
   out <- data.frame(stats::setNames(lapply(by, function(b) {
     parts$sample[[b]][first]
   }), by), check.names = FALSE)
-  out$n <- vapply(rows, `[[`, numeric(1), "n")
-  out[[what]] <- vapply(rows, `[[`, numeric(1), "est")
+  out$n <- as.numeric(lengths(dom$idx))
+  out[[what]] <- est$est
   out$se <- vapply(rows, `[[`, numeric(1), "se")
   out$ci_lower <- vapply(rows, `[[`, numeric(1), "lo")
   out$ci_upper <- vapply(rows, `[[`, numeric(1), "hi")
@@ -423,6 +385,297 @@ estimate_by <- function(parts, by, variance, level, df, what,
             notes = notes, unreachable = parts$unreachable)
 }
 
+#' The domains of `by`, keyed in the sample and, where it can be, the frame
+#'
+#' Returns `key`, each sampled row's domain as a code into `labels`;
+#' `pop_key`, each frame row's, or `NULL` when the frame lacks a `by` column;
+#' `levels_in`, the codes of the domains with a sampled row, in key order;
+#' `pos`, each sampled row's position in `levels_in`; `idx`, the sampled rows
+#' of each domain in `levels_in`; and `aligned`, whether the frame's `by`
+#' columns agree with the sample's on the sampled rows, so that the frame can
+#' say which of its rows each domain holds.
+#'
+#' @noRd
+domain_keys <- function(parts, by) {
+  if (!is.character(by) || !length(by) || anyNA(by)) {
+    stop("`by` must name one or more columns of `sample`.", call. = FALSE)
+  }
+  absent <- setdiff(by, names(parts$sample))
+  if (length(absent)) {
+    stop("`by` names ", paste0("`", absent, "`", collapse = ", "), ", which ",
+         "`sample` does not have.", call. = FALSE)
+  }
+  check_key_columns(parts$sample, by, "by")
+  # Columns are read one at a time, so an sf sample's geometry stays out.
+  if (any(vapply(by, function(b) anyNA(parts$sample[[b]]), logical(1)))) {
+    stop("`by` columns must not contain missing values.", call. = FALSE)
+  }
+  # Domains come out in key order: factor levels, else sorted values, with
+  # text in byte order whatever the locale.
+  if (all(by %in% names(parts$pop))) {
+    keys <- group_key2(parts$sample, parts$pop, by)
+    key <- as.integer(keys$x)
+    pop_key <- as.integer(keys$table)
+    labels <- group_label(levels(keys$x))
+  } else {
+    k <- group_key(parts$sample, by)
+    key <- as.integer(k)
+    pop_key <- NULL
+    labels <- group_label(levels(k))
+  }
+  levels_in <- which(tabulate(key, length(labels)) > 0L)
+  pos <- match(key, levels_in)
+  idx <- split(seq_along(key),
+               structure(pos, levels = as.character(seq_along(levels_in)),
+                         class = "factor"))
+  list(by = by, key = key, pop_key = pop_key, labels = labels,
+       levels_in = levels_in, pos = pos, idx = unname(idx),
+       aligned = !is.null(pop_key) && identical(pop_key[parts$rows], key))
+}
+
+#' Which frame rows the domains at positions `j` of `levels_in` hold
+#'
+#' Read from the frame's own `by` columns. Where those are missing, or
+#' disagree with the sample's values for the sampled rows, the frame cannot
+#' say and the result is `NA`.
+#'
+#' @noRd
+domain_frame <- function(dom, j) {
+  if (!dom$aligned) return(NA)
+  dom$pop_key %in% dom$levels_in[j]
+}
+
+#' Each domain's estimate, and the variable whose total has its variance
+#'
+#' For a total that variable is `y` on the domain's rows; for a Hajek mean,
+#' the linearised residual `(y - mean) / N_hat` of the domain; for a
+#' Horvitz-Thompson mean, `y / N_d` with `N_d` the domain's rows in the frame.
+#' Each is 0 outside its domain, so one vector `z` holds them all: each
+#' sampled row's value in its own domain. A Hajek mean of a `y` constant over
+#' the domain has residuals of exactly 0, not the rounding error the
+#' subtraction leaves, and `constant` marks it.
+#'
+#' @noRd
+domain_estimates <- function(parts, dom, what, estimator) {
+  yv <- parts$y
+  pi_i <- parts$pi
+  k <- length(dom$levels_in)
+  est <- numeric(k)
+  constant <- logical(k)
+  z <- numeric(length(yv))
+  size <- NULL
+  if (what == "mean" && estimator == "ht") {
+    if (is.null(dom$pop_key)) {
+      stop("estimator = \"ht\" needs the domain's population size, and ",
+           "the `by` columns are not in the population.", call. = FALSE)
+    }
+    size <- tabulate(dom$pop_key, length(dom$labels))[dom$levels_in]
+  }
+  for (j in seq_len(k)) {
+    i <- dom$idx[[j]]
+    total <- sum(yv[i] / pi_i[i])
+    if (what == "total") {
+      est[j] <- total
+      z[i] <- yv[i]
+      next
+    }
+    denom <- if (estimator == "hajek") sum(1 / pi_i[i]) else size[j]
+    est[j] <- total / denom
+    in_d <- yv[i]
+    if (estimator == "hajek" && all(in_d == in_d[1])) {
+      constant[j] <- TRUE
+      est[j] <- in_d[1]
+    } else {
+      z[i] <- if (estimator == "hajek") (in_d - est[j]) / denom else
+        in_d / denom
+    }
+  }
+  list(est = est, z = z, constant = constant)
+}
+
+#' The variance of every domain's estimate
+#'
+#' A Hajek mean (`ratio`) over one primary sampling unit is declined first,
+#' with `ratio_decline()`. Where the design's analytic estimator is
+#' `srs_variance()` over strata, intervals or one group, every other domain is
+#' estimated in one pass with `srs_variance_by()`. A domain that pass cannot
+#' settle, because a lonely group holds some of its units or its variance
+#' overflowed, goes through `ht_variance_dispatch()` as every domain of the
+#' other designs does, with the shared `ctx`, and gets the same note and
+#' fallback as an estimate of its own.
+#'
+#' @noRd
+domain_variances <- function(parts, dom, est, variance, ratio, ctx) {
+  k <- length(dom$levels_in)
+  out <- vector("list", k)
+  if (ratio && variance != "none") {
+    psu <- sample_units(parts$design, parts$units)
+    for (j in seq_len(k)) {
+      out[j] <- list(ratio_decline(parts, dom$idx[[j]], domain_frame(dom, j),
+                                   dom$labels[dom$levels_in[j]], psu))
+    }
+  }
+  open <- which(vapply(out, is.null, logical(1)))
+  if (length(open) && variance %in% c("auto", "analytic")) {
+    v <- srs_domains(parts, dom, est$z, ctx)
+    for (j in open[!is.na(v[open])]) {
+      out[[j]] <- list(variance = v[[j]], note = NULL, method = "analytic")
+    }
+    open <- which(vapply(out, is.null, logical(1)))
+  }
+  for (j in open) {
+    i <- dom$idx[[j]]
+    z <- numeric(length(est$z))
+    z[i] <- est$z[i]
+    out[[j]] <- ht_variance_dispatch(parts$design, parts$units, parts$pop,
+                                     parts$rows, z, parts$pi, variance,
+                                     domain_frame(dom, j), ctx)
+  }
+  out
+}
+
+#' Every domain's `srs_variance()` in one pass, or `NA` where it cannot say
+#'
+#' One variance per domain. Every domain gets `NA` when the design's analytic
+#' estimator is not `srs_variance()` over groups (see `srs_layout()`), or when
+#' a lonely group exists and the frame cannot say which domains it holds. A
+#' domain with units in a lonely group, and a variance that overflowed, get
+#' `NA` too.
+#'
+#' @noRd
+srs_domains <- function(parts, dom, z, ctx) {
+  lay <- srs_layout(parts$design, parts$pop, parts$rows, ctx)
+  k <- length(dom$levels_in)
+  if (is.null(lay)) return(rep(NA_real_, k))
+  keep <- !is.na(lay$group)
+  v <- srs_variance_by(z[keep], lay$group[keep], dom$pos[keep], k, lay$n_g,
+                       lay$N_g)
+  if (length(lay$lonely_rows)) {
+    hit <- if (dom$aligned) {
+      match(dom$pop_key[lay$lonely_rows], dom$levels_in)
+    } else {
+      seq_len(k)
+    }
+    v[hit[!is.na(hit)]] <- NA_real_
+  }
+  v[!is.finite(v)] <- NA_real_
+  v
+}
+
+#' A weighted sum of domain estimates, with its standard error
+#'
+#' Each domain's estimate comes from the whole sample, with the variable
+#' `domain_estimates()` gives it, so a weighted sum of the estimates is
+#' estimated by the same sum of those variables, and its variance is that of
+#' one total. One run of the design's estimator gives it, covariances between
+#' domains included. The interval is symmetric, since a difference of
+#' proportions can be negative. A Hajek mean over one primary sampling unit
+#' has no measurable variance, so a contrast that weighs one has none either.
+#'
+#' @noRd
+estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
+                              what, estimator, alternative, ctx) {
+  w <- contrast_weights(contrast, dom)
+  used <- which(w != 0)
+  value <- sum(w[used] * est$est[used])
+  z <- w[dom$pos] * est$z
+  labels <- dom$labels[dom$levels_in[used]]
+  var_out <- NULL
+  if (what == "mean" && estimator == "hajek" && variance != "none") {
+    psu <- sample_units(parts$design, parts$units)
+    notes <- unlist(lapply(seq_along(used), function(u) {
+      ratio_decline(parts, dom$idx[[used[u]]], domain_frame(dom, used[u]),
+                    labels[u], psu)$note
+    }))
+    if (length(notes)) {
+      var_out <- list(variance = NA_real_, method = "none", note = paste(
+        c(notes, paste0("The contrast weighs ",
+                        if (length(notes) > 1L) "these domains" else
+                          "this domain",
+                        ", so it has no standard error either.")),
+        collapse = " "))
+    }
+  }
+  var_out <- var_out %||%
+    ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
+                         parts$pi, variance, domain_frame(dom, used), ctx)
+  out <- finish_estimate(value, var_out, parts, level, df, what = "contrast",
+                         class = "drawn_contrast", alternative = alternative)
+  out$weights <- stats::setNames(w[used], labels)
+  out$estimates <- stats::setNames(est$est[used], labels)
+  out$what <- what
+  out$estimator <- if (what == "mean") estimator
+  out$by <- dom$by
+  out
+}
+
+#' A contrast weighs `by` domains, so it needs `by`
+#' @noRd
+check_contrast_by <- function(contrast, by) {
+  if (!is.null(contrast) && is.null(by)) {
+    stop("`contrast` weighs the domains of `by`, and `by` is NULL. Pass the ",
+         "column or columns that define the domains as `by`.", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+#' Check a contrast against the domains, and spread it over them
+#'
+#' Returns one weight per domain in `dom$levels_in`, 0 for a domain the
+#' contrast leaves out.
+#'
+#' @noRd
+contrast_weights <- function(contrast, dom) {
+  ticks <- function(x) paste0("`", x, "`", collapse = ", ")
+  if (!is.numeric(contrast) || !length(contrast) || is.null(names(contrast))) {
+    stop("`contrast` must be a named numeric vector of weights, one per ",
+         "`by` domain, not ", format_bad(contrast), ". Name each weight ",
+         "after its domain, as in `contrast = c(a = 1, b = -1)`.",
+         call. = FALSE)
+  }
+  nm <- names(contrast)
+  if (anyNA(nm) || !all(nzchar(nm))) {
+    stop("`contrast` has a weight with no name. Name each weight after the ",
+         "`by` domain it applies to.", call. = FALSE)
+  }
+  twice <- unique(nm[duplicated(nm)])
+  if (length(twice)) {
+    stop("`contrast` names ", ticks(twice), " more than once. Give each ",
+         "domain one weight.", call. = FALSE)
+  }
+  bad <- which(!is.finite(contrast))
+  if (length(bad)) {
+    stop("`contrast` gives ", ticks(nm[bad[1]]), " a weight of ",
+         format(contrast[[bad[1]]]), ". Give every domain a finite weight.",
+         call. = FALSE)
+  }
+  shown <- dom$labels[dom$levels_in]
+  at <- match(nm, shown)
+  if (anyNA(at)) {
+    miss <- nm[is.na(at)]
+    several <- length(miss) > 1L
+    empty <- miss[miss %in% dom$labels]
+    if (length(empty)) {
+      stop("`contrast` names ", ticks(empty), ", which ",
+           if (length(empty) > 1L) "have" else "has", " no sampled row and ",
+           "so no estimate. Leave ", if (length(empty) > 1L) "them" else "it",
+           " out of `contrast`.", call. = FALSE)
+    }
+    stop("`contrast` names ", ticks(miss), ", which ",
+         if (several) "are not domains" else "is not a domain", " of `by`. ",
+         "Name the weights after the domains, which are ",
+         ticks(utils::head(shown, 5L)),
+         if (length(shown) > 5L) ", ..." else "", ".", call. = FALSE)
+  }
+  if (all(contrast == 0)) {
+    stop("`contrast` gives every domain a weight of 0. Give at least one ",
+         "domain a weight other than 0.", call. = FALSE)
+  }
+  w <- numeric(length(shown))
+  w[at] <- as.numeric(contrast)
+  w
+}
+
 #' @export
 print.drawn_by <- function(x, ...) {
   what <- attr(x, "what")
@@ -442,6 +695,29 @@ print.drawn_by <- function(x, ...) {
   notes <- notes[nzchar(notes) & !grepl("^Variance not requested", notes)]
   if (length(notes)) cat_note(notes)
   invisible(x)
+}
+
+#' @export
+print.drawn_contrast <- function(x, ...) {
+  what <- if (identical(x$what, "total")) "Horvitz-Thompson totals" else
+    if (identical(x$estimator, "ht")) "Horvitz-Thompson means" else
+      "Hajek means"
+  est <- vapply(x$estimates, format, character(1), big.mark = ",")
+  print_estimate(x, "contrast", paste("Contrast of", what), lines = c(
+    contrast = contrast_label(x$weights),
+    domains = paste0("`", names(est), "` ", est, collapse = ", ")
+  ))
+}
+
+#' A contrast's weights as a sum, such as "`a` - `b`"
+#' @noRd
+contrast_label <- function(w) {
+  terms <- vapply(seq_along(w), function(i) {
+    a <- abs(w[[i]])
+    paste0(if (a != 1) paste0(format(a), " "), "`", names(w)[i], "`")
+  }, character(1))
+  out <- paste0(ifelse(w < 0, "- ", "+ "), terms, collapse = " ")
+  sub("^- ", "-", sub("^\\+ ", "", out))
 }
 
 #' "95% CI", or "95% upper bound" for a one-sided interval
@@ -910,9 +1186,17 @@ method_label <- function(m) {
   )
 }
 
+#' Print a single estimate
+#'
+#' `lines` are printed between the heading and the estimate, each after its
+#' name.
+#'
 #' @noRd
-print_estimate <- function(x, field, label) {
+print_estimate <- function(x, field, label, lines = NULL) {
   cat(label, "  (", x$design, " design, n = ", x$n, ")\n", sep = "")
+  for (nm in names(lines)) {
+    cat("  ", formatC(nm, width = -8), " ", lines[[nm]], "\n", sep = "")
+  }
   cat("  estimate ", format(x[[field]], big.mark = ","), "\n", sep = "")
   if (is.na(x$se)) {
     cat("  se       NA\n")

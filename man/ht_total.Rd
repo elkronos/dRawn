@@ -11,7 +11,8 @@ ht_total(
   level = 0.95,
   by = NULL,
   df = NULL,
-  alternative = c("two.sided", "less", "greater")
+  alternative = c("two.sided", "less", "greater"),
+  contrast = NULL
 )
 }
 \arguments{
@@ -40,6 +41,12 @@ single number of 1 or more.}
 \item{alternative}{\code{"two.sided"} for a confidence interval, \code{"less"} for a
 one-sided upper bound or \code{"greater"} for a lower bound, each at \code{level}.
 See "Confidence intervals".}
+
+\item{contrast}{Optional weights over the \code{by} domains, as a named numeric
+vector such as \code{c(a = 1, b = -1)} for domain \code{a} less domain \code{b}. A name
+is the domain's value of a single \code{by} column, or the values of several
+joined by \code{" . "}, as in \code{"a . east"}, the way the notes of a \code{by} table
+name domains. Needs \code{by}. See "Contrasts".}
 }
 \value{
 A list with a \code{print()} method, holding:
@@ -66,6 +73,13 @@ With \code{by}, a data frame of class \code{drawn_by} instead: one row per domai
 with the domain columns, \code{n}, \code{total}, \code{se}, \code{ci_lower}, \code{ci_upper} and
 \code{method}, and the level, alternative, scale, notes and unreachable count
 as attributes.
+
+With \code{contrast}, a list of class \code{drawn_contrast} with a \code{print()}
+method, holding \code{contrast}, the weighted sum; \code{weights} and \code{estimates},
+the weight and estimate of each domain it weighs; \code{what} (\code{"total"} or
+\code{"mean"}), \code{estimator} for a mean, and \code{by}; and \code{variance}, \code{se}, \code{ci},
+\code{level}, \code{alternative}, \code{df}, \code{n}, \code{ci_scale}, \code{design}, \code{method}, \code{note}
+and \code{unreachable} as above. \code{deff} is \code{NA}.
 }
 \description{
 Forms the Horvitz-Thompson total \code{sum(y / pi)} with a standard error, a
@@ -267,6 +281,34 @@ sampled rows covered 65\% of the time, and 85\% with four or five.
 
 A sample grouped with \code{dplyr::group_by()} is estimated as a whole, with a
 warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}.
+
+The strata, clusters and other pieces the variance reads from the frame
+are worked out once for all the domains. For simple random, reservoir,
+spatial, stratified and temporal samples every domain's variance comes
+from one pass over the sample, in time that grows with the number of
+sampled rows rather than with rows times domains.
+}
+
+\section{Contrasts}{
+
+\code{contrast} weighs the domain estimates of \code{by} and gives their weighted
+sum, such as the difference between two sites' totals or means, with a
+standard error, an interval and \code{df} as for any other estimate. Each
+domain's estimate is the total, over the whole sample, of a variable that
+is 0 outside the domain: \code{y} for a total, the linearised residual for a
+Hajek mean and \code{y / N_d} for a Horvitz-Thompson mean. The weighted sum of
+the estimates is the total of the same weighted sum of those variables, so
+one run of the design's variance estimator gives its variance, with the
+covariances between domains included. For simple random, stratified,
+cluster and multistage samples the standard error equals that of
+\code{survey::svycontrast()} applied to \code{survey::svyby(..., covmat = TRUE)}.
+
+The interval is symmetric, for a proportion too, since a difference of
+proportions can be negative. Domains left out of \code{contrast} have a weight
+of 0. A name that is not a domain with a sampled row is refused, and so is
+a contrast whose weights are all 0. When a Hajek mean that the contrast
+weighs rests on one primary sampling unit, the contrast gets no standard
+error, for the reason given under "Domains".
 }
 
 \section{Which columns are read}{
@@ -303,6 +345,9 @@ sum(pop$spend)   # the truth
 # One estimate per site, from the same sample
 ht_total(s, "spend", by = "site")
 tapply(pop$spend, pop$site, sum)
+
+# How much more site a spent than site b
+ht_total(s, "spend", by = "site", contrast = c(a = 1, b = -1))
 
 }
 \references{

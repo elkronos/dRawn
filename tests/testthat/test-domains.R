@@ -308,3 +308,248 @@ test_that("domain tables carry one-sided bounds and the unreachable count", {
   g <- ht_mean(s, "y", by = "region", alternative = "greater")
   expect_equal(g$ci_upper, c(Inf, Inf))
 })
+
+# ---- all domains at once, and contrasts --------------------------------------
+
+contrast_pop <- function() {
+  id <- 1:400
+  d <- data.frame(
+    id = id,
+    site = rep(c("a", "b", "c", "d"), times = c(160, 120, 80, 40)),
+    region = rep(c("east", "west"), 200),
+    cl = rep(paste0("c", 1:40), each = 10),
+    w = 1 + (id * 7) %% 19,
+    ts = as.POSIXct("2024-01-01", tz = "UTC") + ((id - 1) %% 10) * 86400 +
+      id * 60
+  )
+  d$y <- 10 + (id * 37) %% 491
+  d$hit <- (id * 13) %% 7 < 3
+  d
+}
+
+# Each domain's variance from its own run of the estimator, with nothing
+# shared between domains: the way `by` worked before every domain was
+# estimated against one context.
+domain_loop <- function(s, y, by, what = "total", estimator = "hajek",
+                        variance = "auto") {
+  parts <- drawn:::ht_prepare(s, y, 0.95)
+  key <- s[[by]]
+  vapply(sort(unique(key)), function(d) {
+    ind <- as.numeric(key == d)
+    z <- if (what == "total") {
+      ind * parts$y
+    } else if (estimator == "ht") {
+      ind * parts$y / sum(parts$pop[[by]] == d)
+    } else {
+      n_hat <- sum(ind / parts$pi)
+      ind * (parts$y - sum(ind * parts$y / parts$pi) / n_hat) / n_hat
+    }
+    drawn:::ht_variance_dispatch(parts$design, parts$units, parts$pop,
+                                 parts$rows, z, parts$pi, variance,
+                                 parts$pop[[by]] == d)$variance
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
+test_that("domain variances worked out together equal one run per domain", {
+  d <- contrast_pop()
+  designs <- list(
+    simple = design_simple(n = 60),
+    reservoir = design_reservoir(n = 60),
+    stratified = design_stratified("site", n = 60),
+    temporal = design_temporal("ts", from = "2024-01-01", to = "2024-01-11",
+                               interval = 1, per_interval = 6, unit = "days"),
+    certainty = design_certainty("w", 18, design_stratified("site", n = 40)),
+    cluster = design_cluster("cl", n_clusters = 8),
+    multistage = design_multistage("cl", n_clusters = 8, n = 40),
+    systematic = design_systematic(interval = 7),
+    pps = design_weighted("w", n = 40, method = "systematic"),
+    spread = design_spread("w", n = 40)
+  )
+  for (nm in names(designs)) {
+    s <- draw(d, designs[[nm]], seed = 3, weights = TRUE)
+    for (v in c("auto", "jackknife")) {
+      lab <- paste(nm, v)
+      tot <- ht_total(s, "y", by = "region", variance = v)
+      expect_equal(tot$se^2, domain_loop(s, "y", "region", variance = v),
+                   tolerance = 1e-10, label = lab)
+      hajek <- ht_mean(s, "y", by = "region", variance = v)
+      expect_equal(hajek$se^2,
+                   domain_loop(s, "y", "region", "mean", variance = v),
+                   tolerance = 1e-10, label = lab)
+      ht <- ht_mean(s, "y", by = "site", estimator = "ht", variance = v)
+      expect_equal(ht$se^2,
+                   domain_loop(s, "y", "site", "mean", "ht", variance = v),
+                   tolerance = 1e-10, label = lab)
+    }
+  }
+})
+
+test_that("domains with units in a lonely stratum fall back one by one", {
+  p <- lonely_pop()
+  p$third <- c("u", "v", "w")[seq_len(83) %% 3 + 1]
+  des <- design_stratified("st", n = 20, allocation = "neyman",
+                           allocation_by = "aux")
+  s <- draw(p, des, seed = 1, weights = TRUE)
+  s$late <- s$st == "c"
+  for (by in c("st", "half", "third", "late")) {
+    for (v in c("auto", "analytic")) {
+      r <- ht_total(s, "y", by = by, variance = v)
+      want <- domain_loop(s, "y", by, variance = v)
+      expect_equal(is.na(r$se), is.na(want), label = paste(by, v))
+      expect_equal(r$se^2, want, tolerance = 1e-10, label = paste(by, v))
+    }
+  }
+})
+
+test_that("200 domains of 2,000 sampled rows take well under 2 seconds", {
+  skip_on_cran()
+  N <- 40000
+  pop <- data.frame(id = seq_len(N), st = sprintf("s%d", seq_len(N) %% 5),
+                    dom = sprintf("d%03d", (seq_len(N) * 7919) %% 200))
+  pop$y <- 100 + (pop$id * 37) %% 101
+  s <- draw(pop, design_stratified("st", n = 2000), seed = 1, weights = TRUE)
+  tot <- NULL
+  mean_by <- NULL
+  expect_lt(system.time(tot <- ht_total(s, "y", by = "dom"))[["elapsed"]], 2)
+  expect_lt(system.time(mean_by <- ht_mean(s, "y", by = "dom"))[["elapsed"]],
+            2)
+  expect_equal(nrow(tot), 200L)
+  expect_equal(tot$se^2, domain_loop(s, "y", "dom"), tolerance = 1e-10)
+  expect_equal(mean_by$se^2, domain_loop(s, "y", "dom", "mean"),
+               tolerance = 1e-10)
+})
+
+test_that("a contrast of domain totals is the total of the weighted variable", {
+  d <- contrast_pop()
+  w <- c(a = 1, b = -1, d = 0.5)
+  for (des in list(design_stratified("site", n = 60),
+                   design_cluster("cl", n_clusters = 8),
+                   design_systematic(interval = 7))) {
+    s <- draw(d, des, seed = 2, weights = TRUE)
+    r <- ht_total(s, "y", by = "site", contrast = w)
+    weighted <- ht_total(s, s$y * unname(c(w, c = 0)[s$site]))
+    expect_s3_class(r, "drawn_contrast")
+    expect_equal(r$contrast, weighted$total)
+    expect_equal(r$se, weighted$se)
+    expect_equal(r$ci, weighted$ci)
+    expect_equal(r$method, weighted$method)
+    by_site <- ht_total(s, "y", by = "site")
+    expect_equal(r$estimates, stats::setNames(by_site$total[c(1, 2, 4)],
+                                              c("a", "b", "d")))
+    expect_equal(r$weights, w)
+    expect_equal(r$df, attr(by_site, "df"))
+  }
+
+  # A Horvitz-Thompson mean divides each domain's total by its frame size.
+  s <- draw(d, design_stratified("site", n = 60), seed = 2, weights = TRUE)
+  m <- ht_mean(s, "y", by = "site", estimator = "ht",
+               contrast = c(a = 1, b = -1))
+  z <- s$y * ((s$site == "a") / 160 - (s$site == "b") / 120)
+  expect_equal(m$contrast, ht_total(s, z)$total)
+  expect_equal(m$se, ht_total(s, z)$se)
+})
+
+test_that("contrast standard errors match survey::svycontrast", {
+  skip_if_not_installed("survey")
+  d <- contrast_pop()
+  for (des in list(design_stratified("site", n = 80),
+                   design_cluster("cl", n_clusters = 8))) {
+    s <- draw(d, des, seed = 2, weights = TRUE)
+    svd <- as_svydesign(s)
+
+    w <- c(east = 1, west = -1)
+    ours <- ht_total(s, "y", by = "region", contrast = w)
+    theirs <- survey::svycontrast(
+      survey::svyby(~y, ~region, svd, survey::svytotal, covmat = TRUE), w)
+    expect_equal(ours$contrast, as.numeric(stats::coef(theirs)))
+    expect_equal(ours$se, as.numeric(survey::SE(theirs)), tolerance = 1e-8)
+
+    w <- c(a = 1, b = -0.5, c = -0.5)
+    ours <- ht_mean(s, "y", by = "site", contrast = w)
+    theirs <- survey::svycontrast(
+      survey::svyby(~y, ~site, svd, survey::svymean, covmat = TRUE), w)
+    expect_equal(ours$contrast, as.numeric(stats::coef(theirs)))
+    expect_equal(ours$se, as.numeric(survey::SE(theirs)), tolerance = 1e-8)
+  }
+})
+
+test_that("a contrast of proportions has a symmetric interval", {
+  d <- contrast_pop()
+  s <- draw(d, design_stratified("site", n = 80), seed = 2, weights = TRUE)
+  r <- ht_mean(s, "hit", by = "region", contrast = c(east = 1, west = -1))
+  expect_equal(r$ci_scale, "linear")
+  q <- stats::qt(0.975, r$df)
+  expect_equal(r$ci, r$contrast + c(-1, 1) * q * r$se)
+  up <- ht_mean(s, "hit", by = "region", contrast = c(east = 1, west = -1),
+                alternative = "less")
+  expect_equal(up$ci, c(-Inf, r$contrast + stats::qt(0.95, r$df) * r$se))
+})
+
+test_that("a contrast weighing a mean over one sampling unit has no se", {
+  d <- contrast_pop()
+  d$rare <- ifelse(d$id %% 40 == 0, "rare", "common")
+  des <- design_simple(n = 40)
+  hits <- vapply(1:100, function(i) {
+    sum(draw(d, des, seed = i)$rare == "rare")
+  }, integer(1))
+  s <- draw(d, des, seed = which(hits == 1L)[1], weights = TRUE)
+  r <- ht_mean(s, "y", by = "rare", contrast = c(rare = 1, common = -1))
+  expect_true(is.na(r$se))
+  expect_equal(r$method, "none")
+  expect_match(r$note, "The domain `rare` has one sampled row", fixed = TRUE)
+  expect_match(r$note, "so it has no standard error either", fixed = TRUE)
+  # A contrast of totals is still estimated.
+  expect_true(is.finite(ht_total(s, "y", by = "rare",
+                                 contrast = c(rare = 1, common = -1))$se))
+})
+
+test_that("contrasts name domains as by does, and odd weights are refused", {
+  d <- contrast_pop()
+  d$empty <- ifelse(d$id == 400, "never", d$site)
+  s <- draw(d, design_stratified("site", n = 60), seed = 2, weights = TRUE)
+  expect_false("never" %in% s$empty)
+  two <- ht_total(s, "y", by = c("site", "region"),
+                  contrast = c("a . east" = 1, "a . west" = -1))
+  expect_equal(names(two$weights), c("a . east", "a . west"))
+
+  expect_error(ht_total(s, "y", contrast = c(a = 1, b = -1)),
+               "`contrast` weighs the domains of `by`, and `by` is NULL",
+               fixed = TRUE)
+  expect_error(ht_total(s, "y", by = "site", contrast = c(1, -1)),
+               "`contrast` must be a named numeric vector")
+  expect_error(ht_total(s, "y", by = "site", contrast = c(a = "1")),
+               "`contrast` must be a named numeric vector")
+  expect_error(ht_total(s, "y", by = "site",
+                        contrast = stats::setNames(c(1, -1), c("a", NA))),
+               "`contrast` has a weight with no name")
+  expect_error(ht_total(s, "y", by = "site", contrast = c(a = 1, a = -1)),
+               "`contrast` names `a` more than once", fixed = TRUE)
+  expect_error(ht_total(s, "y", by = "site", contrast = c(a = 1, b = NA)),
+               "`contrast` gives `b` a weight of NA", fixed = TRUE)
+  expect_error(ht_total(s, "y", by = "site", contrast = c(a = 1, z = -1)),
+               paste("`contrast` names `z`, which is not a domain of `by`.",
+                     "Name the weights after the domains, which are `a`,",
+                     "`b`, `c`, `d`."), fixed = TRUE)
+  expect_error(ht_total(s, "y", by = "empty", contrast = c(a = 1, never = -1)),
+               "`contrast` names `never`, which has no sampled row",
+               fixed = TRUE)
+  expect_error(ht_total(s, "y", by = "site", contrast = c(a = 0, b = 0)),
+               "`contrast` gives every domain a weight of 0", fixed = TRUE)
+})
+
+test_that("a contrast prints its weights, domains and interval", {
+  d <- contrast_pop()
+  s <- draw(d, design_stratified("site", n = 60), seed = 2, weights = TRUE)
+  r <- ht_mean(s, "y", by = "site", contrast = c(a = 0.5, b = 0.5, c = -1))
+  expect_output(print(r), "Contrast of Hajek means  (stratified design, n = 60)",
+                fixed = TRUE)
+  expect_output(print(r), "contrast 0.5 `a` + 0.5 `b` - `c`", fixed = TRUE)
+  expect_output(print(r), "domains  `a` ", fixed = TRUE)
+  expect_output(print(r), "95% CI", fixed = TRUE)
+  t2 <- ht_total(s, "y", by = "site", contrast = c(b = -1, a = 1))
+  expect_output(print(t2), "Contrast of Horvitz-Thompson totals")
+  expect_output(print(t2), "contrast `a` - `b`", fixed = TRUE)
+  expect_output(print(ht_mean(s, "y", by = "site", estimator = "ht",
+                              contrast = c(a = -1, b = 1))),
+                "contrast -`a` + `b`", fixed = TRUE)
+})

@@ -433,7 +433,12 @@ test_that("an error inside a variance estimator reaches the caller", {
   # the note.
   pop <- data.frame(id = 1:60, y = 1:60)
   s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
-  local_mocked_bindings(srs_variance = function(...) stop("internal failure"))
+  # `by` computes every domain's simple random sampling variance at once, with
+  # srs_variance_by().
+  local_mocked_bindings(srs_variance = function(...) stop("internal failure"),
+                        srs_variance_by = function(...) {
+                          stop("internal failure")
+                        })
   expect_error(ht_total(s, "y"), "internal failure")
   expect_error(ht_total(s, "y", variance = "analytic"), "internal failure")
   expect_error(ht_mean(s, "y"), "internal failure")

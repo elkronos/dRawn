@@ -265,27 +265,44 @@ joint_inclusion.drawn_design_spread <- function(design, data, rows) {
 #' but left smooth ones understated by about a quarter at a 20-40% sampling
 #' fraction, and understating is the worse failure.
 #'
+#' `nb` is `local_neighbours(x, k)` when the caller has it already, as the
+#' domains of one sample do.
+#'
 #' @noRd
-local_mean_variance <- function(x, y, pi_i, k = 4L) {
+local_mean_variance <- function(x, y, pi_i, k = 4L, nb = NULL) {
   n <- length(y)
   if (n < 2L) {
     return(list(variance = NA_real_, method = "local mean",
                 note = "A variance needs at least two sampled rows."))
   }
   u <- y / pi_i
-  x <- as.matrix(x)
-  k <- min(k, n)
-  dev <- vapply(seq_len(n), function(i) {
-    d <- colSums((t(x) - x[i, ])^2)
-    d[i] <- -Inf                             # itself first
-    nb <- order(d)[seq_len(k)]
-    kk <- length(nb)
-    kk / (kk - 1) * (u[i] - mean(u[nb]))^2
-  }, numeric(1))
+  nb <- nb %||% local_neighbours(x, k)
+  kk <- ncol(nb)
+  local <- rowMeans(matrix(u[nb], nrow = n))
+  dev <- kk / (kk - 1) * (u - local)^2
   list(variance = sum(dev), method = "local mean",
        note = paste0("Local mean approximation for a spatially balanced ",
                      "sample: the local pivotal method has no closed-form ",
                      "joint inclusion probabilities."))
+}
+
+#' Each sampled row's neighbourhood for the local mean
+#'
+#' Row `i` of the result holds the row itself and its `k - 1` nearest rows of
+#' `x`, by squared distance, `k` at most the number of rows. The
+#' neighbourhoods depend on where the rows lie and not on `y`.
+#'
+#' @noRd
+local_neighbours <- function(x, k = 4L) {
+  x <- as.matrix(x)
+  n <- nrow(x)
+  k <- min(k, n)
+  nb <- vapply(seq_len(n), function(i) {
+    d <- colSums((t(x) - x[i, ])^2)
+    d[i] <- -Inf                             # itself first
+    order(d)[seq_len(k)]
+  }, integer(k))
+  matrix(nb, nrow = n, ncol = k, byrow = TRUE)
 }
 
 #' Variance of a spread sample
@@ -300,8 +317,8 @@ local_mean_variance <- function(x, y, pi_i, k = 4L) {
 #'
 #' @noRd
 ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i,
-                                            domain = NULL) {
-  fr <- spread_frame(design, data)
+                                            domain = NULL, ctx = NULL) {
+  fr <- from_context(ctx, "spread", spread_frame(design, data))
   pos <- match(rows, fr$keep)
   if (anyNA(pos)) {
     return(list(variance = NA_real_, note = paste0(
@@ -315,5 +332,7 @@ ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i,
       "Only one sampled row was not taken with certainty, so the local mean ",
       "estimator has no neighbour to compare it with. Draw a larger `n`.")))
   }
-  local_mean_variance(fr$x[pos[free], , drop = FALSE], y[free], pi_i[free])
+  x <- fr$x[pos[free], , drop = FALSE]
+  local_mean_variance(x, y[free], pi_i[free],
+                      nb = from_context(ctx, "neighbours", local_neighbours(x)))
 }

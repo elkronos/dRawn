@@ -192,6 +192,32 @@
 #' A sample grouped with `dplyr::group_by()` is estimated as a whole, with a
 #' warning of class `drawn_grouped_df`; the groups play no part. Use `by`.
 #'
+#' The strata, clusters and other pieces the variance reads from the frame
+#' are worked out once for all the domains. For simple random, reservoir,
+#' spatial, stratified and temporal samples every domain's variance comes
+#' from one pass over the sample, in time that grows with the number of
+#' sampled rows rather than with rows times domains.
+#'
+#' @section Contrasts:
+#' `contrast` weighs the domain estimates of `by` and gives their weighted
+#' sum, such as the difference between two sites' totals or means, with a
+#' standard error, an interval and `df` as for any other estimate. Each
+#' domain's estimate is the total, over the whole sample, of a variable that
+#' is 0 outside the domain: `y` for a total, the linearised residual for a
+#' Hajek mean and `y / N_d` for a Horvitz-Thompson mean. The weighted sum of
+#' the estimates is the total of the same weighted sum of those variables, so
+#' one run of the design's variance estimator gives its variance, with the
+#' covariances between domains included. For simple random, stratified,
+#' cluster and multistage samples the standard error equals that of
+#' `survey::svycontrast()` applied to `survey::svyby(..., covmat = TRUE)`.
+#'
+#' The interval is symmetric, for a proportion too, since a difference of
+#' proportions can be negative. Domains left out of `contrast` have a weight
+#' of 0. A name that is not a domain with a sampled row is refused, and so is
+#' a contrast whose weights are all 0. When a Hajek mean that the contrast
+#' weighs rests on one primary sampling unit, the contrast gets no standard
+#' error, for the reason given under "Domains".
+#'
 #' @section Which columns are read:
 #' `ht_total()` and [ht_mean()] divide by `.prob`, the inclusion probabilities
 #' [draw()] attached, and read strata, clusters, time stamps and the other
@@ -227,6 +253,11 @@
 #' @param alternative `"two.sided"` for a confidence interval, `"less"` for a
 #'   one-sided upper bound or `"greater"` for a lower bound, each at `level`.
 #'   See "Confidence intervals".
+#' @param contrast Optional weights over the `by` domains, as a named numeric
+#'   vector such as `c(a = 1, b = -1)` for domain `a` less domain `b`. A name
+#'   is the domain's value of a single `by` column, or the values of several
+#'   joined by `" . "`, as in `"a . east"`, the way the notes of a `by` table
+#'   name domains. Needs `by`. See "Contrasts".
 #'
 #' @return A list with a `print()` method, holding:
 #'   \describe{
@@ -252,6 +283,13 @@
 #'   with the domain columns, `n`, `total`, `se`, `ci_lower`, `ci_upper` and
 #'   `method`, and the level, alternative, scale, notes and unreachable count
 #'   as attributes.
+#'
+#'   With `contrast`, a list of class `drawn_contrast` with a `print()`
+#'   method, holding `contrast`, the weighted sum; `weights` and `estimates`,
+#'   the weight and estimate of each domain it weighs; `what` (`"total"` or
+#'   `"mean"`), `estimator` for a mean, and `by`; and `variance`, `se`, `ci`,
+#'   `level`, `alternative`, `df`, `n`, `ci_scale`, `design`, `method`, `note`
+#'   and `unreachable` as above. `deff` is `NA`.
 #'
 #' @references
 #' Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
@@ -304,21 +342,26 @@
 #' ht_total(s, "spend", by = "site")
 #' tapply(pop$spend, pop$site, sum)
 #'
+#' # How much more site a spent than site b
+#' ht_total(s, "spend", by = "site", contrast = c(a = 1, b = -1))
+#'
 #' @seealso [ht_mean()], [deff()], [joint_prob()], [inclusion_prob()]
 #' @export
 ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
                                             "none"), level = 0.95,
                      by = NULL, df = NULL,
-                     alternative = c("two.sided", "less", "greater")) {
+                     alternative = c("two.sided", "less", "greater"),
+                     contrast = NULL) {
   variance <- check_choice(variance,
                            c("auto", "analytic", "jackknife", "none"),
                            "variance")
   alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
                               "alternative")
+  check_contrast_by(contrast, by)
   parts <- ht_prepare(sample, y, level, df)
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "total",
-                       alternative = alternative))
+                       alternative = alternative, contrast = contrast))
   }
   warn_grouped(sample, "ht_total")
   yv <- parts$y
@@ -378,15 +421,18 @@ estimate_one <- function(parts, est, z, variance, level, df, what, class,
 #' of the domain adds nothing to the domain's variance, so the estimators skip
 #' it rather than declining.
 #'
+#' `ctx` is a `variance_context()` shared by the calls for one sample, or
+#' `NULL` for an estimator to work out what it needs from the frame itself.
+#'
 #' @noRd
 ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
-                                 domain = NULL) {
+                                 domain = NULL, ctx = NULL) {
   if (variance == "none") {
     return(list(variance = NA_real_, method = "none",
                 note = "Variance not requested."))
   }
   if (variance == "jackknife") {
-    jk <- jackknife_variance(design, units, pop, z, pi_i, domain)
+    jk <- jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
     if (is.na(jk$variance)) jk$method <- "none"
     return(jk)
   }
@@ -394,7 +440,7 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
   # A negative Sen-Yates-Grundy estimate, a declining estimator and an
   # overflow are failures rather than variances. Each gets a reason instead
   # of a number that sqrt() and deff() would then have to guess about.
-  a <- tryCatch(ht_variance(design, pop, rows, z, pi_i, domain),
+  a <- tryCatch(ht_variance(design, pop, rows, z, pi_i, domain, ctx),
                 drawn_declined = function(e) {
                   list(variance = NA_real_, note = conditionMessage(e))
                 })
@@ -414,7 +460,7 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
     return(list(variance = NA_real_, method = "none", note = reason))
   }
 
-  jk <- jackknife_variance(design, units, pop, z, pi_i, domain)
+  jk <- jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
   first <- sub("\n.*", "", reason)
   if (is.na(jk$variance)) {
     # The jackknife declined too. Say so, and keep its reason rather than
@@ -429,6 +475,49 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
   jk$note <- paste0("The design's own estimator declined, so the jackknife ",
                     "was used instead. ", first, " ", jk$note)
   jk
+}
+
+# ---- variance context -------------------------------------------------------
+
+#' A store for what the variance estimators read from the frame
+#'
+#' The stratum allocation, interval and cluster codes, group sizes, the
+#' systematic walk, the certainty split, the spread neighbours, the
+#' jackknife's strata and the joint probabilities depend on the design, the
+#' frame and the sampled rows, and not on the variable being totalled.
+#' `estimate_by()` runs an estimator once per domain, and each run worked all
+#' of it out again from the whole frame: 200 domains of a stratified sample
+#' from 100,000 rows took 3 seconds, nearly all of it rebuilding the strata.
+#' One context is made per call and handed to every run, and each estimator
+#' stores a piece there the first time it needs it, with `from_context()`.
+#'
+#' A context holds the pieces for one design, frame and set of sampled rows,
+#' with the same inclusion probabilities. A certainty design keeps the context
+#' of its `rest`, over the rows below the threshold, inside its own.
+#'
+#' @noRd
+variance_context <- function() new.env(parent = emptyenv())
+
+#' A piece of a variance context, worked out on first use
+#'
+#' `value` is evaluated only when `ctx` does not hold `name` yet. With no
+#' context it is evaluated every time, so an estimator called without one
+#' works out the piece itself.
+#'
+#' @noRd
+from_context <- function(ctx, name, value) {
+  if (is.null(ctx)) return(value)
+  if (!exists(name, envir = ctx, inherits = FALSE)) {
+    assign(name, value, envir = ctx)
+  }
+  get(name, envir = ctx, inherits = FALSE)
+}
+
+#' The context of a design nested in another, such as a certainty `rest`
+#' @noRd
+sub_context <- function(ctx, name) {
+  if (is.null(ctx)) return(NULL)
+  from_context(ctx, name, variance_context())
 }
 
 #' Decline the variance of a Hajek mean that rests on one sampling unit
@@ -592,8 +681,8 @@ empty_sample <- function() {
 }
 
 #' @noRd
-ht_variance <- function(design, data, rows, y, pi_i,
-                        domain = NULL) UseMethod("ht_variance")
+ht_variance <- function(design, data, rows, y, pi_i, domain = NULL,
+                        ctx = NULL) UseMethod("ht_variance")
 
 #' Sen-Yates-Grundy, for fixed-size designs with closed-form joint
 #' probabilities
@@ -610,10 +699,12 @@ ht_variance <- function(design, data, rows, y, pi_i,
 #' `pair_limit()` bytes projected, about 1 GB or 4,000 sampled rows, the
 #' estimator declines with the size it would need, before anything is
 #' allocated. Linux can stop R for want of memory before an allocation error
-#' is raised, so waiting for one is no guard.
+#' is raised, so waiting for one is no guard. The joint matrix is kept in
+#' `ctx`, so the domains of one sample share it.
 #'
 #' @noRd
-ht_variance.default <- function(design, data, rows, y, pi_i, domain = NULL) {
+ht_variance.default <- function(design, data, rows, y, pi_i, domain = NULL,
+                                ctx = NULL) {
   n <- length(rows)
   bytes <- 8 * 8 * as.numeric(n)^2
   if (bytes > pair_limit()) {
@@ -622,7 +713,7 @@ ht_variance.default <- function(design, data, rows, y, pi_i, domain = NULL) {
       " of memory for its ", n, " x ", n,
       " matrices.\nUse variance = \"auto\" to fall back to the jackknife."))
   }
-  pij <- joint_inclusion(design, data, rows)
+  pij <- from_context(ctx, "joint", joint_inclusion(design, data, rows))
   if (length(rows) < 2L) {
     return(list(variance = NA_real_,
                 note = "A variance needs at least two sampled rows."))
@@ -734,28 +825,79 @@ srs_one_group <- function(z, n, N) {
   list(variance = srs_variance(z, rep(1L, length(z)), n, N), note = NULL)
 }
 
+#' The groups a design takes a simple random sample within
+#'
+#' For the simple, reservoir and spatial designs, one group: `n_g` rows drawn
+#' from the `N_g` the design reaches. For stratified and temporal designs,
+#' `code` gives each frame row's stratum or interval as a position in `n_g`,
+#' `N_g` and `labels`. `NULL` for any other design. The analytic estimators of
+#' these designs and `srs_layout()`, which estimates every domain in one pass,
+#' read their groups from here, so the two cannot disagree. A design drawn
+#' with replacement gets its groups too; the callers decide what to do with
+#' it.
+#'
+#' @noRd
+srs_groups <- function(design, data, ctx = NULL) {
+  from_context(ctx, "srs_groups", switch(design_type(design),
+    simple = list(n_g = design$n, N_g = nrow(data)),
+    reservoir = {
+      # Rows past `max_items` are never read: the sample is a simple random
+      # one from the rows before it.
+      reach <- reservoir_reach(design, nrow(data))
+      list(n_g = min(design$n, reach), N_g = reach)
+    },
+    spatial = {
+      require_suggested("sf", "spatial sampling")
+      N <- sum(spatial_inside(design, data))
+      list(n_g = min(design$n, N), N_g = N)
+    },
+    stratified = {
+      al <- stratum_allocation(design, data)
+      list(code = al$code, labels = al$labels, n_g = al$n_alloc,
+           N_g = al$sizes)
+    },
+    temporal = {
+      bucket <- key_from_columns(list(temporal_bucket(design, data)))
+      code <- as.integer(bucket)
+      sizes <- tabulate(code, nlevels(bucket))
+      list(code = code, labels = levels(bucket),
+           n_g = pmin(sizes, design$per_interval), N_g = sizes)
+    },
+    NULL
+  ))
+}
+
 #' @noRd
 ht_variance.drawn_design_simple <- function(design, data, rows, y, pi_i,
-                                            domain = NULL) {
+                                            domain = NULL, ctx = NULL) {
   if (design$replace) return(NextMethod())
-  srs_one_group(y, design$n, nrow(data))
+  g <- srs_groups(design, data, ctx)
+  srs_one_group(y, g$n_g, g$N_g)
 }
 
 #' @noRd
 ht_variance.drawn_design_reservoir <- function(design, data, rows, y, pi_i,
-                                               domain = NULL) {
-  # Rows past `max_items` are never read: the sample is a simple random one
-  # from the rows before it.
-  reach <- reservoir_reach(design, nrow(data))
-  srs_one_group(y, min(design$n, reach), reach)
+                                               domain = NULL, ctx = NULL) {
+  g <- srs_groups(design, data, ctx)
+  srs_one_group(y, g$n_g, g$N_g)
 }
 
 #' @noRd
 ht_variance.drawn_design_spatial <- function(design, data, rows, y, pi_i,
-                                             domain = NULL) {
-  require_suggested("sf", "spatial sampling")
-  N <- sum(spatial_inside(design, data))
-  srs_one_group(y, min(design$n, N), N)
+                                             domain = NULL, ctx = NULL) {
+  g <- srs_groups(design, data, ctx)
+  srs_one_group(y, g$n_g, g$N_g)
+}
+
+#' Groups with one sampled row out of several
+#'
+#' `code` is each frame row's group as a position among `k` groups, and
+#' `rows` the sampled frame rows. A group taken whole is not lonely. The one
+#' rule for `lonely_note()` and `srs_layout()`.
+#'
+#' @noRd
+lonely_groups <- function(code, rows, k) {
+  tabulate(code[rows], k) == 1L & tabulate(code, k) > 1L
 }
 
 #' Refuse a stratified variance with a stratum that holds one sampled row
@@ -787,9 +929,7 @@ lonely_note <- function(group, rows, noun, fix, domain = NULL) {
   }
   code <- as.integer(group)
   k <- nlevels(group)
-  N_h <- tabulate(code, k)
-  n_h <- tabulate(code[rows], k)
-  lonely <- n_h == 1L & N_h > 1L
+  lonely <- lonely_groups(code, rows, k)
   if (known_domain(domain, length(code))) {
     lonely <- lonely & tabulate(code[domain], k) > 0L
   }
@@ -820,6 +960,23 @@ known_domain <- function(domain, n) {
   is.logical(domain) && length(domain) == n && !anyNA(domain)
 }
 
+#' Variance within the groups of `srs_groups()`, refusing a lonely group
+#'
+#' The stratified and temporal estimators: each group is a simple random
+#' sample of its `n_g` rows from its `N_g`, so the variance is
+#' `srs_variance()` over groups. `noun` and `fix` word the refusal of a
+#' lonely group. A design drawn with replacement is refused for a lonely
+#' group too, and otherwise gets `NULL`, for its method to pass on.
+#'
+#' @noRd
+srs_within_groups <- function(design, g, rows, y, domain, noun, fix) {
+  group <- structure(g$code, levels = g$labels, class = "factor")
+  note <- lonely_note(group, rows, noun, fix, domain)
+  if (!is.null(note)) return(list(variance = NA_real_, note = note))
+  if (isTRUE(design$replace)) return(NULL)
+  list(variance = srs_variance(y, g$code[rows], g$n_g, g$N_g), note = NULL)
+}
+
 #' Stratified variance, from the allocation the design used
 #'
 #' Each stratum is a simple random sample of its `n_alloc` rows from its
@@ -828,16 +985,13 @@ known_domain <- function(domain, n) {
 #'
 #' @noRd
 ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i,
-                                                domain = NULL) {
-  al <- stratum_allocation(design, data)
-  group <- structure(al$code, levels = al$labels, class = "factor")
-  note <- lonely_note(group, rows, c("stratum", "strata"),
-                      "Draw at least two rows per stratum (min_per_stratum = 2).",
-                      domain)
-  if (!is.null(note)) return(list(variance = NA_real_, note = note))
-  if (design$replace) return(NextMethod())
-  list(variance = srs_variance(y, al$code[rows], al$n_alloc, al$sizes),
-       note = NULL)
+                                                domain = NULL, ctx = NULL) {
+  out <- srs_within_groups(
+    design, srs_groups(design, data, ctx), rows, y, domain,
+    c("stratum", "strata"),
+    "Draw at least two rows per stratum (min_per_stratum = 2).")
+  if (is.null(out)) return(NextMethod())
+  out
 }
 
 #' Temporal variance: intervals are strata
@@ -847,17 +1001,94 @@ ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i,
 #'
 #' @noRd
 ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i,
-                                              domain = NULL) {
-  bucket <- key_from_columns(list(temporal_bucket(design, data)))
-  note <- lonely_note(bucket, rows, c("interval", "intervals"),
-                      "Draw at least two rows per interval (per_interval = 2).",
-                      domain)
-  if (!is.null(note)) return(list(variance = NA_real_, note = note))
-  code <- as.integer(bucket)
-  sizes <- tabulate(code, nlevels(bucket))
-  list(variance = srs_variance(y, code[rows],
-                               pmin(sizes, design$per_interval), sizes),
-       note = NULL)
+                                              domain = NULL, ctx = NULL) {
+  srs_within_groups(
+    design, srs_groups(design, data, ctx), rows, y, domain,
+    c("interval", "intervals"),
+    "Draw at least two rows per interval (per_interval = 2).")
+}
+
+#' Each sampled row's group, for every domain's variance in one pass
+#'
+#' Returns `NULL` when the design's analytic variance is not `srs_variance()`
+#' over the groups of `srs_groups()`, or when it declines for the whole
+#' sample, as with one sampled row from a group of several. Otherwise
+#' `group` gives each sampled row's position in `n_g` and `N_g`, `NA` for a
+#' row taken with certainty above a certainty design's threshold, and
+#' `lonely_rows` the frame rows in a group with one sampled row, whose domains
+#' `srs_variance()` cannot measure.
+#'
+#' @noRd
+srs_layout <- function(design, data, rows, ctx = NULL) {
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_parts(design, data, ctx)
+    free <- !(rows %in% sp$keep[sp$take])
+    pos <- match(rows[free], sp$keep[sp$rest])
+    if (!any(free) || anyNA(pos)) return(NULL)
+    out <- srs_layout(design$rest, sp$rest_data, pos, sub_context(ctx, "rest"))
+    if (is.null(out)) return(NULL)
+    group <- rep(NA_integer_, length(rows))
+    group[free] <- out$group
+    out$group <- group
+    out$lonely_rows <- sp$keep[sp$rest][out$lonely_rows]
+    return(out)
+  }
+  if (isTRUE(design$replace)) return(NULL)
+  g <- srs_groups(design, data, ctx)
+  if (is.null(g)) return(NULL)
+  if (is.null(g$code)) {
+    if (length(rows) < 2L && g$n_g < g$N_g) return(NULL)
+    return(list(group = rep(1L, length(rows)), n_g = g$n_g, N_g = g$N_g,
+                lonely_rows = integer(0)))
+  }
+  lonely <- lonely_groups(g$code, rows, length(g$N_g))
+  list(group = g$code[rows], n_g = g$n_g, N_g = g$N_g,
+       lonely_rows = which(lonely[g$code]))
+}
+
+#' `srs_variance()` for many domains at once
+#'
+#' `z` holds each sampled row's value in its own domain: `y`, or the Hajek
+#' residual or `y / N_d` of that domain. Domain `d`'s variable is `z` on its
+#' rows and 0 on every other row, and `domain` gives each row's `d` among
+#' `n_dom`. Within group `g` that variable has mean `S_gd / m_g`, with `S_gd`
+#' the sum of `z` over the group's rows in `d` and `m_g` the group's sampled
+#' rows, and its squared deviations are those of the rows in `d` plus
+#' `(m_g - c_gd)` times the squared mean for the `c_gd` rows outside it. So
+#' one `rowsum()` over the group and domain cells gives every domain's
+#' variance in time linear in the rows, where a pass per domain was linear in
+#' rows times domains. The figures equal `srs_variance()` on each domain's
+#' variable, up to the order of summation.
+#'
+#' @noRd
+srs_variance_by <- function(z, group, domain, n_dom, n_g, N_g) {
+  z <- as.numeric(z)
+  out <- numeric(n_dom)
+  live <- sort(unique(group))
+  g <- match(group, live)
+  m <- tabulate(g, length(live))
+  n <- as.numeric(n_g)[live]
+  N <- as.numeric(N_g)[live]
+  use <- m >= 2L & n < N
+  rows <- use[g]
+  if (!any(rows)) return(out)
+  g <- g[rows]
+  d <- domain[rows]
+  z <- z[rows]
+  # One cell per group and domain that share a sampled row. The arithmetic is
+  # in doubles, which hold the cell numbers exactly.
+  cell_id <- (g - 1) * as.numeric(n_dom) + d
+  cells <- unique(cell_id)
+  cell <- match(cell_id, cells)
+  first <- match(seq_along(cells), cell)
+  cg <- g[first]
+  mu <- rowsum(z, cell, reorder = FALSE)[, 1L] / m[cg]
+  ss <- rowsum((z - mu[cell])^2, cell, reorder = FALSE)[, 1L] +
+    (m[cg] - tabulate(cell, length(cells))) * mu^2
+  v <- N[cg]^2 * (1 - n[cg] / N[cg]) * ss / ((m[cg] - 1) * n[cg])
+  cd <- d[first]
+  out[unique(cd)] <- rowsum(v, cd, reorder = FALSE)[, 1L]
+  out
 }
 
 #' Variance of a single-stage cluster total
@@ -875,8 +1106,8 @@ ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i,
 #'
 #' @noRd
 ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
-                                             domain = NULL) {
-  cl <- count_clusters(design, data)
+                                             domain = NULL, ctx = NULL) {
+  cl <- from_context(ctx, "clusters", count_clusters(design, data))
   A <- cl$total
   code <- cl$code[rows]
   if (anyNA(code)) {
@@ -916,8 +1147,8 @@ ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
 #'
 #' @noRd
 ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
-                                                domain = NULL) {
-  cl <- count_clusters(design, data)
+                                                domain = NULL, ctx = NULL) {
+  cl <- from_context(ctx, "clusters", count_clusters(design, data))
   n_cl <- length(unique(cl$code[rows]))
   if (n_cl < 2L && !all(is_certain(pi_i))) {
     return(list(variance = NA_real_, note = paste0(
@@ -937,7 +1168,8 @@ ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
   }
   v <- two_stage_variance(y, cl$code[rows], design$n_clusters, cl$total,
                           design$n %/% design$n_clusters,
-                          tabulate(cl$code, cl$total))
+                          from_context(ctx, "cluster_sizes",
+                                       tabulate(cl$code, cl$total)))
   list(variance = v, note = NULL)
 }
 
@@ -977,7 +1209,7 @@ fallback_note <- function(a, A) {
 #'
 #' @noRd
 ht_variance.drawn_design_weighted <- function(design, data, rows, y, pi_i,
-                                              domain = NULL) {
+                                              domain = NULL, ctx = NULL) {
   if (design$method == "poisson") {
     return(list(variance = sum((1 - pi_i) / pi_i^2 * y^2), note = NULL))
   }
@@ -1039,7 +1271,7 @@ deville_variance <- function(y, pi_i) {
 #'
 #' @noRd
 ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
-                                                domain = NULL) {
+                                                domain = NULL, ctx = NULL) {
   if (!is.null(design$start)) {
     stop_declined(paste0("A systematic design with a fixed `start` is not a ",
                          "probability sample: each row is selected with ",
@@ -1050,7 +1282,7 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
     return(list(variance = NA_real_,
                 note = "A variance needs at least two sampled rows."))
   }
-  walk <- systematic_positions(design, data)
+  walk <- from_context(ctx, "walk", systematic_positions(design, data))
   pos <- walk[rows]
   u <- (y / pi_i)[order(pos)]
   k <- design$interval
@@ -1107,22 +1339,26 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
 #' `domain` shows it holds no unit of the domain being estimated, as in
 #' `lonely_note()`.
 #'
+#' `ctx` is a `variance_context()` for `design`, `pop` and `units`, with
+#' `pi_i` the same in every call that shares it.
+#'
 #' @noRd
-jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL) {
+jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
+                               ctx = NULL) {
   refusal <- jackknife_refusal(design)
   if (!is.null(refusal)) {
     return(list(variance = NA_real_, method = "jackknife", note = refusal))
   }
   if (inherits(design, "drawn_design_certainty")) {
-    return(jackknife_certainty(design, units, pop, y, pi_i, domain))
+    return(jackknife_certainty(design, units, pop, y, pi_i, domain, ctx))
   }
 
-  psu <- jackknife_groups(design, units)
+  psu <- from_context(ctx, "psu", jackknife_groups(design, units))
   fixed <- !(psu %in% psu[!is_certain(pi_i)])
   if (all(fixed)) return(all_certain("jackknife"))
   n_fixed <- length(unique(psu[fixed]))
 
-  st <- jackknife_strata(design, units, pop, psu, fixed, domain)
+  st <- jackknife_strata(design, units, pop, psu, fixed, domain, ctx)
   base <- y / pi_i
   total <- sum(base)
   free <- which(!fixed)
@@ -1194,8 +1430,9 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL) {
 #' so its finite population correction counts them correctly.
 #'
 #' @noRd
-jackknife_certainty <- function(design, units, pop, y, pi_i, domain = NULL) {
-  sp <- certainty_split(design, pop)
+jackknife_certainty <- function(design, units, pop, y, pi_i, domain = NULL,
+                                ctx = NULL) {
+  sp <- certainty_parts(design, pop, ctx)
   v <- units[[design$above]]
   below <- !is.na(v) & v < design$threshold
   if (!any(below)) {
@@ -1206,9 +1443,9 @@ jackknife_certainty <- function(design, units, pop, y, pi_i, domain = NULL) {
     }
     return(all_certain("jackknife"))
   }
-  jackknife_variance(design$rest, units[below, , drop = FALSE],
-                     sp$data[sp$rest, , drop = FALSE],
-                     y[below], pi_i[below], rest_domain(domain, sp))
+  jackknife_variance(design$rest, units[below, , drop = FALSE], sp$rest_data,
+                     y[below], pi_i[below], rest_domain(domain, sp),
+                     sub_context(ctx, "rest"))
 }
 
 #' Designs the jackknife should decline rather than approximate
@@ -1244,23 +1481,25 @@ jackknife_refusal <- function(design) {
 #' domain, and `TRUE` otherwise.
 #'
 #' @noRd
-jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL) {
-  grp <- switch(design_type(design),
+jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
+                             ctx = NULL) {
+  # Integer codes, shared by the sampled rows and the frame.
+  grp <- from_context(ctx, "strata", switch(design_type(design),
     stratified = {
       key <- group_key2(units, pop, design$strata)
       list(sample = as.integer(key$x), pop = as.integer(key$table))
     },
     temporal = list(
-      sample = temporal_bucket(design, units),
-      pop = temporal_bucket(design, pop)
+      sample = as.integer(temporal_bucket(design, units)),
+      pop = as.integer(temporal_bucket(design, pop))
     ),
     NULL
-  )
+  ))
   if (is.null(grp)) {
     m <- length(unique(psu[!fixed]))
     n_fixed <- length(unique(psu[fixed]))
     return(list(stratum = rep("all", nrow(units)), levels = "all",
-                fpc = jackknife_fpc(design, pop, m, n_fixed),
+                fpc = jackknife_fpc(design, pop, m, n_fixed, ctx),
                 in_domain = TRUE))
   }
   lev <- unique(grp$sample[!fixed])
@@ -1301,12 +1540,12 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL) {
 #' side of a wider interval.
 #'
 #' @noRd
-jackknife_fpc <- function(design, pop, m, n_fixed = 0L) {
+jackknife_fpc <- function(design, pop, m, n_fixed = 0L, ctx = NULL) {
   if (inherits(design, "drawn_design_multistage")) return(1)
   total <- if (inherits(design, "drawn_design_cluster")) {
-    count_clusters(design, pop)$total
+    from_context(ctx, "clusters", count_clusters(design, pop))$total
   } else {
-    reachable_rows(design, pop)
+    from_context(ctx, "reachable", reachable_rows(design, pop))
   }
   if (!is.finite(total)) return(1)
   free <- total - n_fixed

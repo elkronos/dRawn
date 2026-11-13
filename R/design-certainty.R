@@ -103,6 +103,21 @@ certainty_split <- function(design, data) {
        rest = setdiff(seq_len(nrow(data)), take))
 }
 
+#' The certainty split, with the frame handed to `rest`, for the variance
+#'
+#' `certainty_split()` plus `rest_data`, the rows below the threshold, which
+#' the variance estimators and the jackknife pass to `rest`. Kept in `ctx`,
+#' a `variance_context()`, so the domains of one sample split the frame once.
+#'
+#' @noRd
+certainty_parts <- function(design, data, ctx = NULL) {
+  from_context(ctx, "certainty", {
+    sp <- certainty_split(design, data)
+    sp$rest_data <- sp$data[sp$rest, , drop = FALSE]
+    sp
+  })
+}
+
 #' Describe the rows below the threshold, for messages
 #' @noRd
 rows_below <- function(design, n) {
@@ -249,8 +264,8 @@ joint_inclusion.drawn_design_certainty <- function(design, data, rows) {
 #'
 #' @noRd
 ht_variance.drawn_design_certainty <- function(design, data, rows, y, pi_i,
-                                               domain = NULL) {
-  sp <- certainty_split(design, data)
+                                               domain = NULL, ctx = NULL) {
+  sp <- certainty_parts(design, data, ctx)
   free <- !(rows %in% sp$keep[sp$take])
   if (!any(free)) {
     if (length(sp$rest)) return(empty_rest(design, length(sp$rest)))
@@ -262,8 +277,8 @@ ht_variance.drawn_design_certainty <- function(design, data, rows, y, pi_i,
       "Some sampled rows were dropped by this design's `na_rm`, so they have ",
       "no place in the frame the variance is computed over.")))
   }
-  ht_variance(design$rest, sp$data[sp$rest, , drop = FALSE], pos,
-              y[free], pi_i[free], rest_domain(domain, sp))
+  ht_variance(design$rest, sp$rest_data, pos, y[free], pi_i[free],
+              rest_domain(domain, sp), sub_context(ctx, "rest"))
 }
 
 #' A domain's frame rows, restricted to the rows handed to `rest`

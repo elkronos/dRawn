@@ -350,6 +350,16 @@
   Graubard's interval, the one `survey::svyciprop(method = "beta")` gives,
   with its effective sample size capped at the number of sampled rows below
   certainty.
+* `ht_total()` and `ht_mean()` take `contrast`, weights over the `by`
+  domains such as `c(a = 1, b = -1)`, and return the weighted sum of the
+  domain estimates with its standard error, interval and degrees of freedom,
+  as a `drawn_contrast`. The variance comes from one run of the design's
+  estimator, so the covariance between domains is counted, and for simple
+  random, stratified, cluster and multistage samples the standard error
+  equals that of `survey::svycontrast()` on `survey::svyby(covmat = TRUE)`.
+  A difference of domain means needed linearised residuals built by hand,
+  and the `survey` route stopped with an error for systematic PPS samples.
+  The interval is symmetric, for proportions too.
 
 ## Speed and memory
 
@@ -387,6 +397,15 @@
   group at a time and need little memory beyond the matrix itself, where they
   needed 4 to 12 times its size: a stratified matrix over 5,000 rows took
   2.4 GB and 6.7 seconds, and now takes 0.2 GB and 0.4 seconds.
+* `by` estimates work out the strata, clusters, systematic order, certainty
+  split, spread neighbours and joint probabilities once per call rather than
+  once per domain, and the variances of simple random, reservoir, spatial,
+  stratified and temporal samples, alone or as the `rest` of
+  `design_certainty()`, come from one pass over all the domains. 200 domains
+  of a stratified sample of 1,000 from 100,000 rows took 3.4 seconds and now
+  take 0.1; 200 domains of a spread sample of 1,000 from 20,000 rows took 16
+  seconds and now take 0.3. The standard errors agree with the old ones to
+  rounding error.
 
 ## Handing off to survey
 
