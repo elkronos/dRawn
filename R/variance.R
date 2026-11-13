@@ -1607,7 +1607,9 @@ reachable_rows <- function(design, pop) {
     temporal = sum(!is.na(temporal_bucket(design, pop))),
     systematic = sum(!is.na(systematic_positions(design, pop))),
     weighted = keyed(design$weights),
-    spread = keyed(c(design$across, design$size)),
+    spread = sum(!spread_missing(
+      coordinate_columns(pop, design$across, "across", time = TRUE),
+      if (!is.null(design$size)) pop[[design$size]])),
     stratified = keyed(design$strata),
     cluster = ,
     multistage = keyed(design$clusters),

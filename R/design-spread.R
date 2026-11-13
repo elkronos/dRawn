@@ -30,6 +30,17 @@
 #' not decide the distances alone; set `scale = FALSE` for coordinates that
 #' already share a unit, such as projected metres.
 #'
+#' A Date column in `across` counts in days and a date-time (POSIXct) column
+#' in seconds since 1970, so time can be spread over alongside space. Keep
+#' `scale = TRUE` when mixing them with coordinates, or the column in the
+#' larger unit decides the distances. `size` has to be numeric.
+#'
+#' A POINT geometry column, such as the geometry of an `sf` frame, counts as
+#' its two coordinates, read with [sf::st_coordinates()]: `across =
+#' "geometry"` spreads over the map. Distances are measured in the
+#' geometry's own units, so longitude and latitude are treated as plain
+#' numbers; a projected CRS gives distances in metres.
+#'
 #' @section Variance:
 #' The joint inclusion probabilities of a pivotal design have no closed form,
 #' and treating the sample as simple random would give away exactly the gain
@@ -37,12 +48,37 @@
 #' mean variance estimator (Stevens and Olsen 2003; Grafström and Schelin
 #' 2014), which compares each sampled row with the mean of itself and its three
 #' nearest sampled neighbours. It is an approximation, reported as
-#' `method = "local mean"`, and errs on the conservative side: in the
-#' package's simulations it runs from about 1 to 1.6 times the true variance,
-#' higher for small samples and large sampling fractions. Rows taken with
-#' certainty, because their `size` puts them past it or because `n` is the
-#' whole frame, are in every sample and add no variance, so the estimator
-#' leaves them out.
+#' `method = "local mean"`, and usually overstates the variance. The table
+#' gives the ratio of its average to the true variance of the total, over
+#' 1,000 draws from one frame per cell, by `n` and the sampling fraction
+#' `f = n / N`. The frames are uniform on the unit square, spread with
+#' `scale = FALSE`; the smooth surface is the one in the examples, and the
+#' other variable is normal noise unrelated to position.
+#'
+#' | Variable | `n` | `f` = 0.05 | 0.2 | 0.5 | 0.8 |
+#' |:--|--:|--:|--:|--:|--:|
+#' | smooth surface | 8 | 2.2 | 2.5 | 2.3 | 3.6 |
+#' | | 20 | 1.6 | 1.5 | 2.3 | 1.4 |
+#' | | 40 | 1.1 | 1.3 | 1.9 | 2.1 |
+#' | unrelated to position | 8 | 1.0 | 1.4 | 1.8 | 4.7 |
+#' | | 20 | 1.0 | 1.2 | 1.8 | 4.5 |
+#' | | 40 | 1.0 | 1.3 | 1.9 | 4.9 |
+#'
+#' For a variable unrelated to position the ratio is close to `1 / (1 - f)`,
+#' since the estimator then reduces to the with-replacement variance of a
+#' simple random sample. It also varies from frame to frame: with `n = 20`
+#' and `f = 0.05`, four frames of 400 rows gave 0.96 to 1.15 for that
+#' variable and 1.36 to 1.52 for the smooth surface, so a ratio slightly
+#' below 1 occurs too. Below about 10 sampled rows the ratio climbs: `n = 4`
+#' gave 2.4 for the smooth surface at `f = 0.05`, and 18.9 on a frame of 8
+#' rows.
+#'
+#' [deff()] divides this variance by a simple random sample's, so it carries
+#' the same overstatement: at a ratio of 2, a spread sample with a true design
+#' effect of 0.8 reports 1.6, worse than a simple random sample when it is
+#' better. Rows taken with certainty, because their `size` puts them past it
+#' or because `n` is the whole frame, are in every sample and add no variance,
+#' so the estimator leaves them out.
 #'
 #' @section Cost:
 #' Each step finds a nearest neighbour among the rows still undecided, so the
@@ -51,7 +87,9 @@
 #' thin the frame first.
 #'
 #' @param across Column names to spread the sample across: two coordinates for
-#'   a map, or any numeric auxiliary variables. At least one.
+#'   a map, or any numeric auxiliary variables. At least one. A Date or
+#'   date-time column, and a POINT geometry column, are read as numbers; see
+#'   "Spreading over more than space".
 #' @param n Number of rows to draw. Fixed, not expected.
 #' @param size Optional column of positive size measures. When given, rows are
 #'   included with probability proportional to size — `n * size / sum(size)`,
@@ -130,25 +168,33 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
 spread_frame <- function(design, data) {
   cols <- c(design$across, design$size)
   validate_data(data, required_columns = cols)
-  check_key_columns(data, cols, "across")
-  for (nm in cols) {
-    if (!is.numeric(data[[nm]])) {
-      stop("`", nm, "` must be numeric to spread across or size by, not ",
-           class(data[[nm]])[1], ".", call. = FALSE)
+  geom <- vapply(cols, function(nm) inherits(data[[nm]], "sfc"), logical(1))
+  check_key_columns(data, cols[!geom], "across")
+  for (nm in design$across) {
+    col <- data[[nm]]
+    if (!is.numeric(col) && !inherits(col, c("Date", "POSIXt", "sfc"))) {
+      stop("`", nm, "` must be numeric to spread across, not ",
+           class(col)[1], ". A Date, date-time or POINT geometry column ",
+           "works too; convert anything else to numbers first, for example ",
+           "with as.numeric().", call. = FALSE)
     }
   }
-  # Columns are read one at a time, so an sf frame's geometry stays out.
-  bad <- Reduce(`|`, lapply(cols, function(col) is.na(data[[col]])))
+  if (!is.null(design$size) && !is.numeric(data[[design$size]])) {
+    stop("`", design$size, "` must be numeric to size by, not ",
+         class(data[[design$size]])[1], ".", call. = FALSE)
+  }
+  x_cols <- coordinate_columns(data, design$across, "across", time = TRUE)
+  bad <- spread_missing(x_cols,
+                        if (!is.null(design$size)) data[[design$size]])
   check_na_policy(bad, design$na_rm,
                   paste0("a missing value in ",
                          paste0("`", cols, "`", collapse = ", ")))
   keep <- which(!bad)
   if (!length(keep)) stop("Every row has a missing value.", call. = FALSE)
 
-  x <- matrix(vapply(design$across, function(col) {
-    as.numeric(data[[col]][keep])
-  }, numeric(length(keep))), nrow = length(keep),
-  dimnames = list(NULL, design$across))
+  x <- matrix(vapply(x_cols, function(v) as.numeric(v[keep]),
+                     numeric(length(keep))),
+              nrow = length(keep), dimnames = list(NULL, names(x_cols)))
   if (any(!is.finite(x))) {
     stop("`across` contains non-finite values.", call. = FALSE)
   }
@@ -170,6 +216,16 @@ spread_frame <- function(design, data) {
     pps_pi(w, design$n)
   }
   list(keep = keep, x = x, pi = pi)
+}
+
+#' Rows with a missing value in any column a spread design reads
+#'
+#' `x_cols` is `coordinate_columns()` of `across`, so an empty point counts
+#' as missing; `size` is that column, or `NULL`.
+#'
+#' @noRd
+spread_missing <- function(x_cols, size = NULL) {
+  Reduce(`|`, lapply(c(x_cols, if (!is.null(size)) list(size)), is.na))
 }
 
 #' @export

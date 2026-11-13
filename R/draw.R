@@ -98,6 +98,7 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
          class(design)[1], ". See ?designs.", call. = FALSE)
   }
   check_flag(weights, "weights")
+  warn_region(design, data)
 
   if (!isTRUE(weights)) {
     return(table_ready(with_seed(seed, draw_design(design, data))))

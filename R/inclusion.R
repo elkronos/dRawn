@@ -106,6 +106,7 @@ inclusion_prob <- function(data, design, simulate = FALSE, R = 5000,
   }
   validate_data(data)
   check_flag(simulate, "simulate")
+  warn_region(design, data)
 
   if (isTRUE(simulate)) {
     return(simulate_inclusion(data, design, R = check_count(R, "R",

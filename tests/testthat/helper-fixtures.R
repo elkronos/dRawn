@@ -28,17 +28,22 @@ make_ts <- function() {
   )
 }
 
-# A large but well-behaved region: every edge spans 160 degrees of longitude or
-# less, so s2 draws it the way the coordinates read.
+# A large but well-behaved region. Its edges are cut in degree space into
+# pieces of at most 1 degree, so under s2 it is the box its corners describe:
+# a single edge from -80 to 80 at latitude 60 would follow a great circle
+# that bows about 24 degrees towards the pole.
 wide_poly <- function() {
   skip_if_not_installed("sf")
-  sf::st_sfc(
-    sf::st_polygon(list(cbind(
-      c(-80, 80, 80, -80, -80),
-      c(-60, -60, 60, 60, -60)
-    ))),
-    crs = 4326
-  )
+  flat_box(c(-80, 80), c(-60, 60))
+}
+
+# A longitude/latitude box whose edges follow its straight lines in degrees,
+# by the recipe in ?design_spatial.
+flat_box <- function(lon, lat) {
+  skip_if_not_installed("sf")
+  box <- sf::st_sfc(sf::st_polygon(list(cbind(lon[c(1, 2, 2, 1, 1)],
+                                              lat[c(1, 1, 2, 2, 1)]))))
+  sf::st_set_crs(sf::st_segmentize(box, 1), 4326)
 }
 
 # A lon/lat rectangle whose edges span nearly the whole globe. Under s2 this
@@ -56,13 +61,7 @@ antimeridian_poly <- function() {
 
 three_boxes <- function() {
   skip_if_not_installed("sf")
-  lapply(list(c(0, 10), c(20, 30), c(40, 50)), function(r) {
-    sf::st_sfc(
-      sf::st_polygon(list(cbind(c(r[1], r[2], r[2], r[1], r[1]),
-                                c(r[1], r[1], r[2], r[2], r[1])))),
-      crs = 4326
-    )
-  })
+  lapply(list(c(0, 10), c(20, 30), c(40, 50)), function(r) flat_box(r, r))
 }
 
 expect_same_schema <- function(out, input) {

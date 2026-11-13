@@ -201,3 +201,63 @@ test_that("an sf frame spreads across plain numeric columns", {
   expect_equal(ht_total(s, "y")$se,
                ht_total(draw(plain, des, seed = 1, weights = TRUE), "y")$se)
 })
+
+test_that("a POINT geometry column spreads as its two coordinates", {
+  pts <- sf_points()
+  plain <- sf::st_drop_geometry(pts)
+  by_geom <- design_spread("geometry", n = 12)
+  by_cols <- design_spread(c("lon", "lat"), n = 12)
+  s <- draw(pts, by_geom, seed = 1, weights = TRUE)
+  expect_identical(s$id, draw(plain, by_cols, seed = 1)$id)
+  expect_equal(inclusion_prob(pts, by_geom), rep(0.2, 60))
+  expect_equal(ht_total(s, "y")$se,
+               ht_total(draw(plain, by_cols, seed = 1, weights = TRUE),
+                        "y")$se)
+  # With another column, the geometry still counts as two
+  mixed <- design_spread(c("geometry", "x"), n = 12)
+  expect_identical(draw(pts, mixed, seed = 2)$id,
+                   draw(plain, design_spread(c("lon", "lat", "x"), n = 12),
+                        seed = 2)$id)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_invisible(plot(by_geom, pts, type = "map", seed = 1))
+  lines <- sf::st_sf(id = 1:2, geometry = sf::st_sfc(
+    sf::st_linestring(rbind(c(0, 0), c(1, 1))),
+    sf::st_linestring(rbind(c(0, 1), c(1, 2)))))
+  expect_error(draw(lines, design_spread("geometry", n = 1)),
+               "`across` names `geometry`, a geometry column holding LINESTRING",
+               fixed = TRUE)
+})
+
+test_that("Date and date-time columns spread as days and seconds", {
+  d <- spread_pop(40)
+  d$day <- as.Date("2024-03-01") + (d$id * 7) %% 40
+  d$days <- as.numeric(d$day)
+  d$at <- as.POSIXct("2024-03-01", tz = "UTC") + d$days * 3600
+  d$secs <- as.numeric(d$at)
+  same <- function(a, b) {
+    expect_identical(draw(d, design_spread(a, n = 6), seed = 3)$id,
+                     draw(d, design_spread(b, n = 6), seed = 3)$id)
+  }
+  same(c("day", "x"), c("days", "x"))
+  same(c("at", "x"), c("secs", "x"))
+  expect_equal(inclusion_prob(d, design_spread("day", n = 6)), rep(0.15, 40))
+  s <- draw(d, design_spread(c("day", "x"), n = 6), seed = 3, weights = TRUE)
+  expect_equal(ht_total(s, "smooth")$se,
+               ht_total(draw(d, design_spread(c("days", "x"), n = 6), seed = 3,
+                             weights = TRUE), "smooth")$se)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_invisible(plot(design_spread(c("day", "x"), n = 6), d, type = "map",
+                        seed = 3))
+  # A size has to be numeric, and anything else names the way out
+  expect_error(draw(d, design_spread("x", n = 6, size = "day")),
+               "`day` must be numeric to size by, not Date.", fixed = TRUE)
+  d$label <- format(d$x)
+  expect_error(draw(d, design_spread("label", n = 6)),
+               "for example with as.numeric()", fixed = TRUE)
+  d$day[4] <- NA
+  expect_error(draw(d, design_spread("day", n = 6)), "na_rm = TRUE")
+  expect_equal(inclusion_prob(d, design_spread("day", n = 6,
+                                               na_rm = TRUE))[4], 0)
+})

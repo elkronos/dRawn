@@ -343,9 +343,13 @@ test_that("the probability paths refuse what draw() refuses, with its message", 
   }
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
+  # The 10-degree box at latitude 50 to 60 bows past the edge warning's
+  # limit; only the errors are compared here.
   message_of <- function(code) {
     tryCatch({
-      force(code)
+      withCallingHandlers(force(code), drawn_geodesic_edges = function(w) {
+        invokeRestart("muffleWarning")
+      })
       NA_character_
     }, error = conditionMessage)
   }

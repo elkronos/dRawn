@@ -7,15 +7,18 @@
 design_spatial(coords, region, n, crs = 4326, na_rm = FALSE)
 }
 \arguments{
-\item{coords}{Two column names, \code{c(x, y)} — longitude then latitude.}
+\item{coords}{Two column names, \code{c(x, y)} with longitude first, or the
+name of one POINT geometry column. See "Coordinate order".}
 
-\item{region}{An \code{sf} or \code{sfc} geometry, or a list of them, which is unioned.
-Reprojected to \code{crs} when it differs.}
+\item{region}{An \code{sf} or \code{sfc} geometry of POLYGON or MULTIPOLYGON
+features, or a list of them. A row inside any of them is inside the
+region. Each is reprojected to the coordinates' CRS when its own differs.}
 
 \item{n}{Number of rows to draw from inside the region.}
 
 \item{crs}{Coordinate reference system of the coordinate columns. Defaults to
-EPSG:4326.}
+EPSG:4326. A geometry column named in \code{coords} keeps its own CRS when it
+has one.}
 
 \item{na_rm}{Drop rows with missing coordinates instead of raising an error.}
 }
@@ -33,7 +36,48 @@ restricted to the region if need be.
 
 \code{coords} is \code{c(x, y)} — longitude first, then latitude — matching
 \code{\link[sf:st_as_sf]{sf::st_as_sf()}}. Getting this backwards puts your points somewhere else
-entirely, so it is worth checking against a known landmark once.
+entirely, so it is worth checking against a known landmark once. When the
+coordinates are longitude and latitude, a latitude outside -90 to 90 or a
+longitude outside -180 to 360 is refused, since it means the columns are
+the wrong way round or hold projected coordinates.
+
+A POINT geometry column, such as the geometry of an \code{sf} frame, can stand
+in for the two columns: name it alone, as in \code{coords = "geometry"}, and
+each row's position is read with \code{\link[sf:st_coordinates]{sf::st_coordinates()}}. The column's own
+CRS is used when it has one, and \code{region} is reprojected to it.
+}
+
+\section{Edges of a longitude/latitude region}{
+
+With spherical geometry (\code{\link[sf:s2]{sf::sf_use_s2()}}, the default), each edge of a
+longitude/latitude \code{region} follows the great circle between its two
+corners, the shortest path on the globe. On a flat longitude/latitude map
+that path bows towards the nearer pole wherever the edge runs east-west
+away from the equator; edges along a meridian or the equator do not bow.
+A wide box is therefore a different shape from the rectangle it looks like
+on such a map. The top edge of a box from -50 to 50 degrees of longitude
+and -30 to 30 of latitude reaches latitude 41.9 at longitude 0, so a row
+at (0, 41) is inside it, and its bottom edge reaches -41.9. A box from -5
+to 5 degrees of longitude and 40 to 50 of latitude takes in a row at
+(0, 50.05) and leaves out one at (0, 40.05).
+
+\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=joint_prob]{joint_prob()}} and
+\link[=plot.drawn_design]{plot()} warn, with class \code{drawn_geodesic_edges}, when
+an edge of \code{region} passes more than 0.1 degrees (about 11 km) from the
+straight line between its corners on a longitude/latitude map. To make the
+edges follow those straight lines, add vertices along them in degree space
+before you build the design:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{flat <- sf::st_set_crs(region, NA)    # coordinates as plain numbers
+flat <- sf::st_segmentize(flat, 0.1)  # a vertex at least every 0.1 degrees
+region <- sf::st_set_crs(flat, 4326)
+}\if{html}{\out{</div>}}
+
+An edge 0.1 degrees long bows by about a metre at most. The CRS has to come
+off for the middle step: on a region that keeps it,
+\code{\link[sf:geos_unary]{sf::st_segmentize()}} places the new vertices along the great circles,
+under either s2 setting, and the bow stays. A region larger than a
+hemisphere needs splitting first; see the next section.
 }
 
 \section{Regions that cross the antimeridian}{
@@ -47,13 +91,21 @@ against the roughly 510 million km2 of the globe -- and contains almost
 nothing.
 
 Ring orientation is not the cause and reversing it does not help: \code{sf}
-normalises winding, so both directions give the same strip. Adding
-intermediate vertices does not reliably help either, because the intermediate
-edges still bow along geodesics.
+normalises winding, so both directions give the same strip. Adding vertices
+along the edges in degree space, as in the previous section, does not
+rescue a region this large either. s2 takes the smaller of the two areas a
+ring divides the globe into as its inside, so a ring around more than half
+the globe encloses the rest of the globe instead.
 
-\code{\link[=draw]{draw()}} warns whenever any edge of \code{region} spans more than 180 degrees of
-longitude. If you hit it, either split the region at the antimeridian into two
-polygons, or switch to planar interpretation with \code{sf::sf_use_s2(FALSE)}.
+The short way is the right reading for a region meant to cross the
+antimeridian, such as a box from longitude 179 to -179. \code{\link[=draw]{draw()}},
+\code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=joint_prob]{joint_prob()}} and \link[=plot.drawn_design]{plot()} warn,
+with class \code{drawn_antimeridian}, whenever an edge of \code{region} joins two
+longitudes more than 180 degrees apart, and the warning gives both
+readings. If you meant the short way, \code{region} is what you drew. If you
+meant the long way, split the region into parts smaller than a hemisphere,
+add vertices to each as in the previous section, and pass the parts as a
+list; or switch to planar interpretation with \code{sf::sf_use_s2(FALSE)}.
 Splitting works under the default setting. Switching has to happen before
 \code{\link[=draw]{draw()}} and stay in force for every estimate from the sample; see the next
 section.

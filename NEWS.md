@@ -251,6 +251,12 @@
   years are now added to `from` itself, and a day the month lacks moves to
   its last day: 29 February, 31 March, 30 April, and 28 February in the
   years between leap years.
+* **A `region` given as a list of parts that together cover more than half
+  the globe selected the rest of the globe.** `design_spatial()` unioned the
+  parts, and under spherical geometry the union of the two halves of a band
+  from -60 to 60 degrees of latitude came back as the two polar caps and a
+  strip 2 degrees wide. The parts are kept separate now, and a row inside any
+  of them is inside the region.
 
 ## Refusals and clearer errors
 
@@ -378,6 +384,33 @@
   reached `inclusion_prob()` as "'to' must be a finite number". The message
   for an unparseable timestamp in a string column lists the forms that are
   read, and a `POSIXct` column in a zone R does not know is named.
+* `draw()`, `inclusion_prob()`, `joint_prob()` and `plot()` warn, with class
+  `drawn_geodesic_edges`, when an edge of a longitude/latitude `region` in
+  `design_spatial()` passes more than 0.1 degrees (about 11 km) from the
+  straight line between its corners on a flat map. Under spherical geometry
+  each edge follows a great circle, so the top edge of a box from -50 to 50
+  degrees of longitude at latitude 30 reaches latitude 41.9, and rows that
+  far outside the box as drawn were sampled without a word.
+* The warning about an edge across the antimeridian has class
+  `drawn_antimeridian` and gives both readings, the short way across the
+  antimeridian and the long way the longitudes span. It said the region was
+  "much smaller than its coordinates suggest", which is wrong for a region
+  meant to cross the antimeridian. `inclusion_prob()`, `joint_prob()` and
+  `plot(type = "probability")` give it as well as `draw()`, and
+  `inclusion_prob(simulate = TRUE)` gives it once, not once per simulated
+  draw.
+* `design_spatial()` refuses a `region` of points or lines, which enclose no
+  area, and names `sf::st_buffer()`, or `sf::st_collection_extract()` for a
+  geometry collection. `draw()` found no row inside such a region, or only
+  rows lying on it.
+* `design_spatial()` reprojects each member of a list `region` to `crs`
+  before combining them, so members in different CRSs work. They were
+  refused with "`region` must be an sf or sfc geometry, or a list of them,
+  not list", which blamed the type.
+* With longitude/latitude coordinates, `design_spatial()` refuses a latitude
+  outside -90 to 90 or a longitude outside -180 to 360, which `sf` only
+  warned about, and says the columns may be in (lat, lon) order or hold
+  projected coordinates.
 
 ## Behaviour changes
 
@@ -528,6 +561,15 @@
   used, and whether the stratum was held at its floor, capped at its size,
   taken whole or left with no rows. It comes from the same computation as
   `draw()` and `inclusion_prob()`.
+* `design_spatial(coords =)` and `design_spread(across =)` take the name of
+  a POINT geometry column, such as the geometry of an `sf` frame, and read
+  each row's position with `sf::st_coordinates()`. A geometry column with a
+  CRS of its own is used in that CRS. `plot(type = "map")` places rows by
+  it too.
+* `design_spread(across =)` takes Date and date-time columns, counted in
+  days and in seconds, so a sample can be spread over time and space
+  together. `plot(type = "map")` gives them date axes. Any other column that
+  is not numeric is refused with a pointer to `as.numeric()`.
 
 ## Speed and memory
 
@@ -622,6 +664,15 @@
 * `?designs` and `?design_stratified` name all three allocation rules,
   `"neyman"` included, where they described `"proportional"` and `"equal"`
   only.
+* `?design_spread` gives the local-mean variance estimator's ratio to the
+  true variance by sample size and sampling fraction, from 1.0 to 4.9 in its
+  table and 18.9 for 4 rows from 8, and says `deff()` carries the same
+  overstatement. It said 1 to 1.6 times. A ratio slightly below 1 occurs
+  too.
+* `?design_spatial` explains how the edges of a longitude/latitude region
+  bow under spherical geometry, how to keep them on their straight lines in
+  degrees, and how to pass a region larger than a hemisphere as a list of
+  parts.
 
 # drawn 0.2.0
 

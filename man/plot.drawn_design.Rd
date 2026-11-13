@@ -38,8 +38,9 @@ subset, noted under the title. Keeps individual dots visible.}
 \item{palette}{Named list overriding any of \code{surface}, \code{ink}, \code{secondary},
 \code{muted}, \code{recessive}, \code{accent}, \code{fill}, \code{rule}.}
 
-\item{coords}{For \code{type = "map"}, the two columns to place rows by, \code{c(x, y)}. Defaults to the design's own \code{across} (\code{\link[=design_spread]{design_spread()}}) or
-\code{coords} (\code{\link[=design_spatial]{design_spatial()}}); required for any other design.}
+\item{coords}{For \code{type = "map"}, the two columns to place rows by, \code{c(x, y)}, or one POINT geometry column. Defaults to the design's own \code{across}
+(\code{\link[=design_spread]{design_spread()}}) or \code{coords} (\code{\link[=design_spatial]{design_spatial()}}); required for any
+other design. Date and date-time columns get date axes.}
 
 \item{...}{Passed to the underlying plot call.}
 }

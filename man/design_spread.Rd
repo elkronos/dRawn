@@ -8,7 +8,9 @@ design_spread(across, n, size = NULL, scale = TRUE, na_rm = FALSE)
 }
 \arguments{
 \item{across}{Column names to spread the sample across: two coordinates for
-a map, or any numeric auxiliary variables. At least one.}
+a map, or any numeric auxiliary variables. At least one. A Date or
+date-time column, and a POINT geometry column, are read as numbers; see
+"Spreading over more than space".}
 
 \item{n}{Number of rows to draw. Fixed, not expected.}
 
@@ -60,6 +62,16 @@ boundaries (Grafström and Schelin 2014). With \code{scale = TRUE}, the default,
 each column is standardised first so that one measured in larger units does
 not decide the distances alone; set \code{scale = FALSE} for coordinates that
 already share a unit, such as projected metres.
+
+A Date column in \code{across} counts in days and a date-time (POSIXct) column
+in seconds since 1970, so time can be spread over alongside space. Keep
+\code{scale = TRUE} when mixing them with coordinates, or the column in the
+larger unit decides the distances. \code{size} has to be numeric.
+
+A POINT geometry column, such as the geometry of an \code{sf} frame, counts as
+its two coordinates, read with \code{\link[sf:st_coordinates]{sf::st_coordinates()}}: \code{across = "geometry"} spreads over the map. Distances are measured in the
+geometry's own units, so longitude and latitude are treated as plain
+numbers; a projected CRS gives distances in metres.
 }
 
 \section{Variance}{
@@ -70,12 +82,37 @@ the spreading bought. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_me
 mean variance estimator (Stevens and Olsen 2003; Grafström and Schelin
 2014), which compares each sampled row with the mean of itself and its three
 nearest sampled neighbours. It is an approximation, reported as
-\code{method = "local mean"}, and errs on the conservative side: in the
-package's simulations it runs from about 1 to 1.6 times the true variance,
-higher for small samples and large sampling fractions. Rows taken with
-certainty, because their \code{size} puts them past it or because \code{n} is the
-whole frame, are in every sample and add no variance, so the estimator
-leaves them out.
+\code{method = "local mean"}, and usually overstates the variance. The table
+gives the ratio of its average to the true variance of the total, over
+1,000 draws from one frame per cell, by \code{n} and the sampling fraction
+\code{f = n / N}. The frames are uniform on the unit square, spread with
+\code{scale = FALSE}; the smooth surface is the one in the examples, and the
+other variable is normal noise unrelated to position.\tabular{lrrrrr}{
+   Variable \tab \code{n} \tab \code{f} = 0.05 \tab 0.2 \tab 0.5 \tab 0.8 \cr
+   smooth surface \tab 8 \tab 2.2 \tab 2.5 \tab 2.3 \tab 3.6 \cr
+    \tab 20 \tab 1.6 \tab 1.5 \tab 2.3 \tab 1.4 \cr
+    \tab 40 \tab 1.1 \tab 1.3 \tab 1.9 \tab 2.1 \cr
+   unrelated to position \tab 8 \tab 1.0 \tab 1.4 \tab 1.8 \tab 4.7 \cr
+    \tab 20 \tab 1.0 \tab 1.2 \tab 1.8 \tab 4.5 \cr
+    \tab 40 \tab 1.0 \tab 1.3 \tab 1.9 \tab 4.9 \cr
+}
+
+
+For a variable unrelated to position the ratio is close to \code{1 / (1 - f)},
+since the estimator then reduces to the with-replacement variance of a
+simple random sample. It also varies from frame to frame: with \code{n = 20}
+and \code{f = 0.05}, four frames of 400 rows gave 0.96 to 1.15 for that
+variable and 1.36 to 1.52 for the smooth surface, so a ratio slightly
+below 1 occurs too. Below about 10 sampled rows the ratio climbs: \code{n = 4}
+gave 2.4 for the smooth surface at \code{f = 0.05}, and 18.9 on a frame of 8
+rows.
+
+\code{\link[=deff]{deff()}} divides this variance by a simple random sample's, so it carries
+the same overstatement: at a ratio of 2, a spread sample with a true design
+effect of 0.8 reports 1.6, worse than a simple random sample when it is
+better. Rows taken with certainty, because their \code{size} puts them past it
+or because \code{n} is the whole frame, are in every sample and add no variance,
+so the estimator leaves them out.
 }
 
 \section{Cost}{

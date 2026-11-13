@@ -79,6 +79,7 @@ joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
   }
   validate_data(data)
   check_flag(simulate, "simulate")
+  warn_region(design, data)
   given <- !is.null(rows)
   rows <- rows %||% seq_len(nrow(data))
   if (!is.numeric(rows) || anyNA(rows) || any(rows < 1) ||

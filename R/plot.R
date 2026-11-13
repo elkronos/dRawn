@@ -57,8 +57,9 @@ drawn_pal <- function() {
 #' @param palette Named list overriding any of `surface`, `ink`, `secondary`,
 #'   `muted`, `recessive`, `accent`, `fill`, `rule`.
 #' @param coords For `type = "map"`, the two columns to place rows by, `c(x,
-#'   y)`. Defaults to the design's own `across` ([design_spread()]) or
-#'   `coords` ([design_spatial()]); required for any other design.
+#'   y)`, or one POINT geometry column. Defaults to the design's own `across`
+#'   ([design_spread()]) or `coords` ([design_spatial()]); required for any
+#'   other design. Date and date-time columns get date axes.
 #' @param ... Passed to the underlying plot call.
 #'
 #' @return `x`, invisibly. Called for the plot.
@@ -272,15 +273,22 @@ plot_probability <- function(x, y, shown, main, sub, pal, ...) {
 #' @noRd
 plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
   coords <- coords %||% x$across %||% x$coords
-  if (is.null(coords) || length(coords) < 2L) {
-    stop("type = \"map\" needs two columns to place rows by. Pass ",
-         "`coords = c(\"x\", \"y\")`.", call. = FALSE)
+  if (!is.null(coords)) {
+    validate_data(y, required_columns = coords)
+    pos <- coordinate_columns(y, coords, "coords")
   }
-  coords <- coords[1:2]
-  validate_data(y, required_columns = coords)
-  if (!is.numeric(y[[coords[1]]]) || !is.numeric(y[[coords[2]]])) {
-    stop("`", coords[1], "` and `", coords[2], "` must both be numeric.",
-         call. = FALSE)
+  if (is.null(coords) || length(pos) < 2L) {
+    stop("type = \"map\" needs two columns to place rows by. Pass ",
+         "`coords = c(\"x\", \"y\")`, or the name of a POINT geometry ",
+         "column.", call. = FALSE)
+  }
+  # A geometry column gives two coordinates, so a spread design's `across`
+  # may hold more than two; the first two place the rows.
+  pos <- pos[1:2]
+  axis_ok <- function(v) is.numeric(v) || inherits(v, c("Date", "POSIXt"))
+  if (!axis_ok(pos[[1]]) || !axis_ok(pos[[2]])) {
+    stop("`", names(pos)[1], "` and `", names(pos)[2], "` must both be ",
+         "numeric, dates or date-times.", call. = FALSE)
   }
 
   key <- ".drawn_plot_id"
@@ -303,23 +311,25 @@ plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
   # Thinning a map would hide exactly the gaps it exists to show, so every
   # selected row is drawn and only the unselected background is thinned.
   bg <- setdiff(shown, which(sel))
-  px <- y[[coords[1]]]
-  py <- y[[coords[2]]]
+  px <- pos[[1]]
+  py <- pos[[2]]
 
   op <- graphics::par(mar = c(3.6, 3.8, 3.6, 1.4), bg = pal$surface)
   on.exit(graphics::par(op), add = TRUE)
   graphics::plot(px, py, type = "n", axes = FALSE, ann = FALSE, asp = NA, ...)
   graphics::box(col = pal$rule)
-  graphics::axis(1, cex.axis = 0.7, col = NA, col.ticks = pal$rule,
-                 col.axis = pal$secondary, tck = -0.016)
-  graphics::axis(2, cex.axis = 0.7, col = NA, col.ticks = pal$rule,
-                 col.axis = pal$secondary, las = 1, tck = -0.016)
+  # Axis() labels a Date or date-time axis with dates.
+  graphics::Axis(px, side = 1, cex.axis = 0.7, col = NA,
+                 col.ticks = pal$rule, col.axis = pal$secondary, tck = -0.016)
+  graphics::Axis(py, side = 2, cex.axis = 0.7, col = NA,
+                 col.ticks = pal$rule, col.axis = pal$secondary, las = 1,
+                 tck = -0.016)
   graphics::points(px[bg], py[bg], pch = 19, cex = 0.45, col = pal$recessive)
   graphics::points(px[sel], py[sel], pch = 21, cex = 1.05, lwd = 1.5,
                    col = pal$surface, bg = pal$accent)
-  graphics::mtext(coords[1], side = 1, line = 2.1, cex = 0.72,
+  graphics::mtext(names(pos)[1], side = 1, line = 2.1, cex = 0.72,
                   col = pal$secondary)
-  graphics::mtext(coords[2], side = 2, line = 2.6, cex = 0.72,
+  graphics::mtext(names(pos)[2], side = 2, line = 2.6, cex = 0.72,
                   col = pal$secondary)
   draw_titles(main, paste0(fmt_n(sum(sel)), " of ", fmt_n(nrow(y)),
                            " rows selected",
