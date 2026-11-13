@@ -51,6 +51,35 @@ check_flag <- function(x, arg) {
   x
 }
 
+#' Match an argument against its allowed values
+#'
+#' The user-facing stand-in for [base::match.arg()], whose message reads
+#' "'arg' should be one of" without naming the argument. `x` left at its
+#' default, the whole of `choices`, gives the first choice, and a unique
+#' abbreviation is completed, as with `match.arg()`.
+#'
+#' @noRd
+check_choice <- function(x, choices, arg) {
+  if (identical(x, choices)) return(choices[[1L]])
+  i <- if (is.character(x) && length(x) == 1L && !is.na(x)) {
+    pmatch(x, choices)
+  } else {
+    NA_integer_
+  }
+  if (is.na(i)) {
+    shown <- paste0("\"", choices, "\"")
+    stop("`", arg, "` must be one of ",
+         paste(utils::head(shown, -1L), collapse = ", "), " or ",
+         utils::tail(shown, 1L), ", not ",
+         if (is.character(x) && length(x) == 1L && !is.na(x)) {
+           paste0("\"", x, "\"")
+         } else {
+           format_bad(x)
+         }, ".", call. = FALSE)
+  }
+  choices[[i]]
+}
+
 #' @noRd
 format_bad <- function(x) {
   if (is.character(x)) {

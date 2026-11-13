@@ -36,8 +36,8 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_reservoir]{design_reservoir()}} \tab \code{ids = ~1} with \code{fpc} the rows the stream reached \tab identical \cr
 \code{\link[=design_stratified]{design_stratified()}} \tab \code{strata} from the strata columns, \code{fpc} each stratum's size \tab identical \cr
 \code{\link[=design_temporal]{design_temporal()}} \tab \code{strata} from the sampling intervals, \code{fpc} each interval's size \tab identical \cr
-\code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} the cluster labels, \code{fpc} the number of clusters \tab identical \cr
-\code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids} the cluster labels then the rows, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
+\code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} a \code{.cluster} column numbering the clusters, \code{fpc} the number of clusters \tab identical \cr
+\code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size \tab identical \cr
 \code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as \code{rest} \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab close for totals, less so for means \cr

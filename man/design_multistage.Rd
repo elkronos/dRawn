@@ -19,21 +19,29 @@ design_multistage(
 
 \item{n_clusters}{Number of clusters to select at stage one.}
 
-\item{n}{Total rows to draw across the selected clusters. Make it a
-multiple of \code{n_clusters}, and no larger than \code{n_clusters} times the
-smallest cluster, if you intend to estimate: otherwise the per-cluster take
-depends on which clusters were selected and there is no closed-form
-inclusion probability. See \code{\link[=inclusion_prob]{inclusion_prob()}}.}
+\item{n}{Total rows to draw across the selected clusters, at least
+\code{n_clusters}. Make it a multiple of \code{n_clusters}, and no larger than
+\code{n_clusters} times the smallest cluster, if you intend to estimate:
+otherwise the per-cluster take depends on which clusters were selected
+and there is no closed-form inclusion probability. See \code{\link[=inclusion_prob]{inclusion_prob()}}.}
 
 \item{allocation}{\code{"equal"} splits \code{n} evenly across the selected clusters;
-\code{"proportional"} splits it in proportion to their size.}
+\code{"proportional"} splits it in proportion to their size. Proportional
+allocation can give a small selected cluster no rows; \code{\link[=draw]{draw()}} then warns
+with class \code{drawn_empty_cluster} and names it.}
 
 \item{min_per_cluster}{Minimum rows from each selected cluster. Defaults to
-\code{0}. Take at least two rows per cluster if you intend to estimate a
-variance: with one, the variation within clusters cannot be measured and
-\code{\link[=ht_total]{ht_total()}} falls back to the ultimate-cluster jackknife.}
+\code{0}, and \code{n_clusters * min_per_cluster} must not exceed \code{n}. A cluster
+smaller than the minimum is taken whole. Take at least two rows per
+cluster if you intend to estimate a variance: with one, the variation
+within clusters cannot be measured and \code{\link[=ht_total]{ht_total()}} falls back to the
+ultimate-cluster jackknife.}
 
-\item{replace}{Sample with replacement within each cluster?}
+\item{replace}{Sample with replacement within each cluster? A selected
+cluster then gives its full share of \code{n} however small it is, and a row's
+inclusion probability is the chance of being drawn at least once,
+\code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^m)} for a take of \code{m}
+from a cluster of \code{N_h} rows.}
 
 \item{na_rm}{Drop rows whose cluster label is \code{NA} instead of raising an
 error.}

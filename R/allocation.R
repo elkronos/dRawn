@@ -163,14 +163,14 @@ warn_empty_groups <- function(n_alloc, sizes, labels, noun = "stratum",
                     list(message = msg, call = NULL)))
 }
 
-#' Evaluate `code`, silencing the empty-stratum warning
+#' Evaluate `code`, silencing the empty-stratum and empty-cluster warnings
 #'
 #' For loops that draw the same design many times on purpose; the result they
 #' return already shows the unreachable rows as zeros.
 #'
 #' @noRd
 quietly_empty <- function(code) {
-  withCallingHandlers(code, drawn_empty_stratum = function(w) {
-    invokeRestart("muffleWarning")
-  })
+  muffle <- function(w) invokeRestart("muffleWarning")
+  withCallingHandlers(code, drawn_empty_stratum = muffle,
+                      drawn_empty_cluster = muffle)
 }

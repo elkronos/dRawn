@@ -16,8 +16,8 @@
 #'   [design_reservoir()] \tab `ids = ~1` with `fpc` the rows the stream reached \tab identical \cr
 #'   [design_stratified()] \tab `strata` from the strata columns, `fpc` each stratum's size \tab identical \cr
 #'   [design_temporal()] \tab `strata` from the sampling intervals, `fpc` each interval's size \tab identical \cr
-#'   [design_cluster()] \tab `ids` the cluster labels, `fpc` the number of clusters \tab identical \cr
-#'   [design_multistage()] \tab two stages, `ids` the cluster labels then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
+#'   [design_cluster()] \tab `ids` a `.cluster` column numbering the clusters, `fpc` the number of clusters \tab identical \cr
+#'   [design_multistage()] \tab two stages, `ids` the `.cluster` numbers then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size \tab identical \cr
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab close for totals, less so for means \cr
@@ -143,9 +143,9 @@ as_svydesign <- function(sample, ...) {
   parts <- survey_parts(design, dat, state$units, pop, rows = state$rows)
   if (all(is_certain(dat$.prob))) parts <- census_parts(dat)
   dat$.fpc <- parts$fpc
-  # Cluster labels come from the frame, so a cluster column renamed or
-  # recoded in the sample after the draw still gives `survey` the clusters
-  # that were drawn.
+  # Clusters come from the frame, so a cluster column renamed or recoded in
+  # the sample after the draw still gives `survey` the clusters that were
+  # drawn.
   if (!is.null(parts$cluster)) dat$.cluster <- parts$cluster
   fpc <- stats::as.formula("~.fpc")
   if (!is.null(parts$fpc2)) {
@@ -199,9 +199,9 @@ refuse_nested <- function(prefix, what, why) {
 #' `survey::degf()` no degree of freedom, as `design_df()` does.
 #'
 #' `dat` is the sample handed to `survey`; `units` is the frame's copy of the
-#' same rows, in the same order, and is where strata, intervals and cluster
-#' labels are read. Cluster labels are returned as `cluster`, for a column of
-#' their own in `dat`.
+#' same rows, in the same order, and is where strata and intervals are read.
+#' Clusters are read from the frame at `rows` and returned as integer codes in
+#' `cluster`, for a column of their own in `dat`.
 #'
 #' @noRd
 survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
@@ -245,17 +245,18 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       refuse_nested(prefix, "a cluster or multistage `rest`",
                     paste0("the certainty rows and the clusters are different ",
                            "kinds of sampling unit"))
-      labels <- pop[[design$clusters]]
-      n_clusters <- length(unique(labels[!is.na(labels)]))
-      cluster <- units[[design$clusters]]
+      # Integer codes, not labels: `survey` makes a factor of the ids, which
+      # compares them as text and merges two numbers that print alike.
+      cl <- count_clusters(design, pop)
+      n_clusters <- cl$total
+      cluster <- cl$code[rows]
       if (design_type(design) == "cluster") {
         return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
                     ids = stats::as.formula("~.cluster"), cluster = cluster))
       }
-      present <- unique(labels[!is.na(labels)])
-      sizes <- tabulate(match(labels, present), length(present))
+      sizes <- tabulate(cl$code, n_clusters)
       list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
-           fpc2 = sizes[match(cluster, present)],
+           fpc2 = sizes[cluster],
            ids = stats::as.formula("~.cluster + .unit"), cluster = cluster)
     },
     reservoir = {

@@ -84,7 +84,8 @@
 design_weighted <- function(weights, n, replace = FALSE,
                             method = c("successive", "systematic", "poisson"),
                             na_rm = FALSE) {
-  method <- match.arg(method)
+  method <- check_choice(method, c("successive", "systematic", "poisson"),
+                         "method")
   replace <- check_flag(replace, "replace")
   if (replace && method != "successive") {
     stop("`replace = TRUE` is with-replacement PPS and cannot be combined with ",

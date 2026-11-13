@@ -74,7 +74,9 @@ design_stratified <- function(strata, n,
                               allocation_by = NULL,
                               min_per_stratum = 0L, replace = FALSE,
                               na_rm = FALSE) {
-  allocation <- match.arg(allocation)
+  allocation <- check_choice(allocation,
+                             c("proportional", "equal", "neyman"),
+                             "allocation")
   if (allocation == "neyman" && is.null(allocation_by)) {
     stop("`allocation = \"neyman\"` needs `allocation_by`, the column whose ",
          "within-stratum spread should drive the split.", call. = FALSE)

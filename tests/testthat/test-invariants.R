@@ -48,13 +48,20 @@ test_that("multistage allocation totals the request, up or down", {
                                     allocation = "proportional"), seed = 1)),
     20
   )
-  # And 20 for a request of 5, because max(1, ...) floored every cluster.
-  many <- data.frame(x = 1:1000, cl = as.character(rep(1:100, each = 10)))
-  expect_equal(
-    nrow(draw(many, design_multistage("cl", n_clusters = 20, n = 5,
-                                      allocation = "proportional"), seed = 1)),
-    5
+  # And more than requested, because max(1, ...) floored every cluster. A
+  # proportional share below one row stays at none; it is not raised to one.
+  many <- data.frame(x = 1:1090, cl = c(rep("big", 1000),
+                                        rep(sprintf("s%02d", 1:90), each = 1)))
+  expect_warning(
+    res <- draw(many, design_multistage("cl", n_clusters = 91, n = 91,
+                                        allocation = "proportional"), seed = 1),
+    class = "drawn_empty_cluster"
   )
+  expect_equal(nrow(res), 91)
+  # Fewer rows than clusters left selected clusters empty without a word.
+  expect_error(design_multistage("cl", n_clusters = 20, n = 5,
+                                 allocation = "proportional"),
+               "smaller than `n_clusters`")
 })
 
 test_that("the caller's weights come back untouched", {

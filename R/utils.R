@@ -82,17 +82,6 @@ take_within <- function(idx_by_group, n, replace) {
   )
 }
 
-#' Sample `size` values from the elements of `x`
-#'
-#' `sample(x, size)` reinterprets a length-1 numeric `x` as `seq_len(x)`, so a
-#' frame with a single numeric cluster id would sample integers that were never
-#' in the data.
-#'
-#' @noRd
-sample_values <- function(x, size, replace = FALSE) {
-  x[sample.int(length(x), size = size, replace = replace)]
-}
-
 #' An empty result that still has the input's schema
 #'
 #' `do.call(rbind, list())` is `NULL`, which would turn an empty window into a

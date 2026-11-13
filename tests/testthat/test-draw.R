@@ -139,3 +139,41 @@ test_that("a sample drawn from a data.table takes := without a warning", {
     if (w) expect_false(is.null(attr(env$s, "drawn_design")))
   }
 })
+
+test_that("a value outside an argument's choices is refused by name", {
+  # match.arg() said "'arg' should be one of", which names no argument.
+  msg <- function(expr) tryCatch(expr, error = conditionMessage)
+  expect_equal(
+    msg(design_stratified("g", n = 30, allocation = "neymann")),
+    paste0("`allocation` must be one of \"proportional\", \"equal\" or ",
+           "\"neyman\", not \"neymann\".")
+  )
+  expect_match(msg(design_multistage("g", n_clusters = 2, n = 4,
+                                     allocation = "even")),
+               "^`allocation` must be one of \"equal\" or \"proportional\"")
+  expect_match(msg(design_weighted("w", n = 5, method = "pps")),
+               "^`method` must be one of")
+  expect_match(msg(design_bootstrap(5, method = "wild")),
+               "^`method` must be one of")
+  expect_match(msg(design_temporal("t", "2020-01-01", "2020-01-02", 1, 1,
+                                   unit = "fortnights")),
+               "^`unit` must be one of")
+  expect_match(msg(plan_size(0.1, sd = 1, target = "median")),
+               "^`target` must be one of")
+  expect_match(msg(plot(design_simple(n = 2), data.frame(x = 1:5),
+                        type = "pie")),
+               "^`type` must be one of")
+  s <- draw(data.frame(y = 1:10), design_simple(n = 5), seed = 1,
+            weights = TRUE)
+  expect_match(msg(ht_total(s, "y", variance = "boot")),
+               "^`variance` must be one of")
+  expect_match(msg(ht_mean(s, "y", estimator = "median")),
+               "^`estimator` must be one of")
+  expect_match(msg(ht_mean(s, "y", variance = NA)), "not NA\\.$")
+
+  # The default and a unique abbreviation work as they did with match.arg().
+  expect_equal(design_stratified("g", n = 30)$allocation, "proportional")
+  expect_equal(design_stratified("g", n = 30, allocation = "ney",
+                                 allocation_by = "w")$allocation, "neyman")
+  expect_equal(ht_total(s, "y", variance = "jack")$method, "jackknife")
+})

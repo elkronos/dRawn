@@ -6,18 +6,26 @@
 #'
 #' @param clusters Column naming each row's cluster.
 #' @param n_clusters Number of clusters to select at stage one.
-#' @param n Total rows to draw across the selected clusters. Make it a
-#'   multiple of `n_clusters`, and no larger than `n_clusters` times the
-#'   smallest cluster, if you intend to estimate: otherwise the per-cluster take
-#'   depends on which clusters were selected and there is no closed-form
-#'   inclusion probability. See [inclusion_prob()].
+#' @param n Total rows to draw across the selected clusters, at least
+#'   `n_clusters`. Make it a multiple of `n_clusters`, and no larger than
+#'   `n_clusters` times the smallest cluster, if you intend to estimate:
+#'   otherwise the per-cluster take depends on which clusters were selected
+#'   and there is no closed-form inclusion probability. See [inclusion_prob()].
 #' @param allocation `"equal"` splits `n` evenly across the selected clusters;
-#'   `"proportional"` splits it in proportion to their size.
+#'   `"proportional"` splits it in proportion to their size. Proportional
+#'   allocation can give a small selected cluster no rows; [draw()] then warns
+#'   with class `drawn_empty_cluster` and names it.
 #' @param min_per_cluster Minimum rows from each selected cluster. Defaults to
-#'   `0`. Take at least two rows per cluster if you intend to estimate a
-#'   variance: with one, the variation within clusters cannot be measured and
-#'   [ht_total()] falls back to the ultimate-cluster jackknife.
-#' @param replace Sample with replacement within each cluster?
+#'   `0`, and `n_clusters * min_per_cluster` must not exceed `n`. A cluster
+#'   smaller than the minimum is taken whole. Take at least two rows per
+#'   cluster if you intend to estimate a variance: with one, the variation
+#'   within clusters cannot be measured and [ht_total()] falls back to the
+#'   ultimate-cluster jackknife.
+#' @param replace Sample with replacement within each cluster? A selected
+#'   cluster then gives its full share of `n` however small it is, and a row's
+#'   inclusion probability is the chance of being drawn at least once,
+#'   `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^m)` for a take of `m`
+#'   from a cluster of `N_h` rows.
 #' @param na_rm Drop rows whose cluster label is `NA` instead of raising an
 #'   error.
 #'
@@ -34,12 +42,28 @@ design_multistage <- function(clusters, n_clusters, n,
                               allocation = c("equal", "proportional"),
                               min_per_cluster = 0L, replace = FALSE,
                               na_rm = FALSE) {
+  clusters <- check_columns(clusters, "clusters", 1L)
+  n_clusters <- check_count(n_clusters, "n_clusters", allow_zero = FALSE)
+  n <- check_count(n, "n")
+  min_per_cluster <- check_count(min_per_cluster, "min_per_cluster")
+  if (n < n_clusters) {
+    stop("`n` (", n, ") is smaller than `n_clusters` (", n_clusters,
+         "), so some selected clusters would give no rows. Raise `n` to at ",
+         "least ", n_clusters, ", or lower `n_clusters`.", call. = FALSE)
+  }
+  if (min_per_cluster * n_clusters > n) {
+    stop("`min_per_cluster` = ", min_per_cluster, " across ", n_clusters,
+         " clusters needs at least ", min_per_cluster * n_clusters,
+         " rows, but `n` is ", n, ". Raise `n` or lower `min_per_cluster`.",
+         call. = FALSE)
+  }
   new_design("multistage", list(
-    clusters = check_columns(clusters, "clusters", 1L),
-    n_clusters = check_count(n_clusters, "n_clusters", allow_zero = FALSE),
-    n = check_count(n, "n"),
-    allocation = match.arg(allocation),
-    min_per_cluster = check_count(min_per_cluster, "min_per_cluster"),
+    clusters = clusters,
+    n_clusters = n_clusters,
+    n = n,
+    allocation = check_choice(allocation, c("equal", "proportional"),
+                              "allocation"),
+    min_per_cluster = min_per_cluster,
     replace = check_flag(replace, "replace"),
     na_rm = check_flag(na_rm, "na_rm")
   ))
@@ -73,8 +97,38 @@ draw_design.drawn_design_multistage <- function(design, data) {
          " row(s).", call. = FALSE)
   }
 
+  warn_empty_clusters(n_alloc, sel$labels, design$n)
+
   reindex(data, take_within(sel$idx_by_cluster, n_alloc, design$replace),
           sort = TRUE)
+}
+
+#' Warn when the allocation leaves a selected cluster with no rows
+#'
+#' Proportional allocation can round a small cluster's share down to nothing.
+#' The cluster was selected, but this draw takes none of its rows, so its rows
+#' are missing from the sample. Unlike an empty stratum, such a cluster may get
+#' rows in another draw, alongside other clusters, so the warning speaks of
+#' this draw only. A cluster smaller than `min_per_cluster` is taken whole and
+#' is not empty.
+#'
+#' @noRd
+warn_empty_clusters <- function(n_alloc, labels, n) {
+  empty <- which(n_alloc == 0L)
+  if (!length(empty)) return(invisible(NULL))
+  shown <- paste0("`", group_label(as.character(labels[utils::head(empty, 5L)])),
+                  "`", collapse = ", ")
+  more <- if (length(empty) > 5L) paste0(" and ", length(empty) - 5L, " more")
+          else ""
+  plural <- length(empty) > 1L
+  warn_drawn(paste0(
+    "The allocation gives ",
+    if (plural) paste0(length(empty), " selected clusters (", shown, more, ")")
+    else paste0("selected cluster ", shown),
+    " none of the ", n, " rows, so this draw takes nothing from ",
+    if (plural) "them" else "it", ". Set min_per_cluster = 1 to take at least ",
+    "one row from every selected cluster."
+  ), "drawn_empty_cluster")
 }
 
 # ---- inclusion probability ------------------------------------------------
@@ -89,12 +143,10 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
     )
   }
   cl <- count_clusters(design, data)
-  check_na_policy(!cl$present, design$na_rm, "a missing cluster key")
-  labels <- cl$labels
+  check_na_policy(!cl$present, design$na_rm, "a missing cluster label")
   keep <- cl$present
-  present <- unique(labels[keep])
-  code <- match(labels, present)
-  sizes <- tabulate(code, length(present))
+  code <- cl$code
+  sizes <- tabulate(code, cl$total)
 
   # A closed form needs every selected cluster to contribute the same number of
   # rows, whichever clusters those turn out to be. Two things break that, and
@@ -104,7 +156,8 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
   #     the largest selected clusters, so a cluster's take depends on the company
   #     it keeps;
   #   * a cluster smaller than the per-cluster target -- it is capped at its own
-  #     size and the shortfall is dealt to the others.
+  #     size and the shortfall is dealt to the others. Sampling with
+  #     replacement has no cap, so this one applies only without it.
   #
   # Averaging over the possibilities is not a closed form, and the average is not
   # the answer: it was out by 13% on a four-cluster frame and could exceed 1.
@@ -119,7 +172,7 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
              design$n_clusters, ").")
     )
   }
-  small <- which(sizes < m)
+  small <- if (design$replace) integer(0) else which(sizes < m)
   if (length(small)) {
     no_closed_form(
       paste0("`design_multistage()` where ", length(small), " cluster(s) hold ",
@@ -139,7 +192,15 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
   }
 
   stage1 <- design$n_clusters / cl$total
+  N_h <- as.numeric(sizes[code[keep]])
   out <- numeric(nrow(data))
-  out[keep] <- stage1 * (m / as.numeric(sizes[code[keep]]))
+  # With replacement, m draws from a cluster of N_h rows reach a given row at
+  # least once with probability 1 - (1 - 1/N_h)^m. m / N_h is the expected
+  # number of times it is drawn, which overstates the probability.
+  out[keep] <- stage1 * if (design$replace) {
+    1 - (1 - 1 / N_h)^m
+  } else {
+    m / N_h
+  }
   out
 }

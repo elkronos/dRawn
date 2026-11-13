@@ -36,8 +36,7 @@
   jackknife and `as_svydesign()`, or gave them the wrong strata. Every path
   now reads design columns from the copy of the frame stored with the sample,
   so only `y` and `by` come from the sample's own columns, and
-  `as_svydesign()` passes the cluster labels to `survey` in a `.cluster`
-  column.
+  `as_svydesign()` passes the clusters to `survey` in a `.cluster` column.
 * **A spatial sample analysed under another `sf::sf_use_s2()` setting got
   the wrong standard error.** Which rows lie inside the region was worked out
   again in the current session. A sample drawn under `sf::sf_use_s2(FALSE)`,
@@ -125,6 +124,31 @@
   the wrong neighbours for the successive-difference variance, and
   `joint_prob()` gave 0 for pairs drawn together. Text is now sorted byte by
   byte, as in the C locale, in every session.
+* **Two cluster labels that print alike were one cluster.** `0.3` and
+  `0.1 + 0.2` print the same, and the cluster variance, `joint_prob()` for
+  cluster and multistage designs, and the jackknife compared cluster labels
+  as text. A `design_cluster()` sample holding both got no variance, and two
+  rows of the two clusters got the joint probability of rows in one cluster.
+  A multistage sample got a Sen-Yates-Grundy variance built on those joint
+  probabilities. Clusters are now compared by integer codes everywhere.
+* **`design_multistage()` refused a factor cluster column with unused
+  levels.** An unused level counted as a cluster of no rows, so
+  `inclusion_prob()`, `sampling_weight()`, `joint_prob()`,
+  `draw(weights = TRUE)` and `plot(type = "probability")` stopped with a
+  false "no closed-form inclusion probability". Unused levels are now
+  ignored, as `droplevels()` would drop them.
+* **`joint_prob()` gave `NA` for a multistage row with no cluster.** With
+  `na_rm = TRUE`, a row whose cluster label is missing is never drawn, so its
+  joint probabilities are 0, as `design_cluster()` gives. `design_multistage()`
+  gave `NA`, which filled the default matrix over every row with `NA`.
+* **`inclusion_prob()` overstated the probabilities of
+  `design_multistage(replace = TRUE)`.** It gave `(a / A) * m / N_h`, the
+  expected number of times a row is drawn, where the probability of drawing
+  it at least once is `(a / A) * (1 - (1 - 1 / N_h)^m)`. In one example, 3
+  draws from a cluster of 4 rows gave 0.375 against 0.289. A cluster smaller
+  than the per-cluster take was refused as capped at its own size, which it
+  is not with replacement. `draw(weights = TRUE)` refuses with-replacement designs,
+  so no estimate used these figures.
 
 ## Refusals and clearer errors
 
@@ -165,6 +189,22 @@
   `inclusion_prob()` now says which rows `rest` was given, as in "In `rest`,
   applied to the 230 rows with `w` below 100". `rest` counts only those rows,
   so its own message spoke of 230 rows on a frame of 240.
+* `design_multistage()` refuses an `n` smaller than `n_clusters`, `n = 0`
+  included, which selected clusters and then took no rows from some of them,
+  and a `min_per_cluster` that `n` cannot cover across `n_clusters`, which
+  `draw()` refused only later. `draw()` warns, with class
+  `drawn_empty_cluster`, when proportional allocation gives a selected
+  cluster no rows, and names it.
+* A multistage sample from a single cluster gets no variance, with the
+  reason "A variance needs at least two clusters", as a `design_cluster()`
+  sample does. The note blamed an unlucky sample for a Sen-Yates-Grundy
+  estimate that is negative on every such sample, and a constant `y` got an
+  exact variance of 0.
+* An `allocation`, `method`, `unit`, `variance`, `estimator`, `target` or
+  `type` outside its choices is refused with a message that names the
+  argument, the value passed and the choices. The message from `match.arg()`
+  named neither the argument nor the value. A missing cluster label is called
+  a cluster label by `inclusion_prob()` as well as by `draw()`.
 
 ## Behaviour changes
 
@@ -198,6 +238,11 @@
   and to `sample_summary()` of a stratified or cluster sample. All of these
   stopped inside base R on the geometry column. A `by` estimate of an sf
   sample is a plain data frame without the geometry.
+* When a multistage sample with one row per cluster falls back to the
+  jackknife and more than a fifth of the clusters were selected, the note
+  gives the factor by which the jackknife inflates the variance between
+  clusters. When every cluster was selected, it says that variance is zero by
+  design and points to `design_stratified()`.
 
 ## Speed and memory
 
@@ -209,6 +254,10 @@
 * `inclusion_prob()`, `draw(weights = TRUE)` and the estimators of a
   stratified design take time linear in the number of strata: 0.02 seconds
   at 40,000 strata, where they took 9.
+* `design_cluster()` and `design_multistage()` find the rows of the
+  selected clusters in one pass over the frame instead of one pass per
+  cluster. Selecting 1,000 clusters from a million rows took 16 seconds and
+  now takes 0.2. The clusters chosen for a seed are unchanged.
 
 ## Handing off to survey
 
@@ -237,6 +286,19 @@
   The labels held a carriage return, which broke a CSV export of the design
   variables. Where two labels would read alike, the strata are numbered
   instead, so `survey` cannot merge them.
+* `as_svydesign()` numbers the clusters in `.cluster`. `survey` made a
+  factor of the labels, which merged two that print alike, such as `0.3` and
+  `0.1 + 0.2`, into one primary sampling unit.
+
+## Documentation and site
+
+* `?ht_total` said the exact multistage estimator understates by about a
+  third with one row per cluster. It understates by `f1` times the
+  within-cluster component, where `f1` is the share of clusters selected, and
+  the jackknife used in its place overstates by `f1` times the
+  between-cluster component, which came to 3.3 times the true variance in one
+  example with 30 of 40 clusters selected. `?design_multistage` and
+  `?inclusion_prob` give the probability under `replace = TRUE`.
 
 # drawn 0.2.0
 

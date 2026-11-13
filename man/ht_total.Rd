@@ -119,10 +119,22 @@ variation inside it to measure, and simply leaving it out, as the
 Sen-Yates-Grundy sum does, reports a standard error that is too small —
 zero, if every stratum is like that. Draw at least two per stratum
 (\code{min_per_stratum = 2}, \code{per_interval = 2}).
-\item \strong{One row per cluster in a multistage design.} The within-cluster
-variation is unmeasurable and the exact estimator understates by around
-a third. \code{variance = "auto"} falls back to the delete-a-cluster jackknife,
-which is the ultimate-cluster approximation standard in survey practice.
+\item \strong{One row per cluster in a multistage design.} Two rows of one cluster
+are never drawn together, so the within-cluster variation is
+unmeasurable. With \code{f1 = n_clusters / N_clusters}, the share of clusters
+selected, the exact estimator understates by \code{f1} times the
+within-cluster component of the variance. \code{variance = "auto"} falls back
+to the delete-a-cluster jackknife, the ultimate-cluster approximation
+standard in survey practice. It has no first-stage finite population
+correction, so it overstates by \code{f1} times the between-cluster component,
+the variance the cluster totals would have if clusters were drawn with
+replacement. The excess is small when few clusters are selected. With 30
+of 40 clusters whose totals differed widely, the jackknife averaged 3.3
+times the true variance. Whenever \code{f1} is above 0.2, the note gives the
+factor by which the jackknife inflates the between-cluster part. When
+every cluster is selected, the clusters are strata and the variance
+between them is zero by design, so \code{\link[=design_stratified]{design_stratified()}} with the cluster
+column as \code{strata} and two rows in each gives an exact variance instead.
 }
 
 A Sen-Yates-Grundy estimate that comes out negative is treated the same way:

@@ -87,7 +87,7 @@
 plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
                       deff = 1, response = 1,
                       target = c("mean", "proportion", "total")) {
-  target <- match.arg(target)
+  target <- check_choice(target, c("mean", "proportion", "total"), "target")
   check_pos <- function(x, arg, allow_inf = FALSE) {
     if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0 ||
         (!allow_inf && !is.finite(x))) {

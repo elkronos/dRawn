@@ -125,6 +125,17 @@ test_that("an empty-string cluster is a cluster like any other", {
   sm <- sample_summary(cs)
   expect_equal(sm$by_group$group, c("(blank)", "a", "b", "c"))
   expect_equal(sm$by_group$in_frame, rep(10L, 4))
+
+  cd <- design_cluster("cl", n_clusters = 2)
+  expect_equal(joint_prob(d, cd, rows = c(1, 2, 11)),
+               joint_prob(ref, cd, rows = c(1, 2, 11)))
+  for (seed in 1:3) {
+    s <- draw(d, cd, seed = seed, weights = TRUE)
+    r <- ht_total(s, "y")
+    expect_equal(r$method, "analytic")
+    expect_equal(r$se, ht_total(draw(ref, cd, seed = seed, weights = TRUE),
+                                "y")$se)
+  }
 })
 
 test_that("a carriage return inside a key value cannot merge two strata", {

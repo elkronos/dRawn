@@ -66,10 +66,22 @@
 #'   Sen-Yates-Grundy sum does, reports a standard error that is too small —
 #'   zero, if every stratum is like that. Draw at least two per stratum
 #'   (`min_per_stratum = 2`, `per_interval = 2`).
-#' * **One row per cluster in a multistage design.** The within-cluster
-#'   variation is unmeasurable and the exact estimator understates by around
-#'   a third. `variance = "auto"` falls back to the delete-a-cluster jackknife,
-#'   which is the ultimate-cluster approximation standard in survey practice.
+#' * **One row per cluster in a multistage design.** Two rows of one cluster
+#'   are never drawn together, so the within-cluster variation is
+#'   unmeasurable. With `f1 = n_clusters / N_clusters`, the share of clusters
+#'   selected, the exact estimator understates by `f1` times the
+#'   within-cluster component of the variance. `variance = "auto"` falls back
+#'   to the delete-a-cluster jackknife, the ultimate-cluster approximation
+#'   standard in survey practice. It has no first-stage finite population
+#'   correction, so it overstates by `f1` times the between-cluster component,
+#'   the variance the cluster totals would have if clusters were drawn with
+#'   replacement. The excess is small when few clusters are selected. With 30
+#'   of 40 clusters whose totals differed widely, the jackknife averaged 3.3
+#'   times the true variance. Whenever `f1` is above 0.2, the note gives the
+#'   factor by which the jackknife inflates the between-cluster part. When
+#'   every cluster is selected, the clusters are strata and the variance
+#'   between them is zero by design, so [design_stratified()] with the cluster
+#'   column as `strata` and two rows in each gives an exact variance instead.
 #'
 #' A Sen-Yates-Grundy estimate that comes out negative is treated the same way:
 #' a failure of the estimator on an unlucky sample, not a variance.
@@ -225,7 +237,9 @@
 ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
                                             "none"), level = 0.95,
                      by = NULL, df = NULL) {
-  variance <- match.arg(variance)
+  variance <- check_choice(variance,
+                           c("auto", "analytic", "jackknife", "none"),
+                           "variance")
   parts <- ht_prepare(sample, y, level, df)
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "total"))
@@ -366,7 +380,7 @@ design_df <- function(design, units, pop, rows, pi_i) {
   if (n == 0L) return(0)
   psu <- switch(design_type(design),
     cluster = ,
-    multistage = units[[design$clusters]],
+    multistage = cluster_codes(units[[design$clusters]]),
     seq_len(n)
   )
   stratum <- switch(design_type(design),
@@ -507,12 +521,12 @@ ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i) {
 ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i) {
   cl <- count_clusters(design, data)
   A <- cl$total
-  lab <- as.character(cl$labels[rows])
-  if (anyNA(lab)) {
+  code <- cl$code[rows]
+  if (anyNA(code)) {
     return(list(variance = NA_real_,
                 note = "Some sampled rows have no cluster label."))
   }
-  u <- vapply(split(y / pi_i, lab), sum, numeric(1))
+  u <- rowsum(y / pi_i, code, reorder = FALSE)[, 1L]
   m <- length(u)
   if (m < 2L) {
     return(list(variance = NA_real_, note = paste0(
@@ -522,25 +536,68 @@ ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i) {
   list(variance = fpc * m * stats::var(u), note = NULL)
 }
 
-#' Two-stage variance, declining where the second stage is unmeasurable
+#' Two-stage variance, declining where a stage is unmeasurable
+#'
+#' A sample from a single cluster has no variation between clusters to
+#' measure. Sen-Yates-Grundy comes out negative on every such sample, or 0 for
+#' a constant `y`, so this declines first, in the words `design_cluster()`
+#' uses. A sample whose every row is certain goes on to the exact estimator,
+#' which gives 0.
 #'
 #' With one row per selected cluster, pairs inside a cluster can never be drawn
-#' together, so Sen-Yates-Grundy has no way to see the within-cluster variation
-#' and understates by around a third. The delete-a-cluster jackknife that
-#' `variance = "auto"` falls back to is the ultimate-cluster approximation,
-#' which is the standard answer.
+#' together, so Sen-Yates-Grundy has no way to see the within-cluster
+#' variation. With `f1 = n_clusters / A`, it understates by `f1` times the
+#' within-cluster component of the variance. The delete-a-cluster jackknife
+#' that `variance = "auto"` falls back to is the ultimate-cluster
+#' approximation. It has no first-stage finite population correction, so it
+#' overstates by `f1` times the between-cluster component instead, which
+#' `fallback_note()` reports once `f1` passes 0.2.
 #'
 #' @noRd
 ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i) {
+  cl <- count_clusters(design, data)
+  n_cl <- length(unique(cl$code[rows]))
+  if (n_cl < 2L && !all(is_certain(pi_i))) {
+    return(list(variance = NA_real_, note = paste0(
+      "A variance needs at least two clusters; this sample has ", n_cl, ".")))
+  }
   if (!design$replace && design$allocation == "equal" &&
       design$n %/% design$n_clusters == 1L &&
       design$n %% design$n_clusters == 0L) {
     return(list(variance = NA_real_, note = paste0(
       "With one row per selected cluster the variation within clusters ",
       "cannot be measured, and the exact two-stage estimator would understate ",
-      "the variance.")))
+      "the variance.", fallback_note(design$n_clusters, cl$total))))
   }
   NextMethod()
+}
+
+#' What the ultimate-cluster jackknife does to a multistage variance
+#'
+#' The jackknife has no first-stage finite population correction, so its
+#' between-cluster part is `1 / (1 - f1)` times the true one, with
+#' `f1 = a / A`. That is under 1.25 while `f1` is at most 0.2 and is not
+#' reported. When every cluster is selected the true between-cluster part is
+#' 0, and the clusters are strata. Returns a sentence to append to a note,
+#' starting with a space, or `""`.
+#'
+#' @noRd
+fallback_note <- function(a, A) {
+  f1 <- a / A
+  if (!is.finite(f1) || f1 <= 0.2) return("")
+  if (a >= A) {
+    return(paste0(
+      " Every cluster is selected, so the clusters are strata and the ",
+      "variance between them is zero by design, but the delete-a-cluster ",
+      "jackknife counts it in full because it has no first-stage finite ",
+      "population correction. Draw with design_stratified() using the ",
+      "cluster column as `strata` and at least two rows in each."))
+  }
+  paste0(
+    " With ", a, " of the ", A, " clusters selected, the delete-a-cluster ",
+    "jackknife, which has no first-stage finite population correction, puts ",
+    "the variance between clusters at ", signif(1 / (1 - f1), 2),
+    " times its true size.")
 }
 
 #' Variance for the weighted designs
@@ -820,11 +877,13 @@ jackknife_strata <- function(design, units, pop, psu, fixed) {
 #' Without a finite count of units in the frame there is nothing to correct
 #' by, and the correction is 1.
 #'
-#' Deliberately not applied to multi-stage designs:
-#' the delete-a-cluster jackknife sees only between-cluster variation, so the
-#' second stage is already missing, and correcting for the first stage on top of
-#' that understates the total. Leaving it out is the ultimate-cluster
-#' approximation, which errs conservative -- the usual choice in survey practice.
+#' Not applied to multi-stage designs. Each estimated cluster total carries
+#' the second stage's variance as well as the first's, and multiplying by the
+#' first-stage correction `1 - f1`, with `f1 = n_clusters / A`, would scale
+#' both, understating by `f1` times the within-cluster component. Leaving it
+#' out, the ultimate-cluster approximation usual in survey practice, overstates
+#' by `f1` times the between-cluster component instead, which errs on the
+#' side of a wider interval.
 #'
 #' @noRd
 jackknife_fpc <- function(design, pop, m, n_fixed = 0L) {
@@ -849,15 +908,15 @@ jackknife_fpc <- function(design, pop, m, n_fixed = 0L) {
 #' Primary sampling units for the jackknife
 #'
 #' Whole clusters for a cluster or multistage design, read from the frame's
-#' copy of the sampled rows, which always has the cluster column; otherwise
-#' each row is its own unit.
+#' copy of the sampled rows, which always has the cluster column, as integer
+#' codes; otherwise each row is its own unit.
 #'
 #' @noRd
 jackknife_groups <- function(design, units) {
   if (inherits(design, c("drawn_design_cluster", "drawn_design_multistage"))) {
-    return(as.character(units[[design$clusters]]))
+    return(cluster_codes(units[[design$clusters]]))
   }
-  as.character(seq_len(nrow(units)))
+  seq_len(nrow(units))
 }
 
 #' @export

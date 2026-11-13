@@ -56,7 +56,7 @@ exact_inclusion.drawn_design_cluster <- function(design, data) {
     )
   }
   cl <- count_clusters(design, data)
-  check_na_policy(!cl$present, design$na_rm, "a missing cluster key")
+  check_na_policy(!cl$present, design$na_rm, "a missing cluster label")
   out <- rep(design$n_clusters / cl$total, nrow(data))
   out[!cl$present] <- 0
   out

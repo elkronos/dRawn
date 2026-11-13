@@ -86,7 +86,7 @@ drawn_pal <- function() {
 plot.drawn_design <- function(x, y, type = c("selection", "probability", "map"),
                               seed = NULL, ncol = NULL, max_dots = 4000,
                               main = NULL, palette = NULL, coords = NULL, ...) {
-  type <- match.arg(type)
+  type <- check_choice(type, c("selection", "probability", "map"), "type")
   if (missing(y)) {
     stop("Pass the population data frame as the second argument: ",
          "plot(design, data).", call. = FALSE)

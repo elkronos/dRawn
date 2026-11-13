@@ -18,7 +18,7 @@
 #'   [design_stratified()]  \tab `n_h / N_h` within each stratum \cr
 #'   [design_systematic()]  \tab `1 / interval`, for every row, exactly \cr
 #'   [design_cluster()]     \tab `n_clusters / N_clusters` \cr
-#'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take is constant \cr
+#'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)` \cr
 #'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods \cr
 #'   [design_certainty()]   \tab `1` above the threshold, `rest`'s own below it \cr
 #'   [design_reservoir()]   \tab `n / min(N, max_items)`, and `0` past `max_items` \cr
@@ -37,13 +37,13 @@
 #'   depends on which clusters were selected. Simulation on clusters of 3/5/7/9
 #'   gives 0.17, 0.20, 0.17, 0.15, against a naive 0.33, 0.20, 0.14, 0.11.
 #' * `design_multistage()` where the per-cluster take is not constant — `n` not
-#'   divisible by `n_clusters`, or a cluster smaller than `n / n_clusters`. The
-#'   allocation runs over the *selected* clusters, so the remainder goes to the
-#'   largest of them and an undersized cluster is capped with its shortfall
-#'   dealt to whichever clusters came with it. A row's probability then depends
-#'   on the company it keeps. On clusters of 20/10/8/6 with `n = 7` over 2
-#'   clusters, the average take is out by up to 17%, and a cluster smaller than
-#'   the take can push the figure above 1.
+#'   divisible by `n_clusters`, or, without replacement, a cluster smaller than
+#'   `n / n_clusters`. The allocation runs over the *selected* clusters, so the
+#'   remainder goes to the largest of them and an undersized cluster is capped
+#'   with its shortfall dealt to whichever clusters came with it. A row's
+#'   probability then depends on the company it keeps. On clusters of
+#'   20/10/8/6 with `n = 7` over 2 clusters, the average take is out by up to
+#'   17%, and a cluster smaller than the take can push the figure above 1.
 #' * `design_weighted(method = "successive")` — the default. Successive sampling
 #'   has no closed-form inclusion probability; this is the whole reason the other
 #'   two methods exist. Note that its realised probabilities are not merely

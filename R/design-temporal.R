@@ -51,7 +51,8 @@ design_temporal <- function(time, from, to, interval, per_interval,
     to = to,
     interval = check_count(interval, "interval", allow_zero = FALSE),
     per_interval = check_count(per_interval, "per_interval"),
-    unit = match.arg(unit),
+    unit = check_choice(unit, c("hours", "seconds", "minutes", "days",
+                                    "weeks", "months", "years"), "unit"),
     tz = tz,
     na_rm = check_flag(na_rm, "na_rm")
   ))

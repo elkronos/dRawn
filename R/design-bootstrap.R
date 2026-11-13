@@ -49,7 +49,7 @@
 design_bootstrap <- function(n_replicates = 1000L, n = NULL,
                              method = c("simple", "block"),
                              block_length = NULL) {
-  method <- match.arg(method)
+  method <- check_choice(method, c("simple", "block"), "method")
   if (method == "simple" && !is.null(block_length)) {
     stop("`block_length` only applies to method = \"block\". Set the method, ",
          "or leave `block_length` as NULL.", call. = FALSE)

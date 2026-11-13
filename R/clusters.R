@@ -1,17 +1,44 @@
 # Stage-one cluster selection, shared by design_cluster() and
 # design_multistage().
 #
-# Both designs select clusters the same way, and the two subtle traps here --
-# sample() reinterpreting a length-one numeric cluster id as a range, and `==`
-# against an NA label fabricating all-NA rows -- are easy to reintroduce. One
-# copy means one place to get them right.
+# Both designs select clusters the same way, and every later step -- the
+# probabilities, the variance, the degrees of freedom, the hand-off to
+# `survey` -- compares cluster labels. Comparing them as text merges two
+# numbers that print alike, such as 0.3 and 0.1 + 0.2, and counting them with
+# table() turns a factor's unused levels into clusters of no rows. Each row's
+# cluster is therefore an integer code, and the codes are built in one place.
+
+#' Integer codes for cluster labels
+#'
+#' Codes number the distinct labels in order of first appearance. Labels are
+#' compared on their stored values: doubles exactly, dates and times on their
+#' underlying numbers, factors by level, so a level no row uses has no code. A
+#' missing label gets `NA`.
+#'
+#' @noRd
+cluster_codes <- function(labels) {
+  v <- if (is.factor(labels)) {
+    as.integer(labels)
+  } else if (is.object(labels) && is.atomic(labels)) {
+    unclass(labels)
+  } else {
+    labels
+  }
+  match(v, unique(v[!is.na(v)]))
+}
 
 #' Validate the cluster column and select clusters at random
+#'
+#' Clusters are numbered in order of first appearance and `n_clusters` of
+#' those numbers are sampled, so the clusters chosen for a seed are the ones
+#' `sample(unique(labels), n_clusters)` would give. Sampling the numbers also
+#' keeps `sample()` from reading a single numeric cluster id as a range. The
+#' rows of the chosen clusters are found in one pass over the frame.
 #'
 #' @param design A cluster or multistage design.
 #' @param data The population.
 #' @return A list of `data` (with NA labels handled), the row indices of each
-#'   selected cluster, and their sizes.
+#'   selected cluster, their sizes, and their labels.
 #' @noRd
 select_clusters <- function(design, data) {
   validate_data(data, required_columns = design$clusters)
@@ -21,34 +48,40 @@ select_clusters <- function(design, data) {
   data <- drop_na_rows(data, is.na(data[[col]]), design$na_rm,
                        "a missing cluster label")
   labels <- data[[col]]
-  levels_present <- unique(labels)
+  code <- cluster_codes(labels)
+  k <- max(code)
 
-  if (design$n_clusters > length(levels_present)) {
-    stop("`n_clusters` (", design$n_clusters, ") exceeds the ",
-         length(levels_present), " cluster(s) available.", call. = FALSE)
+  if (design$n_clusters > k) {
+    stop("`n_clusters` (", design$n_clusters, ") exceeds the ", k,
+         " cluster(s) available.", call. = FALSE)
   }
 
-  chosen <- sample_values(levels_present, design$n_clusters)
+  chosen <- sample.int(k, size = design$n_clusters)
+  pos <- match(code, chosen)
+  hit <- which(!is.na(pos))
+  idx <- split(hit, structure(pos[hit],
+                              levels = as.character(seq_along(chosen)),
+                              class = "factor"))
+  names(idx) <- NULL
 
-  # `%in%`, never `==`: NA == "a" is NA, and indexing with NA manufactures
-  # all-NA rows that were never in the data.
-  idx <- lapply(chosen, function(cl) which(labels %in% cl))
-  names(idx) <- as.character(chosen)
-
-  list(data = data, idx_by_cluster = idx, sizes = lengths(idx))
+  list(data = data, idx_by_cluster = idx, sizes = lengths(idx),
+       labels = labels[match(chosen, code)])
 }
 
-#' How many distinct clusters the population holds
+#' Each row's cluster, and how many distinct clusters the population holds
 #'
-#' Shared by the two designs' inclusion probabilities, both of which need the
-#' stage-one selection probability `n_clusters / n_clusters_total`.
+#' Shared by the two designs' probabilities, variances and hand-off to
+#' `survey`. `code` is each row's cluster from `cluster_codes()`, `NA` where
+#' the label is missing, and `total` the number of clusters, the `A` in the
+#' stage-one selection probability `n_clusters / A`.
 #'
 #' @noRd
 count_clusters <- function(design, data) {
   validate_data(data, required_columns = design$clusters)
   check_key_columns(data, design$clusters, "clusters")
   labels <- data[[design$clusters]]
-  list(labels = labels,
-       present = !is.na(labels),
-       total = length(unique(labels[!is.na(labels)])))
+  code <- cluster_codes(labels)
+  present <- !is.na(code)
+  list(labels = labels, code = code, present = present,
+       total = if (any(present)) max(code[present]) else 0L)
 }

@@ -233,22 +233,33 @@ joint_inclusion.drawn_design_cluster <- function(design, data, rows) {
   cl <- count_clusters(design, data)
   A <- cl$total
   a <- design$n_clusters
-  lab <- as.character(cl$labels[rows])
+  code <- cl$code[rows]
 
-  same <- outer(lab, lab, "==")
+  same <- outer(code, code, "==")
   same[is.na(same)] <- FALSE
   out <- matrix(if (A > 1) a * (a - 1) / (A * (A - 1)) else 0,
                 length(rows), length(rows))
   out[same] <- a / A
-  # A row with no cluster -- a dropped key -- is in no sample at all, so it
-  # co-occurs with nothing. Without this it inherits the between-cluster rate.
-  gone <- is.na(lab)
+  out <- no_cluster_pairs(out, code)
+  pi_all <- exact_inclusion(design, data)
+  diag(out) <- pi_all[rows]
+  out
+}
+
+#' Zero the pairs of a row with no cluster
+#'
+#' A row whose cluster label is missing, dropped under `na_rm = TRUE`, is in
+#' no sample at all, so it co-occurs with nothing. Without this it inherits
+#' the between-cluster rate, or `NA` where the rate depends on its cluster's
+#' size.
+#'
+#' @noRd
+no_cluster_pairs <- function(out, code) {
+  gone <- is.na(code)
   if (any(gone)) {
     out[gone, ] <- 0
     out[, gone] <- 0
   }
-  pi_all <- exact_inclusion(design, data)
-  diag(out) <- pi_all[rows]
   out
 }
 
@@ -275,12 +286,11 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
   A <- cl$total
   a <- design$n_clusters
   m <- design$n %/% design$n_clusters
-  present <- unique(cl$labels[cl$present])
-  sizes <- tabulate(match(cl$labels, present), length(present))
+  sizes <- tabulate(cl$code, A)
 
-  lab <- as.character(cl$labels[rows])
-  Nh <- as.numeric(sizes[match(cl$labels[rows], present)])
-  same <- outer(lab, lab, "==")
+  code <- cl$code[rows]
+  Nh <- as.numeric(sizes[code])
+  same <- outer(code, code, "==")
   same[is.na(same)] <- FALSE
 
   # Different clusters: both clusters selected, then each row within its own.
@@ -291,6 +301,7 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
     ifelse(NN > 1, (a / A) * (m * (m - 1)) / (NN * (NN - 1)), 0)
   })
   out[same] <- win[same]
+  out <- no_cluster_pairs(out, code)
   pi_all <- exact_inclusion(design, data)
   diag(out) <- pi_all[rows]
   out

@@ -110,8 +110,10 @@
 ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                     variance = c("auto", "analytic", "jackknife", "none"),
                     level = 0.95, by = NULL, df = NULL) {
-  estimator <- match.arg(estimator)
-  variance <- match.arg(variance)
+  estimator <- check_choice(estimator, c("hajek", "ht"), "estimator")
+  variance <- check_choice(variance,
+                           c("auto", "analytic", "jackknife", "none"),
+                           "variance")
   parts <- ht_prepare(sample, y, level, df)
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "mean",
