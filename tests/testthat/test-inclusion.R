@@ -270,3 +270,127 @@ test_that("joints filled block by block equal the pairwise forms", {
   diag(want) <- inclusion_prob(pop, d)
   expect_equal(joint_prob(pop, d), want)
 })
+
+test_that("the probability paths refuse what draw() refuses, with its message", {
+  # They answered instead: 1.25 for every row of a simple random sample of 30
+  # from 24, a census of 1s for a stratified one, 0 for every row when no
+  # interval fits the window.
+  d <- data.frame(id = 1:24, site = rep(c("a", "b", "c"), c(12, 8, 4)),
+                  cl = rep(sprintf("c%02d", 1:6), each = 4), w = c(1:23, 100),
+                  ts = seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "hour",
+                           length.out = 24),
+                  stringsAsFactors = FALSE)
+  none <- d
+  none$site <- NA_character_
+  none$cl <- NA_character_
+  none$w <- NA_real_
+  none$ts[] <- NA
+  cases <- list(
+    list(d, design_simple(n = 30), "cannot exceed the number of rows (24)"),
+    list(d, design_stratified("site", n = 30),
+         "cannot exceed the number of rows (24)"),
+    list(none, design_stratified("site", n = 3, na_rm = TRUE),
+         "Every row has a missing stratum key."),
+    list(d, design_cluster("cl", n_clusters = 7),
+         "`n_clusters` (7) exceeds the 6 cluster(s) available."),
+    list(none, design_cluster("cl", n_clusters = 1, na_rm = TRUE),
+         "Every row has a missing cluster label."),
+    list(d, design_multistage("cl", n_clusters = 7, n = 14),
+         "`n_clusters` (7) exceeds the 6 cluster(s) available."),
+    list(d, design_multistage("cl", n_clusters = 2, n = 10),
+         "`n` (10) exceeds the 8 row(s) available across the 2 selected"),
+    list(d, design_weighted("w", n = 30, method = "systematic"),
+         "`n` (30) cannot exceed the number of rows (24) for method"),
+    list(d, design_weighted("w", n = 30, method = "poisson"),
+         "`n` (30) cannot exceed the number of rows (24) for method"),
+    list(none, design_weighted("w", n = 3, method = "poisson", na_rm = TRUE),
+         "Every row has a missing weight in `w`."),
+    list(d, design_certainty("w", 20, design_simple(n = 30)),
+         "applied to the 19 rows with `w` below 20: `n` (30) cannot exceed"),
+    list(d, design_certainty("w", 20, design_weighted("w", n = 30,
+                                                      method = "poisson")),
+         "applied to the 19 rows with `w` below 20: `n` (30) cannot exceed"),
+    list(d, design_temporal("ts", "2024-01-01", "2024-01-01 02:00:00",
+                            interval = 3, per_interval = 1),
+         "shorter than one interval"),
+    list(none, design_temporal("ts", "2024-01-01", "2024-01-02", interval = 3,
+                               per_interval = 1, na_rm = TRUE),
+         "Every row has a missing or unparseable timestamp in `ts`."),
+    list(d, design_systematic(interval = 3, order_by = "W"),
+         "`data` is missing column: `W`."),
+    list(none, design_systematic(interval = 3, order_by = "w", na_rm = TRUE),
+         "Every row has a missing `w`.")
+  )
+  if (requireNamespace("sf", quietly = TRUE)) {
+    d$lon <- seq(-10, 10, length.out = 24)
+    d$lat <- seq(-5, 5, length.out = 24)
+    none$lon <- NA_real_
+    none$lat <- d$lat
+    box <- function(lo, hi) {
+      sf::st_sfc(sf::st_polygon(list(cbind(c(lo, hi, hi, lo, lo),
+                                           c(lo, lo, hi, hi, lo)))),
+                 crs = 4326)
+    }
+    cases <- c(cases, list(
+      list(d, design_spatial(c("lon", "lat"), box(-2, 2), n = 10),
+           "`n` (10) exceeds the 4 row(s) inside `region`."),
+      list(d, design_spatial(c("lon", "lat"), box(50, 60), n = 1),
+           "No rows fall inside `region`."),
+      list(none, design_spatial(c("lon", "lat"), box(-2, 2), n = 1,
+                                na_rm = TRUE),
+           "Every row has missing coordinates in `lon` or `lat`.")
+    ))
+  }
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  message_of <- function(code) {
+    tryCatch({
+      force(code)
+      NA_character_
+    }, error = conditionMessage)
+  }
+  for (case in cases) {
+    pop <- case[[1]]
+    des <- case[[2]]
+    info <- drawn:::design_label(des)
+    want <- message_of(draw(pop, des, seed = 1))
+    expect_true(grepl(case[[3]], want, fixed = TRUE), info = info)
+    expect_identical(message_of(inclusion_prob(pop, des)), want, info = info)
+    expect_identical(message_of(sampling_weight(pop, des)), want, info = info)
+    expect_identical(message_of(joint_prob(pop, des, rows = 1:2)), want,
+                     info = info)
+    expect_identical(message_of(draw(pop, des, seed = 1, weights = TRUE)),
+                     want, info = info)
+    expect_true(grepl(want, message_of(plot(des, pop, type = "probability")),
+                      fixed = TRUE), info = info)
+  }
+})
+
+test_that("joint_prob pairs a repeated row with itself at its own probability", {
+  # A row given twice was two units: the pair it made with itself got
+  # n(n-1)/(N(N-1)), and simulate = TRUE gave it 0.
+  d <- data.frame(id = 1:20, g = rep(c("a", "b"), each = 10))
+  for (des in list(design_simple(n = 5), design_stratified("g", n = 6))) {
+    p <- inclusion_prob(d, des)
+    m <- joint_prob(d, des, rows = c(3, 3, 12))
+    expect_equal(dim(m), c(3L, 3L))
+    expect_equal(m[1, 2], p[3])
+    expect_equal(m[1:2, 1:2], matrix(p[3], 2, 2))
+    expect_equal(m[c(1, 3), c(1, 3)], joint_prob(d, des, rows = c(3, 12)))
+    expect_equal(m[2, 3], m[1, 3])
+    sim <- joint_prob(d, des, rows = c(3, 3, 12), simulate = TRUE, R = 200,
+                      seed = 1)
+    expect_equal(sim[1, 2], sim[1, 1])
+    expect_equal(sim[2, 2], sim[1, 1])
+    expect_gt(sim[1, 1], 0)
+  }
+})
+
+test_that("joint_prob refuses rows that are not whole numbers", {
+  d <- data.frame(id = 1:20)
+  expect_error(joint_prob(d, design_simple(n = 5), rows = c(1, 1.5)),
+               "`rows` must be whole row numbers, not 1.5.", fixed = TRUE)
+  expect_error(joint_prob(d, design_simple(n = 5), rows = 1.7,
+                          simulate = TRUE, R = 10),
+               "not 1.7", fixed = TRUE)
+})

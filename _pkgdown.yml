@@ -32,6 +32,7 @@ reference:
   - inclusion_prob
   - sampling_weight
   - joint_prob
+  - certainty_set
 
 - title: Estimating from a sample
   desc: >

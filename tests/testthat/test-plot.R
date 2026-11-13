@@ -76,7 +76,12 @@ test_that("plot reports the real reason it cannot draw probabilities", {
   expect_error(plot(design_systematic(interval = 7, start = 3), pop,
                     type = "probability"),
                "fixed `start`")
-  expect_error(plot(design_weighted("site", n = 10), pop,
+  pop$w <- 1:50
+  expect_error(plot(design_weighted("w", n = 10), pop,
                     type = "probability"),
                "no closed-form")
+  # Weights draw() refuses are refused first, for the same reason.
+  expect_error(plot(design_weighted("site", n = 10), pop,
+                    type = "probability"),
+               "`site` must be numeric, not character", fixed = TRUE)
 })

@@ -39,7 +39,10 @@
 #' `replace = TRUE` is with-replacement PPS and applies only to
 #' `method = "successive"`.
 #'
-#' @param weights Column of positive, finite weights.
+#' @param weights Column of positive, finite, numeric weights. A weight of 0
+#'   is refused under every method, not given a probability of 0; drop such
+#'   rows from the frame first, since a design that selects in proportion to
+#'   size could never select them.
 #' @param n Number of rows to draw. Under `method = "poisson"` this is the
 #'   expected number, not a guarantee.
 #' @param replace Sample with replacement? Only available for
@@ -76,7 +79,8 @@
 #' sum(s$w * s$.weight)   # estimates sum(df$w) = 210
 #'
 #' @family designs
-#' @seealso [draw()], [inclusion_prob()], [design_spread()] to select in
+#' @seealso [draw()], [inclusion_prob()], [certainty_set()] for the rows
+#'   taken with certainty, [design_spread()] to select in
 #'   proportion to size *and* spread the sample across a map. The `sampling`
 #'   package implements further fixed-size unequal-probability algorithms
 #'   (Brewer, Sampford, Tillé, maximum entropy) as vector functions.
@@ -101,35 +105,46 @@ design_weighted <- function(weights, n, replace = FALSE,
   ))
 }
 
-#' @export
-draw_design.drawn_design_weighted <- function(design, data) {
-  validate_data(data, required_columns = design$weights)
-
+#' Weights a weighted design can use, and a size the frame can supply
+#'
+#' The checks the draw and the probabilities share, so [inclusion_prob()]
+#' refuses what [draw()] refuses, with the same message: weights that are not
+#' numeric, missing under `na_rm = FALSE`, missing in every row, not finite or
+#' not positive, and an `n` above the rows left. Returns `keep`, the rows the
+#' design uses, and `w`, their weights.
+#'
+#' @noRd
+weighted_setup <- function(design, data) {
   col <- design$weights
+  validate_data(data, required_columns = col)
   check_key_columns(data, col, "weights")
   w <- data[[col]]
-  if (!is.numeric(w)) {
-    stop("`", col, "` must be numeric, not ", class(w)[1], ".", call. = FALSE)
-  }
-  if (anyNA(w)) {
-    data <- drop_na_rows(data, is.na(w), design$na_rm,
-                         paste0("a missing weight in `", col, "`"))
-    w <- data[[col]]
-  }
   check_weights(w, col)
+  what <- paste0("a missing weight in `", col, "`")
+  bad <- check_na_policy(is.na(w), design$na_rm, what)
+  if (all(bad)) stop("Every row has ", what, ".", call. = FALSE)
+  keep <- which(!bad)
+  n_rows <- length(keep)
+  if (design$method == "successive") {
+    check_draw_size(design$n, n_rows, design$replace)
+  } else if (design$n > n_rows) {
+    stop("`n` (", design$n, ") cannot exceed the number of rows (", n_rows,
+         ") for method = \"", design$method, "\".", call. = FALSE)
+  }
+  list(keep = keep, w = w[keep])
+}
 
+#' @export
+draw_design.drawn_design_weighted <- function(design, data) {
+  st <- weighted_setup(design, data)
+  if (length(st$keep) < nrow(data)) data <- data[st$keep, , drop = FALSE]
+  w <- st$w
   n_rows <- nrow(data)
 
   if (design$method == "successive") {
-    check_draw_size(design$n, n_rows, design$replace)
     idx <- sample.int(n_rows, size = design$n, replace = design$replace,
-                      prob = w)
+                      prob = finite_total(w))
     return(reindex(data, idx))
-  }
-
-  if (design$n > n_rows) {
-    stop("`n` (", design$n, ") cannot exceed the number of rows (", n_rows,
-         ") for method = \"", design$method, "\".", call. = FALSE)
   }
 
   pi <- pps_pi(w, design$n)
@@ -155,6 +170,7 @@ draw_design.drawn_design_weighted <- function(design, data) {
 #'
 #' @noRd
 pps_pi <- function(w, n) {
+  w <- finite_total(w)
   pi <- rep(0, length(w))
   certain <- rep(FALSE, length(w))
 
@@ -162,6 +178,9 @@ pps_pi <- function(w, n) {
     free <- !certain
     n_free <- n - sum(certain)
     if (n_free <= 0 || !any(free)) break
+    # Positive weights can still divide to 0 against the largest, when they
+    # span more orders of magnitude than a double holds; see the check below.
+    if (!(sum(w[free]) > 0)) break
     p <- w[free] / sum(w[free])
     cand <- n_free * p
     over <- is_certain(cand)
@@ -174,7 +193,28 @@ pps_pi <- function(w, n) {
   }
 
   pi[certain] <- 1
+  if (!isTRUE(abs(sum(pi) - n) <= 1e-6 * max(n, 1))) {
+    stop("The size measure gives inclusion probabilities summing to ",
+         format(sum(pi)), ", where `n` is ", n, ", because its values span ",
+         "more orders of magnitude than double precision holds. Take the ",
+         "largest units with design_certainty() and sample the rest.",
+         call. = FALSE)
+  }
   pi
+}
+
+#' Weights whose sum is finite
+#'
+#' A probability proportional to size does not depend on the scale of the
+#' sizes. Positive weights near `1e306` sum to `Inf`, which made every
+#' probability 0, so such weights are divided by the largest of them. Weights
+#' with a finite sum are returned as they are, which keeps their
+#' probabilities, and the rows a seed selects, unchanged.
+#'
+#' @noRd
+finite_total <- function(w) {
+  if (length(w) && !is.finite(sum(w))) w <- w / max(w)
+  w
 }
 
 #' Systematic PPS selection given inclusion probabilities
@@ -200,6 +240,7 @@ systematic_pps <- function(pi) {
 
 #' @noRd
 exact_inclusion.drawn_design_weighted <- function(design, data) {
+  st <- weighted_setup(design, data)
   if (design$method == "successive") {
     no_closed_form(
       "`design_weighted(method = \"successive\")`",
@@ -209,30 +250,33 @@ exact_inclusion.drawn_design_weighted <- function(design, data) {
              "are proportional to the weights.")
     )
   }
-  validate_data(data, required_columns = design$weights)
-  col <- design$weights
-  check_key_columns(data, col, "weights")
-  w <- data[[col]]
-  keep <- !check_na_policy(is.na(w), design$na_rm,
-                           paste0("a missing weight in `", col, "`"))
-  # pps_pi()'s rescaling loop runs off the rails on a non-positive weight --
-  # `n_free` goes negative and it returns a vector of 0s and 1s summing to the
-  # wrong total. draw_design() rejects these; so must this.
-  check_weights(w[keep], col)
   out <- numeric(nrow(data))
-  out[keep] <- pps_pi(w[keep], design$n)
+  out[st$keep] <- pps_pi(st$w, design$n)
   out
 }
 
-#' Weights a probability-proportional-to-size design can actually use
+#' Weights a probability-proportional-to-size design can use
+#'
+#' Numeric, finite and positive. Missing values are left to the design's
+#' `na_rm`. A negative weight sends the rescaling in `pps_pi()` to a vector of
+#' 0s and 1s summing to the wrong total. A weight of 0 is refused too, on
+#' every path, and the message says to drop such rows from the frame. Every
+#' message names the column.
+#'
 #' @noRd
 check_weights <- function(w, col) {
+  if (!is.numeric(w)) {
+    stop("`", col, "` must be numeric, not ", class(w)[1], ".", call. = FALSE)
+  }
+  w <- w[!is.na(w)]
   if (any(!is.finite(w))) {
     stop("`", col, "` contains ", sum(!is.finite(w)), " non-finite weight(s).",
          call. = FALSE)
   }
   if (any(w <= 0)) {
-    stop("All weights must be positive; ", sum(w <= 0), " are not.",
+    stop("`", col, "` must be positive, but ", sum(w <= 0), " weight(s) are ",
+         "0 or negative. Drop those rows from `data` first; a design that ",
+         "selects in proportion to size can never select them.",
          call. = FALSE)
   }
   invisible(w)

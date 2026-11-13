@@ -125,6 +125,26 @@ test_that("an in-place edit of a data.table frame does not reach the sample", {
   expect_identical(attr(s, "drawn_population")$value, before)
 })
 
+test_that("renaming, reordering or deleting frame columns does not reach the sample", {
+  # The copy of the frame shared its names vector with the caller's, which
+  # setnames(), setcolorder() and deleting a column rewrite in place.
+  skip_if_not_installed("data.table")
+  for (as_table in c(FALSE, TRUE)) {
+    d <- make_df()
+    if (as_table) d <- data.table::as.data.table(d)
+    s <- draw(d, design_stratified("site", n = 8), seed = 1, weights = TRUE)
+    want <- ht_total(s, "value")
+    cols <- names(make_df())
+    data.table::setnames(d, "site", "SITE")
+    data.table::setcolorder(d, rev(names(d)))
+    data.table::set(d, j = "lon", value = NULL)
+    pop <- attr(s, "drawn_population")
+    expect_identical(names(pop), cols)
+    expect_identical(pop$site, make_df()$site)
+    expect_equal(ht_total(s, "value"), want)
+  }
+})
+
 test_that("a sample drawn from a data.table takes := without a warning", {
   skip_if_not_installed("data.table")
   dt <- data.table::as.data.table(make_df())

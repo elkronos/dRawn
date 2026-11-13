@@ -48,6 +48,7 @@ draw_design.drawn_design_cluster <- function(design, data) {
 
 #' @noRd
 exact_inclusion.drawn_design_cluster <- function(design, data) {
+  cl <- cluster_setup(design, data)
   if (design$balanced) {
     no_closed_form(
       "`design_cluster(balanced = TRUE)`",
@@ -55,8 +56,6 @@ exact_inclusion.drawn_design_cluster <- function(design, data) {
              "which is random.\nUse balanced = FALSE for a closed form.")
     )
   }
-  cl <- count_clusters(design, data)
-  check_na_policy(!cl$present, design$na_rm, "a missing cluster label")
   out <- rep(design$n_clusters / cl$total, nrow(data))
   out[!cl$present] <- 0
   out

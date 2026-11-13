@@ -18,12 +18,17 @@
 #' stored by reference therefore changes when the caller's does. Every column
 #' here is a new vector with the original's attributes, so the copy keeps the
 #' frame's class and attributes (tibble, data.table, sf) and later edits to
-#' the original do not reach it.
+#' the original do not reach it. The frame's own attributes are copied too,
+#' because `setnames()`, `setcolorder()` and deleting a column with `:=`
+#' rewrite the names vector in place, and a shared one renamed or dropped
+#' columns of the copy.
 #'
 #' @noRd
 snapshot_frame <- function(data) {
   out <- lapply(unclass(data), copy_column)
-  attributes(out) <- attributes(data)
+  attributes(out) <- lapply(attributes(data), function(a) {
+    if (is.atomic(a)) copy_column(a) else a
+  })
   out
 }
 

@@ -18,7 +18,9 @@
   error, interval, degrees of freedom and design effect of a sample already
   drawn. In one example `setkey()` halved a cluster sample's standard error;
   in another `setorder()` took a certainty sample's design effect from 1.04
-  to 171. `draw()` now stores a copy of the frame.
+  to 171. `draw()` now stores a copy of the frame, column names included, so
+  `setnames()`, `setcolorder()` or deleting a column with `:=` does not
+  reach the sample either.
 * **A certainty design over a with-replacement `rest` was weighted anyway.**
   `draw(weights = TRUE)` checked `replace` only on the outer design, so
   `design_certainty()` over `design_simple(replace = TRUE)` or
@@ -189,6 +191,20 @@
   `na_rm = TRUE`. Both now count the rows the design can reach, and agree
   with the same draw from the frame without the dropped rows. The standard
   errors moved by under 1% in the examples checked.
+* **Size measures whose total overflowed gave every row a probability of
+  0.** Positive weights near `1e306` sum to `Inf`, so
+  `design_weighted()` with `method = "systematic"` or `"poisson"` and
+  `design_spread(size =)` gave every row a probability of 0 and drew empty
+  samples without a word, and a certainty design over them took only the
+  rows above its threshold. Such weights are now divided by the largest of
+  them first. Weights with a finite total give the same probabilities, and
+  the same rows for a seed, as before.
+* **`joint_prob()` treated a row given twice in `rows` as two rows.** The
+  pair a repeated row made with itself got the joint probability of two
+  different rows, 0.015 for a simple random sample of 30 from 240 where the
+  row's own probability is 0.125, and `simulate = TRUE` gave it 0. It now
+  gets the row's own probability on both paths. `rows` that are not whole
+  numbers are refused, where 1.7 was read as row 1.
 
 ## Refusals and clearer errors
 
@@ -264,6 +280,34 @@
   a word. When the design leaves 0 degrees of freedom, as a Poisson sample of
   one row does, the note says that, and `print()` shows it. It blamed one
   unit per stratum, and was not printed beside an analytic standard error.
+* `inclusion_prob()`, `sampling_weight()`, `joint_prob()` and
+  `plot(type = "probability")` refuse a design that `draw()` refuses, with
+  the same message. They answered for it: an `n` of 300 from 240 rows gave
+  every row 1.25 under `design_simple()`, and a census of 1s under
+  `design_stratified()` and the systematic and Poisson methods of
+  `design_weighted()`; an `n_clusters` above the clusters available gave
+  probabilities above 1; and a window shorter than one interval, or a key
+  missing in every row under `na_rm = TRUE`, gave every row 0. The same
+  holds for an `n` above the rows inside a spatial region, for a region
+  with none, and for the `rest` of a certainty design, checked against the
+  rows below its threshold. `design_multistage()` refuses an `n` that even
+  its largest `n_clusters` clusters cannot hold, on both paths.
+* The weights of `design_weighted()`, and of a certainty design over it,
+  must be numeric on every path. `inclusion_prob()`, `joint_prob()`,
+  `draw(weights = TRUE)` and `plot(type = "probability")` took a column of
+  `TRUE` as weights of 1 and stopped with a misleading message on a factor
+  or text one, where `draw()` refused all three. Every message about the
+  weights names the column, and the one for a weight of 0 or below says to
+  drop those rows from the frame, since every design that selects in
+  proportion to size refuses them. `?inclusion_prob` and `?ht_mean` said
+  such rows get a probability of 0.
+* `inclusion_prob()`, `sampling_weight()`, `joint_prob()` and the
+  successive-difference variance refuse a `design_systematic()` whose
+  `order_by` column is not in the frame, as `draw()` did. A misspelt
+  `order_by` gave every row a probability of 0.
+* A missing coordinate under `design_spatial()` is reported in the same
+  words by `draw()` and `inclusion_prob()`, naming the two `coords`
+  columns.
 
 ## Behaviour changes
 
@@ -360,6 +404,12 @@
   A difference of domain means needed linearised residuals built by hand,
   and the `survey` route stopped with an error for systematic PPS samples.
   The interval is symmetric, for proportions too.
+* `certainty_set()` gives the rows of the frame that `design_weighted()`
+  with `method = "systematic"` or `"poisson"`, or `design_spread()` with
+  `size`, takes with certainty, before anything is drawn. Its `threshold`
+  attribute, the smallest size among them, can be passed to
+  `design_certainty()` to take the same rows with the cut-off made
+  explicit.
 
 ## Speed and memory
 

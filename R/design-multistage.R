@@ -69,9 +69,34 @@ design_multistage <- function(clusters, n_clusters, n,
   ))
 }
 
+#' Refuse a multi-stage design the frame cannot supply
+#'
+#' The cluster checks, and an `n` above the rows held by the `n_clusters`
+#' largest clusters, which no selection can supply. Shared by the draw and the
+#' probabilities, so both refuse with the same message. An `n` that only some
+#' selections can supply is the draw's to refuse, against the clusters it
+#' selected; the probabilities have no closed form there. Returns
+#' `count_clusters()`.
+#'
+#' @noRd
+multistage_setup <- function(design, data) {
+  cl <- cluster_setup(design, data)
+  if (!design$replace) {
+    sizes <- tabulate(cl$code[cl$present], cl$total)
+    most <- sum(sort(sizes, decreasing = TRUE)[seq_len(design$n_clusters)])
+    if (design$n > most) {
+      stop("`n` (", design$n, ") exceeds the ", most, " row(s) available ",
+           "across the ", design$n_clusters, " selected cluster(s), even ",
+           "with the largest selected. Use replace = TRUE, raise ",
+           "`n_clusters`, or lower `n`.", call. = FALSE)
+    }
+  }
+  cl
+}
+
 #' @export
 draw_design.drawn_design_multistage <- function(design, data) {
-  sel <- select_clusters(design, data)
+  sel <- select_clusters(design, data, multistage_setup(design, data))
   data <- sel$data
   sizes <- sel$sizes
 
@@ -135,6 +160,7 @@ warn_empty_clusters <- function(n_alloc, labels, n) {
 
 #' @noRd
 exact_inclusion.drawn_design_multistage <- function(design, data) {
+  cl <- multistage_setup(design, data)
   if (design$allocation == "proportional") {
     no_closed_form(
       "`design_multistage(allocation = \"proportional\")`",
@@ -142,8 +168,6 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
              "selected.\nUse allocation = \"equal\" for a closed form.")
     )
   }
-  cl <- count_clusters(design, data)
-  check_na_policy(!cl$present, design$na_rm, "a missing cluster label")
   keep <- cl$present
   code <- cl$code
   sizes <- tabulate(code, cl$total)

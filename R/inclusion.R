@@ -69,9 +69,16 @@
 #' @return A numeric vector with one element per row of `data`.
 #'
 #'   Rows the design can never select — outside the region, outside the time
-#'   window, at zero weight — get `0` from `inclusion_prob()` and `NA` from
-#'   `sampling_weight()`, since no finite number of population rows is
-#'   represented by a row that cannot be drawn. [sample_summary()] counts them.
+#'   window, past `max_items`, or dropped under `na_rm = TRUE` — get `0` from
+#'   `inclusion_prob()` and `NA` from `sampling_weight()`, since no finite
+#'   number of population rows is represented by a row that cannot be drawn.
+#'   [sample_summary()] counts them. A weight of 0 is not one of these. The
+#'   designs that select in proportion to size refuse it, so drop such rows
+#'   from `data` first.
+#'
+#'   A design that [draw()] refuses, such as an `n` larger than the frame or
+#'   than the rows inside a region, is refused here too, with the same
+#'   message, rather than given probabilities above 1 or a census.
 #'
 #' @examples
 #' df <- data.frame(id = 1:20, site = rep(c("a", "b"), times = c(15, 5)))
@@ -116,6 +123,71 @@ sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
   out <- rep(NA_real_, length(p))
   out[p > 0] <- 1 / p[p > 0]
   out
+}
+
+#' Rows a size-proportional design takes with certainty
+#'
+#' A design whose inclusion probabilities are proportional to size gives a
+#' row whose share of `n` reaches 1 a probability of exactly 1, and spreads
+#' what is left of `n` over the other rows, repeating until no share passes
+#' 1. `certainty_set()` says which rows of `data` those are, and where the
+#' cut-off falls, before any sample is drawn.
+#'
+#' @param data A data frame.
+#' @param design [design_weighted()] with `method = "systematic"` or
+#'   `"poisson"`, or [design_spread()] with a `size` column. Other designs are
+#'   refused, since none of them has inclusion probabilities proportional to
+#'   size.
+#'
+#' @return An integer vector of the rows of `data` whose inclusion probability
+#'   is 1, in frame order, the same rows as
+#'   `which(inclusion_prob(data, design) == 1)`. Its attribute `threshold` is
+#'   the smallest size among them, or `NA` when there are none. Of the rows
+#'   the design can select, those whose size is at least `threshold` are the
+#'   set. For [design_weighted()], [design_certainty()] with that `threshold`
+#'   on the weights column therefore takes the same rows with certainty, and a
+#'   `rest` of the same method with `n` reduced by the number of rows in the
+#'   set gives the other rows the same probabilities too.
+#'
+#' @examples
+#' df <- data.frame(id = 1:10, w = c(1, 2, 3, 4, 5, 6, 7, 8, 60, 90))
+#' d <- design_weighted("w", n = 4, method = "systematic")
+#' cs <- certainty_set(df, d)
+#' df[cs, ]
+#' attr(cs, "threshold")
+#'
+#' # The same probabilities, with the cut-off made explicit
+#' same <- design_certainty("w", attr(cs, "threshold"),
+#'                          rest = design_weighted("w", n = 4 - length(cs),
+#'                                                 method = "systematic"))
+#' all.equal(inclusion_prob(df, same), inclusion_prob(df, d))
+#'
+#' @seealso [inclusion_prob()], [design_certainty()]
+#' @export
+certainty_set <- function(data, design) {
+  if (!is_design(design)) {
+    stop("`design` must come from one of the design_*() constructors, not a ",
+         class(design)[1], ". See ?designs.", call. = FALSE)
+  }
+  size <- if (inherits(design, "drawn_design_weighted") &&
+              design$method %in% c("systematic", "poisson")) {
+    design$weights
+  } else if (inherits(design, "drawn_design_spread")) {
+    design$size
+  }
+  if (is.null(size)) {
+    stop("`design` is ", design_label(design), ", whose inclusion ",
+         "probabilities are not proportional to size. certainty_set() takes ",
+         "design_weighted() with method = \"systematic\" or \"poisson\", or ",
+         "design_spread() with `size`.", call. = FALSE)
+  }
+  validate_data(data)
+  rows <- which(is_certain(exact_inclusion(design, data)))
+  structure(rows, threshold = if (length(rows)) {
+    min(data[[size]][rows])
+  } else {
+    NA_real_
+  })
 }
 
 #' Monte Carlo inclusion probabilities

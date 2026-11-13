@@ -69,7 +69,9 @@ leading \code{.replicate} column.
 Because a design is a value, it can report its own inclusion probabilities
 before any sampling happens. \code{\link[=inclusion_prob]{inclusion_prob()}} gives first-order
 probabilities and \code{\link[=sampling_weight]{sampling_weight()}} their reciprocals — the number of
-population rows each sampled row stands for. \code{\link[=joint_prob]{joint_prob()}} gives
+population rows each sampled row stands for, and \code{\link[=certainty_set]{certainty_set()}} the rows
+a design that selects in proportion to size takes with certainty.
+\code{\link[=joint_prob]{joint_prob()}} gives
 second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} turn a sample
 into a population total, mean or proportion — overall or by domain — with a
 standard error from the variance estimator suited to the design and a

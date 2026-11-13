@@ -14,7 +14,10 @@ joint_prob(data, design, rows = NULL, simulate = FALSE, R = 5000, seed = NULL)
 \item{rows}{Optional row indices, usually the rows you drew, which are
 \code{s$.row} for a sample \code{s} from \code{draw(weights = TRUE)}. The result is then
 the submatrix for these rows instead of the full \code{nrow(data)} square,
-which is what makes this usable on a large population. See "Size".}
+which is what makes this usable on a large population. See "Size".
+Indices must be whole numbers. A row given more than once is one unit,
+so its entry with itself, off the diagonal too, is its own inclusion
+probability.}
 
 \item{simulate}{Estimate the probabilities by repeated draws rather than in
 closed form. Works for every probability design, including the ones with no

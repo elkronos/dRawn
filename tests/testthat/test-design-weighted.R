@@ -64,3 +64,50 @@ test_that("over-drawing without replacement is refused", {
   expect_error(draw(d, design_weighted("w", n = 10), seed = 1),
                "cannot exceed the number of rows")
 })
+
+test_that("weights draw() refuses are refused on every path, naming the column", {
+  # inclusion_prob() accepted logical weights and stopped inside base R on a
+  # factor; joint_prob(), draw(weights = TRUE) and plot() followed it.
+  pop <- data.frame(id = 1:20, size = 1:20, other = 1:20)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  bad <- list(logical = rep(TRUE, 20), factor = factor(rep(1:4, 5)),
+              character = as.character(1:20))
+  for (type in names(bad)) {
+    pop$size <- bad[[type]]
+    want <- paste0("`size` must be numeric, not ", type, ".")
+    designs <- list(
+      design_weighted("size", n = 5),
+      design_weighted("size", n = 5, method = "systematic"),
+      design_weighted("size", n = 5, method = "poisson"),
+      design_certainty("other", 18, design_weighted("size", n = 5,
+                                                    method = "poisson"))
+    )
+    for (des in designs) {
+      info <- paste(type, drawn:::design_label(des))
+      expect_error(draw(pop, des, seed = 1), want, fixed = TRUE, info = info)
+      expect_error(inclusion_prob(pop, des), want, fixed = TRUE, info = info)
+      expect_error(sampling_weight(pop, des), want, fixed = TRUE, info = info)
+      expect_error(joint_prob(pop, des, rows = 1:3), want, fixed = TRUE,
+                   info = info)
+      expect_error(draw(pop, des, seed = 1, weights = TRUE), want,
+                   fixed = TRUE, info = info)
+      expect_error(plot(des, pop, type = "probability"), want, fixed = TRUE,
+                   info = info)
+    }
+  }
+})
+
+test_that("a weight of 0 is refused with the column and what to do", {
+  pop <- data.frame(w = c(0, 0, 0, 1:20))
+  for (m in c("successive", "systematic", "poisson")) {
+    des <- design_weighted("w", n = 5, method = m)
+    expect_error(draw(pop, des, seed = 1),
+                 "`w` must be positive, but 3 weight(s) are 0 or negative.",
+                 fixed = TRUE)
+    expect_error(inclusion_prob(pop, des), "Drop those rows from `data`",
+                 fixed = TRUE)
+  }
+  expect_error(inclusion_prob(pop, design_spread("w", n = 5, size = "w")),
+               "`w` must be positive", fixed = TRUE)
+})

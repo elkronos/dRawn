@@ -63,22 +63,17 @@ design_systematic <- function(interval, start = NULL, order_by = NULL,
 
 #' @export
 draw_design.drawn_design_systematic <- function(design, data) {
-  validate_data(data, required_columns = design$order_by)
+  validate_data(data)
 
   # The walk visits rows in `walk` order; the result comes back in frame order
   # like every other design that selects a set of rows.
-  walk <- seq_len(nrow(data))
-  if (!is.null(design$order_by)) {
-    check_key_columns(data, design$order_by, "order_by")
-    key <- data[[design$order_by]]
-    if (anyNA(key)) {
-      data <- drop_na_rows(data, is.na(key), design$na_rm,
-                           paste0("a missing `", design$order_by, "`"))
-      key <- data[[design$order_by]]
-    }
-    # Byte order for text, so the walk is the same in every locale.
-    walk <- key_order(key)
+  pos <- systematic_positions(design, data)
+  if (anyNA(pos)) {
+    keep <- which(!is.na(pos))
+    data <- data[keep, , drop = FALSE]
+    pos <- pos[keep]
   }
+  walk <- order(pos)
 
   start <- design$start %||% sample.int(design$interval, 1L)
 
@@ -101,17 +96,28 @@ draw_design.drawn_design_systematic <- function(design, data) {
 #' probabilities have to be computed against the order `draw_design()` actually
 #' uses -- the sorted, NA-dropped frame -- not against frame order.
 #'
+#' It is also the design's one set of checks, shared by the draw, the
+#' probabilities and the successive-difference variance: an `order_by` column
+#' the frame lacks, which gave every row a probability of 0, the `na_rm`
+#' policy, and a key missing in every row.
+#'
 #' @noRd
 systematic_positions <- function(design, data) {
   n <- nrow(data)
   if (is.null(design$order_by)) return(seq_len(n))
-  check_key_columns(data, design$order_by, "order_by")
-  key <- data[[design$order_by]]
-  bad <- check_na_policy(is.na(key), design$na_rm,
-                         paste0("a missing `", design$order_by, "`"))
+  col <- design$order_by
+  if (!col %in% names(data)) {
+    stop("`data` is missing column: `", col, "`.", call. = FALSE)
+  }
+  check_key_columns(data, col, "order_by")
+  key <- data[[col]]
+  what <- paste0("a missing `", col, "`")
+  bad <- check_na_policy(is.na(key), design$na_rm, what)
+  if (n > 0L && all(bad)) stop("Every row has ", what, ".", call. = FALSE)
   out <- rep(NA_integer_, n)
   kept <- which(!bad)
-  if (!length(kept)) return(out)
+  # Byte order for text, so the walk is the same in every locale. Ties keep
+  # frame order.
   out[kept[key_order(key[kept])]] <- seq_along(kept)
   out
 }

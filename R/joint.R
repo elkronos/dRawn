@@ -48,6 +48,9 @@
 #'   `s$.row` for a sample `s` from `draw(weights = TRUE)`. The result is then
 #'   the submatrix for these rows instead of the full `nrow(data)` square,
 #'   which is what makes this usable on a large population. See "Size".
+#'   Indices must be whole numbers. A row given more than once is one unit,
+#'   so its entry with itself, off the diagonal too, is its own inclusion
+#'   probability.
 #' @param simulate Estimate the probabilities by repeated draws rather than in
 #'   closed form. Works for every probability design, including the ones with no
 #'   closed form, at the cost of Monte Carlo error. Refused for
@@ -82,13 +85,29 @@ joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
       any(rows > nrow(data))) {
     stop("`rows` must be valid row indices into `data`.", call. = FALSE)
   }
+  frac <- rows != trunc(rows)
+  if (any(frac)) {
+    stop("`rows` must be whole row numbers, not ", format_rows(rows[frac]),
+         ". Pass the rows of `data` to pair, such as `s$.row` for a sample ",
+         "`s`.", call. = FALSE)
+  }
   rows <- as.integer(rows)
   check_pair_size(length(rows), given)
-  if (isTRUE(simulate)) {
-    return(simulate_joint(data, design, rows,
-                          check_count(R, "R", allow_zero = FALSE), seed))
+  # A row given twice is one unit, so the pair it makes with itself is in a
+  # sample exactly when the row is, with the row's own `pi`. The methods work
+  # on distinct rows and the result is spread back out.
+  u <- unique(rows)
+  out <- if (isTRUE(simulate)) {
+    simulate_joint(data, design, u, check_count(R, "R", allow_zero = FALSE),
+                   seed)
+  } else {
+    joint_inclusion(design, data, u)
   }
-  joint_inclusion(design, data, rows)
+  if (length(u) < length(rows)) {
+    i <- match(rows, u)
+    out <- out[i, i, drop = FALSE]
+  }
+  out
 }
 
 #' Refuse a joint matrix too large to hold
@@ -240,6 +259,7 @@ joint_inclusion.drawn_design_simple <- function(design, data, rows) {
     no_joint_form("`design_simple(replace = TRUE)`",
                   "Use replace = FALSE, or estimate variance by resampling.")
   }
+  simple_setup(design, data)
   N <- nrow(data)
   n <- design$n
   k <- length(rows)
@@ -285,10 +305,9 @@ joint_inclusion.drawn_design_temporal <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_spatial <- function(design, data, rows) {
-  require_suggested("sf", "spatial sampling")
-  inside <- spatial_inside(design, data)
+  inside <- spatial_setup(design, data)
   N <- sum(inside)
-  n <- min(design$n, N)
+  n <- design$n
   pi_all <- exact_inclusion(design, data)
   # A row outside the region co-occurs with nothing.
   pair_matrix(ifelse(inside[rows], 1L, NA_integer_),
@@ -297,11 +316,11 @@ joint_inclusion.drawn_design_spatial <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_cluster <- function(design, data, rows) {
+  cl <- cluster_setup(design, data)
   if (design$balanced) {
     no_joint_form("`design_cluster(balanced = TRUE)`",
                   "Use balanced = FALSE.")
   }
-  cl <- count_clusters(design, data)
   A <- cl$total
   a <- design$n_clusters
   pi_all <- exact_inclusion(design, data)
@@ -314,6 +333,7 @@ joint_inclusion.drawn_design_cluster <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
+  cl <- multistage_setup(design, data)
   if (design$allocation == "proportional") {
     no_joint_form("`design_multistage(allocation = \"proportional\")`",
                   "Use allocation = \"equal\".")
@@ -331,7 +351,6 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
              design$n_clusters, ").")
     )
   }
-  cl <- count_clusters(design, data)
   A <- cl$total
   a <- design$n_clusters
   m <- design$n %/% design$n_clusters
@@ -352,6 +371,7 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_weighted <- function(design, data, rows) {
+  weighted_setup(design, data)
   if (design$method == "poisson") {
     pi_all <- exact_inclusion(design, data)
     p <- pi_all[rows]

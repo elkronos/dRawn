@@ -155,3 +155,82 @@ test_that("an empty sample from a design that reaches no row is refused", {
   s <- draw(pop, design_simple(n = 0), seed = 1, weights = TRUE)
   expect_error(ht_total(s, "y"), "probability of 0")
 })
+
+test_that("weights whose total overflows still give probabilities summing to n", {
+  # Positive weights near 1e306 summed to Inf, which made every probability 0
+  # and every sample empty.
+  pop <- data.frame(id = 1:40, w = c(1:39, 100))
+  pop$big <- pop$w * 1e306
+  pop$small <- pop$w * 1e-300
+  expect_false(is.finite(sum(pop$big)))
+  for (m in c("systematic", "poisson")) {
+    want <- inclusion_prob(pop, design_weighted("w", n = 10, method = m))
+    for (col in c("big", "small")) {
+      des <- design_weighted(col, n = 10, method = m)
+      p <- inclusion_prob(pop, des)
+      expect_equal(p, want, info = paste(m, col))
+      expect_equal(sum(p), 10)
+    }
+  }
+  expect_equal(nrow(draw(pop, design_weighted("big", n = 10,
+                                              method = "systematic"),
+                         seed = 1)), 10)
+  expect_equal(nrow(draw(pop, design_weighted("big", n = 10), seed = 1)), 10)
+  s <- draw(pop, design_spread("id", n = 10, size = "big"), seed = 1,
+            weights = TRUE)
+  expect_equal(nrow(s), 10)
+  expect_equal(sum(inclusion_prob(pop, design_spread("id", n = 10,
+                                                     size = "big"))), 10)
+  cert <- design_certainty("id", 40, design_weighted("big", n = 5,
+                                                     method = "systematic"))
+  expect_equal(nrow(draw(pop, cert, seed = 1)), 6)
+})
+
+test_that("weights a double cannot scale together are refused, not zeroed", {
+  # Divided by the largest, weights 1e-320 apart in scale from it underflow
+  # to 0 and leave the probabilities short of n.
+  w <- c(1e308, 1e308, 1e-320, 1e-320)
+  expect_error(drawn:::pps_pi(w, 3), "summing to 2, where `n` is 3",
+               fixed = TRUE)
+  expect_equal(drawn:::pps_pi(c(1e300, 1e-300, 1e-300), 2), c(1, 0.5, 0.5))
+})
+
+test_that("certainty_set() gives the rows taken with certainty and the cut-off", {
+  pop <- data.frame(id = 1:12, w = c(1:10, 60, 90))
+  for (m in c("systematic", "poisson")) {
+    des <- design_weighted("w", n = 4, method = m)
+    cs <- certainty_set(pop, des)
+    expect_identical(as.vector(cs), which(inclusion_prob(pop, des) == 1))
+    expect_identical(as.vector(cs), 11:12)
+    expect_identical(attr(cs, "threshold"), 60)
+    # The same rows, and the same probabilities, with the cut-off explicit.
+    same <- design_certainty("w", attr(cs, "threshold"),
+                             rest = design_weighted("w", n = 4 - length(cs),
+                                                    method = m))
+    expect_equal(inclusion_prob(pop, same), inclusion_prob(pop, des))
+  }
+
+  sp <- design_spread("id", n = 4, size = "w")
+  expect_identical(as.vector(certainty_set(pop, sp)), 11:12)
+
+  none <- certainty_set(pop, design_weighted("w", n = 1, method = "poisson"))
+  expect_length(none, 0)
+  expect_identical(attr(none, "threshold"), NA_real_)
+
+  na_pop <- pop
+  na_pop$w[12] <- NA
+  cs <- certainty_set(na_pop, design_weighted("w", n = 3, method = "poisson",
+                                              na_rm = TRUE))
+  expect_identical(as.vector(cs), 11L)
+
+  expect_error(certainty_set(pop, design_simple(n = 3)),
+               "not proportional to size", fixed = TRUE)
+  expect_error(certainty_set(pop, design_weighted("w", n = 3)),
+               "method = \"successive\"", fixed = TRUE)
+  expect_error(certainty_set(pop, design_spread("id", n = 3)),
+               "not proportional to size", fixed = TRUE)
+  expect_error(certainty_set(pop, "w"), "must come from one of the design")
+  expect_error(certainty_set(pop, design_weighted("w", n = 20,
+                                                  method = "systematic")),
+               "cannot exceed the number of rows (12)", fixed = TRUE)
+})

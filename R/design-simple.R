@@ -25,11 +25,22 @@ design_simple <- function(n, replace = FALSE) {
   ))
 }
 
+#' Refuse a simple random sample the frame cannot supply
+#'
+#' The checks every path runs before it draws or answers, so
+#' [inclusion_prob()] and [joint_prob()] refuse what [draw()] refuses, with
+#' the same message.
+#'
+#' @noRd
+simple_setup <- function(design, data) {
+  validate_data(data)
+  check_draw_size(design$n, nrow(data), design$replace)
+  invisible(design)
+}
+
 #' @export
 draw_design.drawn_design_simple <- function(design, data) {
-  validate_data(data)
-
-  check_draw_size(design$n, nrow(data), design$replace)
+  simple_setup(design, data)
 
   idx <- sample.int(nrow(data), size = design$n, replace = design$replace)
   reindex(data, idx)
@@ -39,6 +50,7 @@ draw_design.drawn_design_simple <- function(design, data) {
 
 #' @noRd
 exact_inclusion.drawn_design_simple <- function(design, data) {
+  simple_setup(design, data)
   if (design$replace) {
     # P(selected at least once) over n independent draws.
     return(rep(1 - (1 - 1 / nrow(data))^design$n, nrow(data)))

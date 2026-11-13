@@ -126,40 +126,32 @@ stratum_spread <- function(design, data, idx_by_stratum) {
 #' worked out, so the draw, the inclusion probabilities and the joint
 #' probabilities cannot disagree. Everything is by position: `code` is each
 #' row's stratum as a position in `sizes`, `n_alloc` and `idx`, and `NA` for a
-#' row with a missing key. `draw = TRUE` adds the checks only a draw needs.
+#' row with a missing key.
+#'
+#' It is also where an allocation the frame cannot supply is refused, on every
+#' path, so [inclusion_prob()] does not report a census for an `n` larger than
+#' the frame that [draw()] refuses.
 #'
 #' @noRd
-stratum_allocation <- function(design, data, draw = FALSE) {
+stratum_allocation <- function(design, data) {
   validate_data(data, required_columns = design$strata)
   check_key_columns(data, design$strata, "strata")
   key <- group_key(data, design$strata)
   bad <- check_na_policy(is.na(key), design$na_rm, "a missing stratum key")
-  if (draw) {
-    if (all(bad)) stop("Every row has a missing stratum key.", call. = FALSE)
-    check_draw_size(design$n, sum(!bad), design$replace)
-  }
+  if (all(bad)) stop("Every row has a missing stratum key.", call. = FALSE)
+  check_draw_size(design$n, sum(!bad), design$replace)
   code <- as.integer(key)
   idx <- split(seq_len(nrow(data))[!bad], key[!bad])
   sizes <- lengths(idx, use.names = FALSE)
-  n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = !design$replace,
-                      spread = stratum_spread(design, data, idx))
-  list(code = code, labels = levels(key), idx = unname(idx), sizes = sizes,
-       n_alloc = unname(n_alloc))
-}
-
-#' @export
-draw_design.drawn_design_stratified <- function(design, data) {
-  al <- stratum_allocation(design, data, draw = TRUE)
-  sizes <- al$sizes
-  n_alloc <- al$n_alloc
-  warn_empty_groups(n_alloc, sizes, al$labels)
+  n_alloc <- unname(allocate(design$n, sizes, design$allocation,
+                             design$min_per_stratum, cap = !design$replace,
+                             spread = stratum_spread(design, data, idx)))
 
   if (!design$replace) {
     over <- which(n_alloc > sizes)
     if (length(over)) {
       h <- over[1]
-      stop("Stratum `", group_label(al$labels[h]), "` has ", sizes[h],
+      stop("Stratum `", group_label(levels(key)[h]), "` has ", sizes[h],
            " row(s) but ", n_alloc[h], " were requested. ",
            "Use replace = TRUE or lower `n`.", call. = FALSE)
     }
@@ -171,7 +163,15 @@ draw_design.drawn_design_stratified <- function(design, data) {
     }
   }
 
-  reindex(data, take_within(al$idx, n_alloc, design$replace), sort = TRUE)
+  list(code = code, labels = levels(key), idx = unname(idx), sizes = sizes,
+       n_alloc = n_alloc)
+}
+
+#' @export
+draw_design.drawn_design_stratified <- function(design, data) {
+  al <- stratum_allocation(design, data)
+  warn_empty_groups(al$n_alloc, al$sizes, al$labels)
+  reindex(data, take_within(al$idx, al$n_alloc, design$replace), sort = TRUE)
 }
 
 # ---- inclusion probability ------------------------------------------------

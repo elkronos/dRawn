@@ -60,18 +60,37 @@ design_temporal <- function(time, from, to, interval, per_interval,
 
 #' @export
 draw_design.drawn_design_temporal <- function(design, data) {
+  tm <- temporal_setup(design, data)
+  keep <- which(!is.na(tm$bucket))
+  if (!length(keep)) {
+    return(empty_like(data))
+  }
+  idx_by_bucket <- split(keep, tm$bucket[keep])
+  n_alloc <- pmin(lengths(idx_by_bucket), design$per_interval)
+
+  reindex(data, take_within(idx_by_bucket, n_alloc, FALSE), sort = TRUE)
+}
+
+#' The window, its intervals and each row's interval
+#'
+#' The checks and the parsing the draw, the probabilities and the variance
+#' share, so [inclusion_prob()] refuses what [draw()] refuses, with the same
+#' message: a timestamp missing under `na_rm = FALSE` or in every row, a
+#' bound that is not one parseable date-time, a window that runs backwards,
+#' and a window shorter than one interval. Returns `bucket`, each row's
+#' interval as an integer, `NA` for a row outside the window or with no
+#' timestamp, and `breaks`.
+#'
+#' @noRd
+temporal_setup <- function(design, data) {
   validate_data(data, required_columns = design$time)
   col <- design$time
   tz <- design$tz %||% "UTC"
 
   tv <- parse_time(data[[col]], tz, col)
-  if (anyNA(tv)) {
-    data <- drop_na_rows(
-      data, is.na(tv), design$na_rm,
-      paste0("a missing or unparseable timestamp in `", col, "`")
-    )
-    tv <- parse_time(data[[col]], tz, col)
-  }
+  what <- paste0("a missing or unparseable timestamp in `", col, "`")
+  bad <- check_na_policy(is.na(tv), design$na_rm, what)
+  if (all(bad)) stop("Every row has ", what, ".", call. = FALSE)
 
   from_dt <- parse_time(design$from, tz, "from")
   to_dt <- parse_time(design$to, tz, "to")
@@ -89,17 +108,10 @@ draw_design.drawn_design_temporal <- function(design, data) {
          design$unit, "; no complete interval exists.", call. = FALSE)
   }
 
-  in_window <- tv >= breaks[1] & tv < breaks[length(breaks)]
-  if (!any(in_window)) {
-    return(empty_like(data))
-  }
-
-  keep <- which(in_window)
-  bucket <- findInterval(tv[keep], breaks)
-  idx_by_bucket <- split(keep, bucket)
-  n_alloc <- pmin(lengths(idx_by_bucket), design$per_interval)
-
-  reindex(data, take_within(idx_by_bucket, n_alloc, FALSE), sort = TRUE)
+  bucket <- rep(NA_integer_, nrow(data))
+  inw <- !bad & tv >= breaks[1] & tv < breaks[length(breaks)]
+  bucket[inw] <- findInterval(tv[inw], breaks)
+  list(bucket = bucket, breaks = breaks)
 }
 
 #' Parse a value to POSIXct, leaving date-time classes alone
@@ -161,29 +173,12 @@ make_breaks <- function(from_dt, to_dt, interval, unit) {
 
 #' @noRd
 exact_inclusion.drawn_design_temporal <- function(design, data) {
-  validate_data(data, required_columns = design$time)
-  tz <- design$tz %||% "UTC"
-  tv <- parse_time(data[[design$time]], tz, design$time)
-  from_dt <- parse_time(design$from, tz, "from")
-  to_dt <- parse_time(design$to, tz, "to")
-  check_window(from_dt, to_dt)
-  check_na_policy(is.na(tv), design$na_rm,
-                  paste0("a missing or unparseable timestamp in `",
-                         design$time, "`"))
-  breaks <- make_breaks(from_dt, to_dt, design$interval, design$unit)
-
+  bucket <- temporal_setup(design, data)$bucket
   out <- numeric(nrow(data))
-  if (length(breaks) < 2L) return(out)
-
-  in_window <- !is.na(tv) & tv >= breaks[1] & tv < breaks[length(breaks)]
-  if (!any(in_window)) return(out)
-
-  keep <- which(in_window)
-  bucket <- findInterval(tv[keep], breaks)
-  for (b in unique(bucket)) {
-    idx <- keep[bucket == b]
-    out[idx] <- min(1, design$per_interval / length(idx))
-  }
+  inw <- !is.na(bucket)
+  if (!any(inw)) return(out)
+  sizes <- tabulate(bucket[inw])
+  out[inw] <- pmin(1, design$per_interval / sizes[bucket[inw]])
   out
 }
 
@@ -195,19 +190,7 @@ exact_inclusion.drawn_design_temporal <- function(design, data) {
 #'
 #' @noRd
 temporal_bucket <- function(design, data) {
-  validate_data(data, required_columns = design$time)
-  tz <- design$tz %||% "UTC"
-  tv <- parse_time(data[[design$time]], tz, design$time)
-  from_dt <- parse_time(design$from, tz, "from")
-  to_dt <- parse_time(design$to, tz, "to")
-  check_window(from_dt, to_dt)
-  breaks <- make_breaks(from_dt, to_dt, design$interval, design$unit)
-  out <- rep(NA_character_, nrow(data))
-  if (length(breaks) >= 2L) {
-    inw <- !is.na(tv) & tv >= breaks[1] & tv < breaks[length(breaks)]
-    out[inw] <- as.character(findInterval(tv[inw], breaks))
-  }
-  out
+  as.character(temporal_setup(design, data)$bucket)
 }
 
 #' The window has to run forwards

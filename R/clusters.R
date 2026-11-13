@@ -37,24 +37,17 @@ cluster_codes <- function(labels) {
 #'
 #' @param design A cluster or multistage design.
 #' @param data The population.
+#' @param cl `cluster_setup(design, data)`, when the caller has it already.
 #' @return A list of `data` (with NA labels handled), the row indices of each
 #'   selected cluster, their sizes, and their labels.
 #' @noRd
-select_clusters <- function(design, data) {
-  validate_data(data, required_columns = design$clusters)
-  check_key_columns(data, design$clusters, "clusters")
-
-  col <- design$clusters
-  data <- drop_na_rows(data, is.na(data[[col]]), design$na_rm,
-                       "a missing cluster label")
-  labels <- data[[col]]
-  code <- cluster_codes(labels)
-  k <- max(code)
-
-  if (design$n_clusters > k) {
-    stop("`n_clusters` (", design$n_clusters, ") exceeds the ", k,
-         " cluster(s) available.", call. = FALSE)
-  }
+select_clusters <- function(design, data, cl = cluster_setup(design, data)) {
+  # Dropping rows with no label leaves every other row's code unchanged, since
+  # codes number the labels in order of first appearance.
+  if (!all(cl$present)) data <- data[cl$present, , drop = FALSE]
+  code <- cl$code[cl$present]
+  labels <- cl$labels[cl$present]
+  k <- cl$total
 
   chosen <- sample.int(k, size = design$n_clusters)
   pos <- match(code, chosen)
@@ -84,4 +77,25 @@ count_clusters <- function(design, data) {
   present <- !is.na(code)
   list(labels = labels, code = code, present = present,
        total = if (any(present)) max(code[present]) else 0L)
+}
+
+#' Refuse a cluster selection the frame cannot supply
+#'
+#' The checks the draw and the probabilities of both cluster designs share:
+#' the `na_rm` policy, a frame with no labelled row, and more clusters asked
+#' for than it holds. Without them [inclusion_prob()] gave `n_clusters / A`
+#' above 1 where [draw()] refused. Returns `count_clusters()`.
+#'
+#' @noRd
+cluster_setup <- function(design, data) {
+  cl <- count_clusters(design, data)
+  check_na_policy(!cl$present, design$na_rm, "a missing cluster label")
+  if (!any(cl$present)) {
+    stop("Every row has a missing cluster label.", call. = FALSE)
+  }
+  if (design$n_clusters > cl$total) {
+    stop("`n_clusters` (", design$n_clusters, ") exceeds the ", cl$total,
+         " cluster(s) available.", call. = FALSE)
+  }
+  cl
 }

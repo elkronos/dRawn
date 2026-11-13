@@ -13,7 +13,10 @@ design_weighted(
 )
 }
 \arguments{
-\item{weights}{Column of positive, finite weights.}
+\item{weights}{Column of positive, finite, numeric weights. A weight of 0
+is refused under every method, not given a probability of 0; drop such
+rows from the frame first, since a design that selects in proportion to
+size could never select them.}
 
 \item{n}{Number of rows to draw. Under \code{method = "poisson"} this is the
 expected number, not a guarantee.}
@@ -98,7 +101,8 @@ Probabilities}. Springer.
 Tillé, Y. (2006). \emph{Sampling Algorithms}. Springer.
 }
 \seealso{
-\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=design_spread]{design_spread()}} to select in
+\code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=certainty_set]{certainty_set()}} for the rows
+taken with certainty, \code{\link[=design_spread]{design_spread()}} to select in
 proportion to size \emph{and} spread the sample across a map. The \code{sampling}
 package implements further fixed-size unequal-probability algorithms
 (Brewer, Sampford, Tillé, maximum entropy) as vector functions.

@@ -63,9 +63,10 @@
 #'
 #' One caveat on `"ht"`. It is unbiased for the frame mean *provided every row
 #' could have been selected*. Rows with inclusion probability 0 — outside a time
-#' window, outside a region, zero weight — sit inside the `N` it divides by but
-#' can never enter the numerator, so the estimate is biased low by exactly their
-#' share of the frame. [sample_summary()] reports how many such rows there are.
+#' window, outside a region, dropped under `na_rm = TRUE` — sit inside the `N`
+#' it divides by but can never enter the numerator, so the estimate is biased
+#' low by exactly their share of the frame. [sample_summary()] reports how many
+#' such rows there are.
 #' The Hajek mean is unaffected, because it estimates the mean of the part of
 #' the frame the design can actually reach.
 #'

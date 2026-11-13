@@ -95,33 +95,39 @@ design_spatial <- function(coords, region, n, crs = 4326, na_rm = FALSE) {
 
 #' @export
 draw_design.drawn_design_spatial <- function(design, data) {
+  inside <- which(spatial_setup(design, data, warn = TRUE))
+  reindex(data, sort(inside[sample.int(length(inside), design$n)]))
+}
+
+#' Rows inside the region, refusing a region that cannot supply `n`
+#'
+#' The checks the draw and the probabilities share, so [inclusion_prob()]
+#' refuses what [draw()] refuses, with the same message: no row inside
+#' `region`, or fewer than `n`. Returns `spatial_inside()`.
+#'
+#' @noRd
+spatial_setup <- function(design, data, warn = FALSE) {
   require_suggested("sf", "spatial sampling")
   validate_data(data, required_columns = design$coords)
-
-  bad <- is.na(data[[design$coords[1]]]) | is.na(data[[design$coords[2]]])
-  if (any(bad)) {
-    data <- drop_na_rows(data, bad, design$na_rm, "missing coordinates")
-  }
-
-  inside <- which(spatial_inside(design, data, warn = TRUE))
-
-  if (length(inside) == 0L) {
+  inside <- spatial_inside(design, data, warn = warn)
+  k <- sum(inside)
+  if (k == 0L) {
     stop("No rows fall inside `region`. If you expected a much larger area, ",
          "see the \"Regions that cross the antimeridian\" section of ",
          "?design_spatial.", call. = FALSE)
   }
-  if (design$n > length(inside)) {
-    stop("`n` (", design$n, ") exceeds the ", length(inside),
+  if (design$n > k) {
+    stop("`n` (", design$n, ") exceeds the ", k,
          " row(s) inside `region`.", call. = FALSE)
   }
-
-  reindex(data, sort(inside[sample.int(length(inside), design$n)]))
+  inside
 }
 
 #' Which rows fall inside the design's region
 #'
 #' Shared by the draw method and [inclusion_prob()], so the two can never
-#' disagree about what "inside" means.
+#' disagree about what "inside" means. A row with a missing coordinate is
+#' outside, once the design's `na_rm` allows it.
 #'
 #' @noRd
 spatial_inside <- function(design, data, warn = FALSE) {
@@ -129,6 +135,13 @@ spatial_inside <- function(design, data, warn = FALSE) {
   y_col <- design$coords[2]
   x <- data[[x_col]]
   y <- data[[y_col]]
+
+  ok <- !is.na(x) & !is.na(y)
+  what <- paste0("missing coordinates in `", x_col, "` or `", y_col, "`")
+  check_na_policy(!ok, design$na_rm, what)
+  if (length(ok) && !any(ok)) {
+    stop("Every row has ", what, ".", call. = FALSE)
+  }
   if (!is.numeric(x) || !is.numeric(y)) {
     stop("`", x_col, "` and `", y_col, "` must both be numeric.", call. = FALSE)
   }
@@ -145,9 +158,6 @@ spatial_inside <- function(design, data, warn = FALSE) {
     stop("`region` has no CRS. Set one with sf::st_set_crs().", call. = FALSE)
   }
 
-  ok <- !is.na(x) & !is.na(y)
-  check_na_policy(!ok, design$na_rm,
-                  paste0("a missing `", x_col, "` or `", y_col, "`"))
   data_sf <- sf::st_as_sf(data[ok, , drop = FALSE], coords = c(x_col, y_col),
                           crs = design$crs, remove = FALSE)
   if (sf::st_crs(region) != sf::st_crs(data_sf)) {
@@ -202,12 +212,9 @@ warn_if_antimeridian <- function(region) {
 
 #' @noRd
 exact_inclusion.drawn_design_spatial <- function(design, data) {
-  require_suggested("sf", "spatial sampling")
-  validate_data(data, required_columns = design$coords)
-  inside <- spatial_inside(design, data)
+  inside <- spatial_setup(design, data)
   out <- numeric(nrow(data))
-  if (!any(inside)) return(out)
-  out[inside] <- min(1, design$n / sum(inside))
+  out[inside] <- design$n / sum(inside)
   out
 }
 

@@ -141,3 +141,32 @@ test_that("the rows an order_by drops do not count towards the remainder", {
   expect_equal(r$se, 4)
   expect_match(r$note, "The 244 rows walked")
 })
+
+test_that("an order_by the frame lacks is refused on every path", {
+  # The probability paths gave every row 0 and every weight NA for a
+  # misspelt or missing column, where draw() refused it.
+  d <- data.frame(id = 1:24, v = (24:1) / 2, y = 1:24)
+  des <- design_systematic(interval = 4, order_by = "V")
+  want <- "`data` is missing column: `V`."
+  expect_error(draw(d, des, seed = 1), want, fixed = TRUE)
+  expect_error(inclusion_prob(d, des), want, fixed = TRUE)
+  expect_error(sampling_weight(d, des), want, fixed = TRUE)
+  expect_error(joint_prob(d, des, rows = 1:3), want, fixed = TRUE)
+  expect_error(
+    drawn:::ht_variance.drawn_design_systematic(des, d, 1:6, 1:6, rep(0.25, 6)),
+    want, fixed = TRUE)
+})
+
+test_that("deleting order_by from the frame after the draw leaves the sample", {
+  # The stored copy of the frame shared its names with the caller's, so
+  # deleting the column in place took it out of the copy too, and ht_total()
+  # refused the sample.
+  skip_if_not_installed("data.table")
+  d <- data.frame(id = 1:80, w = (80:1) / 4, y = sin(1:80) * 10 + 1:80)
+  s <- draw(d, design_systematic(interval = 8, order_by = "w"), seed = 1,
+            weights = TRUE)
+  want <- ht_total(s, "y")
+  data.table::set(d, j = "w", value = NULL)
+  expect_identical(names(attr(s, "drawn_population")), c("id", "w", "y"))
+  expect_equal(ht_total(s, "y"), want)
+})
