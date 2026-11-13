@@ -14,7 +14,8 @@
 #'   counts instead, with a column per replicate.
 #' * [design_reservoir()] returns a list when `data` is a list or a stream
 #'   rather than a data frame, because there is nothing to make a data frame
-#'   out of.
+#'   out of. With `batches = TRUE` it returns the rows sampled from a
+#'   function's data frames as one data frame.
 #'
 #' @section Design weights:
 #' `weights = TRUE` prepends three columns: `.prob`, the probability that the

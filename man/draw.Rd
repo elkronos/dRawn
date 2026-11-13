@@ -36,7 +36,8 @@ Split them with \code{split(out, out$.replicate)} if you need a list. With
 counts instead, with a column per replicate.
 \item \code{\link[=design_reservoir]{design_reservoir()}} returns a list when \code{data} is a list or a stream
 rather than a data frame, because there is nothing to make a data frame
-out of.
+out of. With \code{batches = TRUE} it returns the rows sampled from a
+function's data frames as one data frame.
 }
 }
 

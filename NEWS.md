@@ -539,6 +539,9 @@
   cube root in floating point fell below the whole number, so 64 rows
   got runs of 3 instead of 4, and 1,000 rows runs of 9 instead of 10. Such
   frames get different replicates for a seed.
+* `draw()` with a finite `design_reservoir(max_items =)` pushes the line it
+  reads past the cap back onto an open connection in text mode, so the next
+  read starts with it. It was read and dropped.
 
 ## New
 
@@ -631,6 +634,11 @@
   as replicate weights. Neither copies the data. The default, `"rows"`,
   still returns the stacked frame, and for one seed all three hold the same
   replicates.
+* `design_reservoir()` takes `batches`. With `batches = TRUE`, a function
+  that returns a data frame on each call is sampled by row rather than by
+  data frame: Algorithm L runs over the rows, `draw()` returns `n` of them
+  as one data frame, and `max_items` counts rows. A seed gives the same rows
+  however the stream is cut into batches.
 
 ## Speed and memory
 
@@ -692,6 +700,10 @@
   `n = 5e7` took 400 MB for a stream of five items. It counts the items read
   in a double, so a stream of more than 2,147,483,647 items no longer stops
   with "missing value where TRUE/FALSE needed".
+* `design_reservoir()` reads a connection 10,000 lines at a time and works
+  out Algorithm L's swaps within each block, where it called `readLines()`
+  once per line. 500,000 lines took 2.5 seconds and now take 0.1, with the
+  same sample for a seed.
 
 ## Handing off to survey
 
@@ -751,6 +763,12 @@
   the bootstrap was the tool for any statistic the estimators do not cover.
   It also says that `n = 0` gives a frame with no rows that keeps its
   `.replicate` column.
+* `?design_reservoir` says that each line of a connection is an item, a CSV
+  header included, and shows how to read the header off an open connection
+  before drawing. It said that items past `max_items` were never read; one
+  is read, to tell a longer stream from one of exactly `max_items`, and a
+  function is called once past the cap. A connection that is not open is
+  opened, read and closed, as `read.csv()` does.
 
 # drawn 0.2.0
 

@@ -587,6 +587,11 @@ One pass, five items held, a hundred thousand seen. Algorithm L skips ahead
 geometrically rather than drawing a random number per item, and the items come
 back in the order they arrived.
 
+Each line of a connection is an item, a CSV header included, and a function
+that returns a data frame gives whole data frames as items.
+`?design_reservoir` shows how to leave a header out, and how
+`batches = TRUE` samples the rows of those data frames instead.
+
 ## Bootstrap, for the uncertainty of a statistic
 
 The other designs estimate a population total. The bootstrap estimates the

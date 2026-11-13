@@ -51,7 +51,7 @@
 #'   returning, and always gives back a data frame with the input's class and
 #'   column order. [design_bootstrap()] with `output = "indices"` or
 #'   `"weights"` gives a matrix instead, and [design_reservoir()] a list
-#'   when `data` is not a data frame.
+#'   when `data` is not a data frame, unless `batches = TRUE`.
 #' * Rows come back in frame order for every design that selects a set of rows,
 #'   including [design_systematic()] with `order_by`.
 #'   The two exceptions are the ones where draw order is meaningful:

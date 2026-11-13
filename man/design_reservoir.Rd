@@ -4,16 +4,24 @@
 \alias{design_reservoir}
 \title{Reservoir sampling}
 \usage{
-design_reservoir(n, max_items = Inf)
+design_reservoir(n, max_items = Inf, batches = FALSE)
 }
 \arguments{
 \item{n}{Reservoir size. Fewer items come back if the stream is shorter; the
 result is never padded.}
 
-\item{max_items}{Stop after reading this many items. Rows past it are never
-read, so \code{\link[=inclusion_prob]{inclusion_prob()}} gives them \code{0} and gives the rows before it
-\code{n / max_items} rather than \code{n / N}. \code{Inf} reads the whole
-stream. Warns when the cap actually truncates.}
+\item{max_items}{Stop after this many items, or rows with
+\code{batches = TRUE}. Items past the cap are never sampled, so
+\code{\link[=inclusion_prob]{inclusion_prob()}} gives rows past it \code{0} and gives the rows before it
+\code{n / max_items} rather than \code{n / N}. A stream is read one item past the
+cap; see "What is read". \code{Inf} reads the whole stream. Warns when the cap
+truncates.}
+
+\item{batches}{If \code{TRUE}, \code{data} is a function that returns a data frame of
+rows on each call and \code{NULL} at the end, and the reservoir samples rows
+rather than whole data frames. \code{\link[=draw]{draw()}} then returns a data frame. A data
+frame given as \code{data} is sampled by rows either way; a list or a
+connection is refused.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -30,13 +38,51 @@ returns them in their original order. Every element of a list is an item,
 \code{NULL} included, and the elements keep their names. The streaming path is
 for data that does not fit in memory. Pass it a connection, or a function
 that returns the next item and \code{NULL} at end of stream. It holds at most \code{n}
-items at a time and returns them in the order they arrived. For a list, a
-connection or a function, \code{\link[=draw]{draw()}} returns a list rather than a data frame.
+items at a time, plus the block it is reading, and returns them in the order
+they arrived. For a list, a connection or a function, \code{\link[=draw]{draw()}} returns a
+list rather than a data frame, except with \code{batches = TRUE}.
 
 The two paths use different algorithms, so for one seed a stream gives a
 different sample from a data frame or list holding the same items. Each
 path on its own gives the same sample for the same seed.
 }
+\section{Items in a stream}{
+
+Each line of a connection is one item, a character string as \code{\link[=readLines]{readLines()}}
+returns it, and a header line is an item like any other. To leave a CSV
+header out of the sample, open the connection, read the header with
+\code{readLines(con, n = 1)} and then draw from the connection, which is read
+from where the header left off. \code{read.csv(text = c(header, unlist(lines)))}
+turns the sampled lines into a data frame (see the examples). \code{\link[=draw]{draw()}}
+reads a connection in blocks of 10,000 lines, which gives the same sample
+for a seed as reading it line by line.
+
+A function is called once for each item, and whatever it returns is that
+item, a data frame included, so a function that returns blocks of rows
+gives a sample of whole blocks. With \code{batches = TRUE} the rows are the
+items instead: each call returns a data frame of rows, every batch with
+the same columns in the same order, and \code{\link[=draw]{draw()}} returns \code{n} of those rows
+as one data frame, bound with \code{\link[=rbind]{rbind()}} in the order they arrived. Cutting
+the same rows into batches of other sizes gives the same sample for a
+seed. Between batches it keeps at most \code{max(2 * n, 1024)} rows, some of
+them already dropped from the sample, besides the batch being read.
+}
+
+\section{What is read}{
+
+A connection that is not open is opened, read to its end and closed, as
+\code{\link[=read.csv]{read.csv()}} does, so it cannot be drawn from twice. A connection that is
+already open is read from where it stands and left open.
+
+With a finite \code{max_items}, \code{\link[=draw]{draw()}} reads one item past the cap, because
+only that read tells a stream of exactly \code{max_items} items from a longer
+one. On an open connection in text mode the line goes back with
+\code{\link[=pushBack]{pushBack()}}, so the next read starts with it. A connection opened in
+binary mode (\code{"rb"}) cannot take a line back, and loses it. A function is
+called once past the cap and what it returns is dropped; with
+\code{batches = TRUE}, so are the rows of a batch that run past the cap.
+}
+
 \examples{
 nrow(draw(data.frame(id = 1:1000), design_reservoir(n = 10), seed = 1))
 
@@ -47,6 +93,28 @@ gen <- function() {
   if (i > 50) NULL else i
 }
 unlist(draw(gen, design_reservoir(n = 5), seed = 1))
+
+# A CSV file read line by line, with its header left out of the sample
+path <- tempfile(fileext = ".csv")
+write.csv(data.frame(id = 1:200, value = (1:200) \%\% 7), path,
+          row.names = FALSE)
+con <- file(path, "r")
+header <- readLines(con, n = 1)
+lines <- draw(con, design_reservoir(n = 5), seed = 1)
+close(con)
+read.csv(text = c(header, unlist(lines)))
+
+# The same file parsed 50 rows at a time, sampling rows: the same five
+# rows as above for the same seed
+con <- file(path, "r")
+header <- readLines(con, n = 1)
+next_rows <- function() {
+  lines <- readLines(con, n = 50)
+  if (length(lines) == 0) NULL else read.csv(text = c(header, lines))
+}
+draw(next_rows, design_reservoir(n = 5, batches = TRUE), seed = 1)
+close(con)
+unlink(path)
 
 }
 \references{
