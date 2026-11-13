@@ -38,6 +38,8 @@ approximation (Wolter 2007), which compares neighbouring sampled rows in
 the order the design walked. Sorting on a variable related to what you
 measure (\code{order_by}) is what makes systematic sampling efficient, and this
 estimator is the one that can see it; see \code{\link[=ht_total]{ht_total()}} for its limits.
+When \code{interval} does not divide the number of rows walked, the sample size
+is random, and a term for that is added to the variance.
 }
 
 \examples{

@@ -31,6 +31,21 @@ warn_drawn <- function(message, class) {
   warning(cond)
 }
 
+#' Refuse a probability or variance that the design does not define
+#'
+#' The condition has class `c("drawn_declined", "error", "condition")` and no
+#' call. Called directly, as from [joint_prob()], it is an ordinary error.
+#' `ht_variance_dispatch()` catches this class and no other, so the estimator
+#' declining falls back to the jackknife or reports no variance, while any
+#' other error, from running out of memory to a bug, reaches the caller.
+#'
+#' @noRd
+stop_declined <- function(message) {
+  cond <- structure(list(message = message, call = NULL),
+                    class = c("drawn_declined", "error", "condition"))
+  stop(cond)
+}
+
 #' Evaluate an expression under a seed without disturbing the caller's RNG
 #'
 #' Saves `.Random.seed`, seeds, evaluates, then restores the previous state on

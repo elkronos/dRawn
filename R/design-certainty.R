@@ -248,7 +248,8 @@ joint_inclusion.drawn_design_certainty <- function(design, data, rows) {
 #' `rest` that drew none of them leaves their share unobserved.
 #'
 #' @noRd
-ht_variance.drawn_design_certainty <- function(design, data, rows, y, pi_i) {
+ht_variance.drawn_design_certainty <- function(design, data, rows, y, pi_i,
+                                               domain = NULL) {
   sp <- certainty_split(design, data)
   free <- !(rows %in% sp$keep[sp$take])
   if (!any(free)) {
@@ -262,5 +263,16 @@ ht_variance.drawn_design_certainty <- function(design, data, rows, y, pi_i) {
       "no place in the frame the variance is computed over.")))
   }
   ht_variance(design$rest, sp$data[sp$rest, , drop = FALSE], pos,
-              y[free], pi_i[free])
+              y[free], pi_i[free], rest_domain(domain, sp))
+}
+
+#' A domain's frame rows, restricted to the rows handed to `rest`
+#'
+#' `domain` is `NULL`, `NA` or a logical vector over the frame, as
+#' `ht_variance_dispatch()` takes it.
+#'
+#' @noRd
+rest_domain <- function(domain, sp) {
+  if (is.null(domain) || identical(domain, NA)) return(domain)
+  domain[sp$keep[sp$rest]]
 }

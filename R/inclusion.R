@@ -149,9 +149,9 @@ simulate_inclusion <- function(data, design, R, seed) {
 
 #' @noRd
 no_closed_form <- function(what, alternative) {
-  stop(what, " has no closed-form inclusion probability.\n",
-       alternative, "\n",
-       "Or pass simulate = TRUE to estimate it by Monte Carlo.", call. = FALSE)
+  stop_declined(paste0(
+    what, " has no closed-form inclusion probability.\n", alternative, "\n",
+    "Or pass simulate = TRUE to estimate it by Monte Carlo."))
 }
 
 #' @noRd

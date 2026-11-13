@@ -149,6 +149,23 @@
   than the per-cluster take was refused as capped at its own size, which it
   is not with replacement. `draw(weights = TRUE)` refuses with-replacement designs,
   so no estimate used these figures.
+* **A Hajek mean over one primary sampling unit had a standard error of 0.**
+  A `by` domain with one sampled row, or with all its sampled rows in one
+  cluster, and a Poisson sample of one row got a standard error of 0 and a
+  zero-width interval labelled "analytic", because the linearised residuals
+  of a mean sum to zero inside the one unit. `survey` gives the same 0.
+  `ht_mean()` now gives such a mean no standard error, with a note, unless
+  every unit of the domain was taken with certainty, which makes it exact.
+  `?ht_total` adds that intervals for domains with few sampled rows cover
+  less often than `level` says.
+* **A systematic sample understated the variance when `interval` did not
+  divide the frame.** The sample size is then random, 30 or 31 rows for 244
+  rows at an interval of 8, and successive differences cannot see what that
+  adds to a total. A constant `y` got a standard error of 0, and a variable
+  with a coefficient of variation of 0.02 got 0.04 of its true variance and
+  an interval that never covered the truth. `ht_total()`, domain totals and
+  `ht_mean(estimator = "ht")` now add a term for the random size, and the
+  note says so. The default Hajek mean was not affected.
 
 ## Refusals and clearer errors
 
@@ -205,6 +222,25 @@
   argument, the value passed and the choices. The message from `match.arg()`
   named neither the argument nor the value. A missing cluster label is called
   a cluster label by `inclusion_prob()` as well as by `draw()`.
+* `ht_total()` and `ht_mean()` stop with the error when something fails
+  inside a variance estimator, such as running out of memory. Every error was
+  read as the estimator declining, so `variance = "auto"` fell back to the
+  jackknife and gave R's message, "cannot allocate vector of size 244.1 Mb"
+  in one example, as the reason. Only a decline, a condition of class
+  `drawn_declined`, leads to the jackknife now. `inclusion_prob()` and
+  `joint_prob()` raise that class where a design has no closed form.
+* A variance too large to represent, from values of `y / .prob` above about
+  `1e154`, is reported as missing with a note to rescale `y`, whichever
+  estimator ran, and the note says it once.
+* `variance = "jackknife"` reports `method = "none"` when the jackknife gives
+  no figure, as for a systematic or Poisson sample, which is what `?ht_total`
+  says. It reported `"jackknife"`, in `by` tables too. Its note for strata
+  with one unit says how many there are, where it read "needs two units per
+  stratum as well" with nothing before it.
+* A `df` below 1 is refused. It was accepted and the interval dropped without
+  a word. When the design leaves 0 degrees of freedom, as a Poisson sample of
+  one row does, the note says that, and `print()` shows it. It blamed one
+  unit per stratum, and was not printed beside an analytic standard error.
 
 ## Behaviour changes
 
@@ -243,6 +279,19 @@
   gives the factor by which the jackknife inflates the variance between
   clusters. When every cluster was selected, it says that variance is zero by
   design and points to `design_stratified()`.
+* A `by` domain gets a variance when a stratum or interval with one sampled
+  row holds none of its units, read from the `by` columns of the frame
+  stored with the sample. A domain of strata or intervals taken whole is
+  exact, with a zero-width interval even at 0 degrees of freedom. Such
+  domains were refused with a note saying the standard error would be
+  understated, which was false for them. A domain with units in the lonely
+  stratum is still refused, and when the frame has no `by` columns the note
+  says the frame cannot tell.
+* The Sen-Yates-Grundy estimator declines past about 4,700 sampled rows,
+  where its matrices would need more than 2 GB, and the note gives the size.
+  `variance = "auto"` then uses the jackknife, which gives the same figure
+  for simple random and stratified samples. At 8,000 rows it needed about
+  6 GB.
 
 ## Speed and memory
 
@@ -258,6 +307,9 @@
   selected clusters in one pass over the frame instead of one pass per
   cluster. Selecting 1,000 clusters from a million rows took 16 seconds and
   now takes 0.2. The clusters chosen for a seed are unchanged.
+* The jackknife sums each unit with `rowsum()`, so its time grows with the
+  number of rows rather than with rows times units. 20,000 rows took 2.6
+  seconds and now take 0.03.
 
 ## Handing off to survey
 

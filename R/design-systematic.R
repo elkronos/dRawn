@@ -23,6 +23,8 @@
 #' the order the design walked. Sorting on a variable related to what you
 #' measure (`order_by`) is what makes systematic sampling efficient, and this
 #' estimator is the one that can see it; see [ht_total()] for its limits.
+#' When `interval` does not divide the number of rows walked, the sample size
+#' is random, and a term for that is added to the variance.
 #'
 #' @return A design object, for use with [draw()].
 #'
@@ -117,9 +119,10 @@ systematic_positions <- function(design, data) {
 #' @noRd
 exact_inclusion.drawn_design_systematic <- function(design, data) {
   if (!is.null(design$start)) {
-    stop("A systematic design with a fixed `start` is not a probability ",
-         "sample: each row is selected with probability 0 or 1. Leave `start` ",
-         "as NULL for a random start.", call. = FALSE)
+    stop_declined(paste0(
+      "A systematic design with a fixed `start` is not a probability sample: ",
+      "each row is selected with probability 0 or 1. Leave `start` as NULL ",
+      "for a random start."))
   }
   # Row j is selected exactly when start == ((j - 1) %% interval) + 1, which is
   # one of the `interval` equally likely starts. Exact for any N.

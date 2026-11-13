@@ -87,6 +87,11 @@ whichever estimator suits the design — see \code{\link[=ht_total]{ht_total()}}
 the confidence interval's degrees of freedom, how \code{by} estimates domain
 means from the whole sample rather than a subset of it, and what an empty
 sample gives.
+
+The residuals sum to zero inside a primary sampling unit that holds every
+sampled row of the domain, so a Hajek mean over one unit, such as a domain
+with one sampled row or a Poisson sample of one row, gets no standard
+error. The "Domains" section of \code{\link[=ht_total]{ht_total()}} says more.
 }
 
 \examples{

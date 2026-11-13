@@ -30,6 +30,27 @@ test_that("one sampled row per stratum is refused, not reported as zero", {
   expect_true(all(is.na(auto$ci)))
 })
 
+test_that("the jackknife's refusal of a lonely stratum stands on its own", {
+  # With variance = "jackknife" the note read "needs two units per stratum
+  # as well", with nothing before it, and `method` said "jackknife".
+  d <- strata_pop()
+  s <- draw(d, design_stratified("g", n = 20), seed = 1, weights = TRUE)
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_equal(jk$method, "none")
+  expect_equal(jk$note, paste0("The stratified jackknife needs at least ",
+                               "two units in each stratum, and 20 strata ",
+                               "have one."))
+
+  t <- data.frame(ts = rep(seq(as.POSIXct("2024-01-01", tz = "UTC"),
+                               by = "day", length.out = 6), each = 5),
+                  y = (1:30 * 7) %% 11)
+  des <- design_temporal("ts", from = "2024-01-01", to = "2024-01-07",
+                         interval = 1, per_interval = 1, unit = "days")
+  r <- ht_total(draw(t, des, seed = 1, weights = TRUE), "y",
+                variance = "jackknife")
+  expect_match(r$note, "each interval, and 6 intervals have one.", fixed = TRUE)
+})
+
 test_that("a stratum taken whole is not lonely", {
   d <- data.frame(g = c("solo", rep("big", 50)), y = c(1000, 1:50))
   s <- draw(d, design_stratified("g", n = 11, min_per_stratum = 1), seed = 2,

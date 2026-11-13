@@ -49,6 +49,11 @@
 #' means from the whole sample rather than a subset of it, and what an empty
 #' sample gives.
 #'
+#' The residuals sum to zero inside a primary sampling unit that holds every
+#' sampled row of the domain, so a Hajek mean over one unit, such as a domain
+#' with one sampled row or a Poisson sample of one row, gets no standard
+#' error. The "Domains" section of [ht_total()] says more.
+#'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. It is
 #'   read as [ht_total()] reads it: `.prob` for the probabilities, and the
 #'   stored frame for the design's columns. See "Which columns are read" there.
@@ -137,10 +142,14 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
   # Linearise: the variance of a ratio is the variance of a total of residuals.
   # For the HT mean there is no denominator to vary, so the residual is just y.
   z <- if (estimator == "hajek") (yv - est) / denom else yv / N
+  declined <- if (estimator == "hajek" && variance != "none") {
+    ratio_decline(parts, rep(TRUE, length(yv)))
+  }
 
   estimate_one(parts, est, z, variance, level, df, what = "mean",
                class = "drawn_mean", deff_y = yv,
-               extra = list(estimator = estimator), logit = parts$binary)
+               extra = list(estimator = estimator), logit = parts$binary,
+               var_out = declined)
 }
 
 #' Estimates for each domain, from the whole sample
@@ -172,21 +181,28 @@ estimate_by <- function(parts, by, variance, level, df, what,
     keys <- group_key2(parts$sample, parts$pop, by)
     key <- as.integer(keys$x)
     pop_key <- as.integer(keys$table)
-    n_lev <- nlevels(keys$x)
+    labels <- group_label(levels(keys$x))
   } else {
     k <- group_key(parts$sample, by)
     key <- as.integer(k)
     pop_key <- NULL
-    n_lev <- nlevels(k)
+    labels <- group_label(levels(k))
   }
-  levels_in <- which(tabulate(key, n_lev) > 0L)
+  levels_in <- which(tabulate(key, length(labels)) > 0L)
   pi_i <- parts$pi
   yv <- parts$y
   df_use <- df %||% design_df(parts$design, parts$units, parts$pop,
                               parts$rows, pi_i)
+  # Which frame rows each domain holds, read from the frame's own `by`
+  # columns. Where those are missing, or disagree with the sample's values
+  # for the sampled rows, the frame cannot say and `domain` is NA.
+  aligned <- !is.null(pop_key) && identical(pop_key[parts$rows], key)
+  ratio <- what == "mean" && estimator == "hajek" && variance != "none"
+  psu <- if (ratio) sample_units(parts$design, parts$units)
 
   rows <- lapply(levels_in, function(d) {
     ind <- as.numeric(key == d)
+    domain <- if (aligned) !is.na(pop_key) & pop_key == d else NA
     if (what == "total") {
       est <- sum(ind * yv / pi_i)
       z <- ind * yv
@@ -203,8 +219,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
       est <- sum(ind * yv / pi_i) / denom
       z <- if (estimator == "hajek") ind * (yv - est) / denom else ind * yv / denom
     }
-    v <- ht_variance_dispatch(parts$design, parts$units, parts$pop,
-                              parts$rows, z, pi_i, variance)
+    v <- if (ratio) ratio_decline(parts, ind == 1, domain, labels[d], psu)
+    v <- v %||% ht_variance_dispatch(parts$design, parts$units, parts$pop,
+                                     parts$rows, z, pi_i, variance, domain)
     ci <- interval(est, v$variance, level, df_use,
                    logit = what == "mean" && parts$binary)
     list(n = sum(ind), est = est, se = if (is.finite(v$variance) &&
@@ -225,6 +242,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
   out$ci_upper <- vapply(rows, `[[`, numeric(1), "hi")
   out$method <- vapply(rows, `[[`, character(1), "method")
   notes <- unique(unlist(lapply(rows, `[[`, "note")))
+  if (any(is.finite(out$se) & !is.finite(out$ci_lower))) {
+    notes <- c(notes, df_note(df_use))
+  }
   structure(out, class = c("drawn_by", "data.frame"),
             what = what, estimator = if (what == "mean") estimator,
             level = level, df = df_use, design = design_type(parts$design),
@@ -339,8 +359,10 @@ ht_prepare <- function(sample, y, level, df = NULL) {
     }
   }
   if (!is.null(df) && (!is.numeric(df) || length(df) != 1L || is.na(df) ||
-                       df <= 0)) {
-    stop("`df` must be a single positive number, Inf, or NULL.", call. = FALSE)
+                       df < 1)) {
+    stop("`df` must be NULL, Inf or a single number of 1 or more, not ",
+         format_bad(df), ". A t interval needs at least one degree of ",
+         "freedom.", call. = FALSE)
   }
 
   yv <- if (is.character(y) && length(y) == 1L) {
@@ -372,8 +394,8 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   if (is.null(state$pi_all)) check_prob(sample)
   warn_weight_edited(sample)
   list(design = state$design, rows = state$rows, pop = state$pop,
-       units = state$units, y = yv, pi = sample$.prob, sample = sample,
-       binary = all(yv == 0 | yv == 1))
+       units = state$units, pi_all = state$pi_all, y = yv, pi = sample$.prob,
+       sample = sample, binary = all(yv == 0 | yv == 1))
 }
 
 #' Warn when `.weight` is no longer `1 / .prob`
@@ -425,6 +447,8 @@ warn_grouped <- function(sample, fun) {
 #' @noRd
 interval <- function(est, v, level, df, logit = FALSE) {
   if (!is.finite(v) || v < 0) return(c(NA_real_, NA_real_))
+  # A variance of 0 is an exact estimate, whatever the degrees of freedom.
+  if (v == 0) return(c(est, est))
   q <- if (is.finite(df)) {
     if (df < 1) return(c(NA_real_, NA_real_))
     stats::qt(1 - (1 - level) / 2, df)
@@ -450,11 +474,8 @@ finish_estimate <- function(est, var_out, level, df, n, design, y, pi_i, N,
   logit <- isTRUE(logit && est > 0 && est < 1)
   ci <- interval(est, v, level, df, logit)
   note <- var_out$note
-  if (!is.na(se) && is.finite(df) && df < 1) {
-    note <- c(note, paste0("There are no degrees of freedom left for an ",
-                           "interval: the sample has one primary sampling ",
-                           "unit per stratum."))
-    note <- paste(note, collapse = " ")
+  if (!is.na(se) && !all(is.finite(ci))) {
+    note <- paste(c(note, df_note(df)), collapse = " ")
   }
 
   out <- list(variance = v, se = se, ci = ci, level = level, df = df, n = n,
@@ -465,6 +486,20 @@ finish_estimate <- function(est, var_out, level, df, n, design, y, pi_i, N,
               method = var_out$method %||% "analytic", note = note)
   out[[what]] <- est
   structure(out, class = class)
+}
+
+#' Why an estimate with a standard error has no interval
+#'
+#' `ht_prepare()` refuses a `df` below 1 from the caller, so a missing
+#' interval with a finite standard error comes from the design's degrees of
+#' freedom.
+#'
+#' @noRd
+df_note <- function(df) {
+  paste0("The design leaves ", format(df), " degrees of freedom, the number ",
+         "of primary sampling units below certainty less the number of strata ",
+         "holding them, so there is no t interval. Pass `df` to set the ",
+         "degrees of freedom, or `df = Inf` for a normal interval.")
 }
 
 #' Variance under simple random sampling of the same size, for comparison
@@ -538,7 +573,8 @@ print_estimate <- function(x, field, label) {
           else "about the same as", " simple random sampling)\n", sep = "")
     }
   }
-  if (!is.null(x$note) && (is.na(x$se) || !identical(x$method, "analytic"))) {
+  if (!is.null(x$note) && (is.na(x$se) || !identical(x$method, "analytic") ||
+                            !all(is.finite(x$ci)))) {
     cat_note(x$note)
   }
   invisible(x)

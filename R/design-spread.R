@@ -299,7 +299,8 @@ local_mean_variance <- function(x, y, pi_i, k = 4L) {
 #' estimator runs over the rest.
 #'
 #' @noRd
-ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i) {
+ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i,
+                                            domain = NULL) {
   fr <- spread_frame(design, data)
   pos <- match(rows, fr$keep)
   if (anyNA(pos)) {

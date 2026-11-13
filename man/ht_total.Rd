@@ -33,7 +33,8 @@ resamples; \code{"none"} skips it. The result reports which was used in
 the result is one row per domain. See "Domains".}
 
 \item{df}{Degrees of freedom for the interval. \code{NULL} uses the design's
-(see "Confidence intervals"); \code{Inf} gives a normal interval.}
+(see "Confidence intervals"); \code{Inf} gives a normal interval; otherwise a
+single number of 1 or more.}
 }
 \value{
 A list with a \code{print()} method, holding:
@@ -70,7 +71,9 @@ sampling, whose rows are independent, uses \code{sum((1 - pi) / pi^2 * y^2)};
 cluster designs apply the estimator at the cluster level, because taking
 whole clusters makes the row count random; certainty designs hand the
 problem to \code{rest}, since certainty rows are in every sample and add
-nothing.}
+nothing. Sen-Yates-Grundy works on matrices with a row and a column per
+sampled row, and past about 4,700 sampled rows they would need more
+than 2 GB, so it declines and says how much.}
 \item{\code{"deville"}}{Systematic probability-proportional-to-size
 (\code{\link[=design_weighted]{design_weighted()}} with \code{method = "systematic"}). Its joint
 probabilities have no closed form, so this uses Deville's (1999)
@@ -93,7 +96,14 @@ stayed near the truth. Two limits no estimator from a single systematic
 sample can escape: it is understated if the frame cycles with a period
 matching \code{interval}, and when a smooth trend so dominates \code{y} that the
 random start is almost the only source of variation, it runs low (0.3 to
-0.7 of the truth when the trend spanned 25 noise standard deviations).}
+0.7 of the truth when the trend spanned 25 noise standard deviations).
+When \code{interval} does not divide the number of rows walked, the sample
+size is random, one of two values, and the total moves with it in a way
+successive differences cannot see. A term for that,
+\code{mean(y / pi)^2 * (r / k) * (1 - r / k)} with \code{k} the interval and \code{r}
+the remainder, is added, and the note says so. Without it a constant
+\code{y} had a standard error of 0, and a variable with a coefficient of
+variation of 0.02 an interval that never covered the truth.}
 \item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
 well spread precisely because neighbours are rarely taken together, so
 this compares each sampled row with the local mean of its nearest
@@ -112,7 +122,9 @@ finite population correction counts only the other units. A sample made of
 nothing else reports a variance of 0, with a note that the total is exact.
 
 The analytic estimator declines — returning \code{NA} with the reason in \code{note}
-— rather than understate. Two cases matter in practice:
+— rather than understate. Only a decline sends \code{variance = "auto"} to the
+jackknife. Any other error inside an estimator, such as running out of
+memory, stops \code{ht_total()} with that error. Two cases matter in practice:
 \itemize{
 \item \strong{A stratum or interval with a single sampled row.} There is no
 variation inside it to measure, and simply leaving it out, as the
@@ -160,6 +172,11 @@ count of strata. With no unit below certainty the variance is 0 and \code{df}
 is \code{Inf}. \code{\link[=as_svydesign]{as_svydesign()}} hands certain units to \code{survey} in a form that
 makes \code{survey::degf()} give the same count, except for a census, where it
 gives \code{n - 1}.
+
+An estimate whose variance is 0 is exact and gets a zero-width interval
+whatever \code{df} is. Otherwise a design that leaves 0 degrees of freedom, such
+as Poisson sampling that drew one row, gives a standard error but no
+interval, and \code{note} says why. \code{df} set by hand must be at least 1.
 }
 
 \section{An empty sample}{
@@ -188,6 +205,26 @@ Domains come out in key order: a factor's levels, numbers and dates in
 sequence, and text sorted byte by byte as in the C locale, the same in every
 session. A domain with no sampled row is left out, as \code{survey::svyby()}
 leaves it out.
+
+A stratum or interval with a single sampled row stops a domain's variance,
+as it stops the whole sample's, unless it holds no unit of the domain. That
+is read from the \code{by} columns of the frame stored with the sample, so it
+needs them in the frame, with the same values as in the sample. A domain
+made of strata taken whole is then exact, with a zero-width interval. A
+lonely stratum whose one sampled row lies outside the domain still stops
+it when other units of the stratum belong to the domain, because their
+variation went unmeasured.
+
+A domain's Hajek mean (\code{\link[=ht_mean]{ht_mean()}}) needs sampled rows in at least two
+primary sampling units, rows or clusters. Its linearised residuals sum to
+zero inside the unit that holds the whole domain, so with one unit every
+estimator gives a standard error of about 0, and \code{survey} does the same.
+Such a domain gets no standard error, with a note. Totals and the
+\code{estimator = "ht"} mean are not affected. A domain with a handful of
+sampled rows has a standard error that is itself unreliable, and the
+interval covers less often than \code{level} says. In one simulation of a
+skewed variable, a 95\% interval for the mean of a domain with two or three
+sampled rows covered 65\% of the time, and 85\% with four or five.
 
 A sample grouped with \code{dplyr::group_by()} is estimated as a whole, with a
 warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}.

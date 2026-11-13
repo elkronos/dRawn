@@ -114,8 +114,8 @@ simulate_joint <- function(data, design, rows, R, seed) {
 
 #' @noRd
 no_joint_form <- function(what, alternative) {
-  stop(what, " has no closed-form joint inclusion probability.\n", alternative,
-       call. = FALSE)
+  stop_declined(paste0(what, " has no closed-form joint inclusion ",
+                       "probability.\n", alternative))
 }
 
 #' @noRd
@@ -331,8 +331,8 @@ joint_inclusion.drawn_design_weighted <- function(design, data, rows) {
 #' @noRd
 joint_inclusion.drawn_design_systematic <- function(design, data, rows) {
   if (!is.null(design$start)) {
-    stop("A systematic design with a fixed `start` is not a probability ",
-         "sample.", call. = FALSE)
+    stop_declined(paste0("A systematic design with a fixed `start` is not a ",
+                         "probability sample."))
   }
   k <- design$interval
   # Residue classes come from the order the design walks, which `order_by`

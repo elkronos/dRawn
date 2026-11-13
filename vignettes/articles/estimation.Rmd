@@ -121,6 +121,13 @@ neighbour in the order the design walked (Wolter 2007):
 $$\hat V = (1 - f)\, \frac{n}{2(n-1)} \sum_{j=2}^{n}
 \left(\frac{y_{(j)}}{\pi} - \frac{y_{(j-1)}}{\pi}\right)^2.$$
 
+When the interval $k$ does not divide the $N$ rows the design walks, the sample
+holds $\lfloor N/k \rfloor$ or $\lfloor N/k \rfloor + 1$ rows, and the total
+moves with that count. Successive differences cannot see it, so
+$\bar u^2 (r/k)(1 - r/k)$ is added, with $\bar u$ the mean of $y/\pi$ over the
+sample and $r$ the remainder of $N/k$. Without the term a constant $y$ would
+get a variance of 0.
+
 Sorting the frame on something related to $y$ is what makes systematic sampling
 efficient, and this estimator can see that where the simple-random formula
 cannot:

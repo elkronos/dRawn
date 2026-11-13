@@ -70,3 +70,74 @@ test_that("a text order_by is walked in byte order in every locale", {
     expect_equal(joint_prob(d, des), pij)
   })
 })
+
+# One sample for each start: every start has probability 1 / interval, so
+# averages over these are exact expectations.
+every_start <- function(d, des) {
+  out <- list()
+  i <- 0L
+  while (length(out) < des$interval && i < 500L) {
+    i <- i + 1L
+    s <- suppressWarnings(draw(d, des, seed = i, weights = TRUE))
+    out[[paste(s$.row, collapse = ",")]] <- s
+  }
+  unname(out)
+}
+
+test_that("a random sample size adds its own variance", {
+  # 244 rows at interval 8 give samples of 30 or 31 rows. Successive
+  # differences cannot see that, so this near-constant `y` got 0.016 of its
+  # true variance, and a constant one a standard error of 0.
+  d <- data.frame(y = 1000 + (seq_len(244) * 37) %% 41 - 20, one = 1)
+  des <- design_systematic(interval = 8)
+  samples <- every_start(d, des)
+  expect_length(samples, 8L)
+  est <- vapply(samples, function(s) {
+    r <- ht_total(s, "y")
+    c(r$total, r$variance)
+  }, numeric(2))
+  ratio <- mean(est[2, ]) / mean((est[1, ] - sum(d$y))^2)
+  expect_gt(ratio, 0.8)
+  expect_lt(ratio, 1.25)
+
+  # For a constant `y` the term is exact: the total is 8 times the sample
+  # size, which is 30 or 31 with equal chance.
+  r <- ht_total(samples[[1]], "one")
+  expect_equal(r$se, 8 * 0.5)
+  expect_match(r$note, "random, 30 or 31 rows")
+
+  # The mean over the known N carries the same term; the Hajek mean's
+  # residuals average 0 and do not.
+  m <- ht_mean(samples[[1]], "one", estimator = "ht")
+  expect_equal(m$se, 8 * 0.5 / 244)
+  expect_equal(ht_mean(samples[[1]], "y")$variance,
+               ht_mean(samples[[1]], "y", variance = "analytic")$variance)
+  h <- vapply(samples, function(s) {
+    u <- (s$y - mean(s$y)) / nrow(s)
+    k <- 8
+    n <- nrow(s)
+    c(ht_mean(s, "y")$variance,
+      (1 - 1 / k) * n / (2 * (n - 1)) * sum(diff(u)^2))
+  }, numeric(2))
+  expect_equal(h[1, ], h[2, ])
+})
+
+test_that("an interval that divides the frame adds nothing", {
+  d <- data.frame(y = 1000 + (seq_len(240) * 37) %% 41 - 20)
+  s <- draw(d, design_systematic(interval = 8), seed = 1, weights = TRUE)
+  r <- ht_total(s, "y")
+  n <- nrow(s)
+  expect_equal(r$variance,
+               (1 - 1 / 8) * n / (2 * (n - 1)) * sum(diff(8 * s$y)^2))
+  expect_false(grepl("random", r$note))
+})
+
+test_that("the rows an order_by drops do not count towards the remainder", {
+  # 246 rows, 2 with no sort key: 244 walked, 30 or 31 drawn.
+  d <- data.frame(key = c(NA, NA, seq_len(244)), one = 1)
+  s <- draw(d, design_systematic(interval = 8, order_by = "key", na_rm = TRUE),
+            seed = 1, weights = TRUE)
+  r <- ht_total(s, "one")
+  expect_equal(r$se, 4)
+  expect_match(r$note, "The 244 rows walked")
+})

@@ -411,6 +411,165 @@ test_that("a variance that overflows is reported as missing, with no success not
   expect_false(grepl("Jackknife over", r$note))
 })
 
+test_that("an overflowing variance names its cause once, in every branch", {
+  d <- var_pop()
+  s <- draw(d, design_reservoir(n = 30), seed = 1, weights = TRUE)
+  big <- s$y * 1e200
+  for (v in c("auto", "analytic", "jackknife")) {
+    r <- ht_total(s, big, variance = v)
+    expect_true(is.finite(r$total), label = v)
+    expect_true(is.na(r$variance), label = v)
+    expect_equal(r$method, "none", label = v)
+    expect_equal(lengths(regmatches(r$note, gregexpr("Rescale", r$note))), 1L,
+                 label = v)
+  }
+})
+
+# ---- what the dispatcher catches ---------------------------------------------
+
+test_that("an error inside a variance estimator reaches the caller", {
+  # Every error used to be read as the estimator declining, so running out of
+  # memory, or a bug, came back as a jackknife figure with the error's text in
+  # the note.
+  pop <- data.frame(id = 1:60, y = 1:60)
+  s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
+  local_mocked_bindings(syg_variance = function(...) stop("internal failure"))
+  expect_error(ht_total(s, "y"), "internal failure")
+  expect_error(ht_total(s, "y", variance = "analytic"), "internal failure")
+  expect_error(ht_mean(s, "y"), "internal failure")
+  expect_error(ht_total(s, "y", by = "id"), "internal failure")
+})
+
+test_that("an error inside the jackknife reaches the caller", {
+  pop <- data.frame(id = 1:60, y = 1:60)
+  s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
+  local_mocked_bindings(
+    jackknife_groups = function(...) stop("internal failure")
+  )
+  expect_error(ht_total(s, "y", variance = "jackknife"), "internal failure")
+})
+
+test_that("a declining estimator still falls back to the jackknife", {
+  pop <- data.frame(id = 1:60, y = 1:60)
+  s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
+  want <- ht_total(s, "y", variance = "jackknife")
+  local_mocked_bindings(joint_inclusion = function(...) {
+    drawn:::stop_declined("No joint probabilities here.\nA second line.")
+  })
+  r <- ht_total(s, "y")
+  expect_equal(r$method, "jackknife")
+  expect_equal(r$variance, want$variance)
+  expect_match(r$note,
+               "jackknife was used instead. No joint probabilities here.",
+               fixed = TRUE)
+  expect_false(grepl("second line", r$note))
+
+  a <- ht_total(s, "y", variance = "analytic")
+  expect_true(is.na(a$variance))
+  expect_equal(a$method, "none")
+  expect_match(a$note, "No joint probabilities here.", fixed = TRUE)
+})
+
+test_that("a refusal from a design is a classed error outside the estimators", {
+  d <- var_pop()
+  err <- tryCatch(joint_prob(d, design_weighted("w", n = 10)),
+                  error = function(e) e)
+  expect_s3_class(err, "drawn_declined")
+  expect_null(conditionCall(err))
+  err <- tryCatch(inclusion_prob(d, design_systematic(8, start = 2)),
+                  error = function(e) e)
+  expect_s3_class(err, "drawn_declined")
+})
+
+test_that("Sen-Yates-Grundy declines a sample too large to hold its matrices", {
+  # About eleven n x n matrices of doubles were live at once; 8,000 rows
+  # needed 6 GB, and the error was taken for a decline.
+  pop <- data.frame(id = 1:10000, y = (1:10000) %% 97)
+  s <- draw(pop, design_simple(n = 5000), seed = 1, weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_equal(r$method, "jackknife")
+  expect_match(r$note, "GB of memory")
+  f <- 1 - 5000 / 10000
+  expect_equal(r$variance, 10000^2 * f * stats::var(s$y) / 5000,
+               tolerance = 1e-8)
+  a <- ht_total(s, "y", variance = "analytic")
+  expect_true(is.na(a$variance))
+  expect_match(a$note, "variance = \"auto\"", fixed = TRUE)
+})
+
+test_that("a jackknife that gives no figure reports method 'none'", {
+  # ?ht_total says `method` is "none" when nothing produced a figure, but a
+  # refused jackknife said "jackknife", in the by table too.
+  pop <- data.frame(w = 1 + (1:60 * 7) %% 19, y = 100 + (1:60 * 37) %% 41,
+                    g = rep(c("a", "b"), 30))
+  for (des in list(design_weighted("w", n = 12, method = "poisson"),
+                   design_systematic(interval = 6))) {
+    s <- draw(pop, des, seed = 1, weights = TRUE)
+    r <- ht_total(s, "y", variance = "jackknife")
+    expect_true(is.na(r$se))
+    expect_equal(r$method, "none")
+    expect_true(nzchar(r$note))
+    b <- ht_total(s, "y", by = "g", variance = "jackknife")
+    expect_true(all(is.na(b$se)))
+    expect_true(all(b$method == "none"))
+  }
+})
+
+test_that("a Hajek mean of a one-row sample has no standard error", {
+  # The residual of one row is 0, so the Poisson estimator gave 0 and a
+  # zero-width interval.
+  pop <- data.frame(w = rep(1, 40), y = 50 + (1:40 * 37) %% 23)
+  des <- design_weighted("w", n = 1, method = "poisson")
+  sizes <- vapply(1:40, function(i) nrow(draw(pop, des, seed = i)), integer(1))
+  s <- draw(pop, des, seed = which(sizes == 1L)[1], weights = TRUE)
+  m <- ht_mean(s, "y")
+  expect_true(is.na(m$se))
+  expect_equal(m$method, "none")
+  expect_match(m$note, "one row")
+  expect_true(all(is.na(m$ci)))
+  expect_equal(ht_mean(s, "y", variance = "none")$note,
+               "Variance not requested.")
+  # A total, and the mean over the known N, are still estimated.
+  expect_true(is.finite(ht_total(s, "y")$se))
+  expect_true(is.finite(ht_mean(s, "y", estimator = "ht")$se))
+
+  # A census of one row is exact.
+  one <- draw(data.frame(y = 7), design_simple(n = 1), weights = TRUE)
+  expect_equal(ht_mean(one, "y")$se, 0)
+})
+
+test_that("an interval missing for want of degrees of freedom says why", {
+  # A one-row Poisson sample has a standard error and 0 degrees of freedom.
+  # The note blamed one unit per stratum, and print left it out.
+  pop <- data.frame(w = rep(1, 40), y = 50 + (1:40 * 37) %% 23)
+  des <- design_weighted("w", n = 1, method = "poisson")
+  sizes <- vapply(1:40, function(i) nrow(draw(pop, des, seed = i)), integer(1))
+  s <- draw(pop, des, seed = which(sizes == 1L)[1], weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_equal(r$df, 0)
+  expect_true(is.finite(r$se))
+  expect_true(all(is.na(r$ci)))
+  expect_match(r$note, "leaves 0 degrees of freedom")
+  expect_false(grepl("per stratum", r$note))
+  expect_output(print(r), "leaves 0 degrees")
+  expect_true(all(is.finite(ht_total(s, "y", df = Inf)$ci)))
+})
+
+test_that("a df below 1 is refused rather than dropping the interval", {
+  pop <- data.frame(id = 1:100, y = 1:100)
+  s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
+  expect_error(ht_total(s, "y", df = 0.5), "not 0.5")
+  expect_error(ht_mean(s, "y", df = 0.5), "1 or more")
+  r <- ht_total(s, "y", df = 1)
+  expect_equal(diff(r$ci) / 2, stats::qt(0.975, 1) * r$se)
+})
+
+test_that("an exact estimate gets a zero-width interval at any df", {
+  expect_equal(drawn:::interval(5, 0, 0.95, 0), c(5, 5))
+  expect_equal(drawn:::interval(0.3, 0, 0.95, 0, logit = TRUE), c(0.3, 0.3))
+  expect_equal(drawn:::interval(5, 1, 0.95, 0), c(NA_real_, NA_real_))
+})
+
 # ---- degrees of freedom and units taken with certainty ----------------------
 
 dominant8 <- function() {
