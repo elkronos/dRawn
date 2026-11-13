@@ -45,6 +45,21 @@ test_that("the two estimators differ, and Hajek is the steadier one", {
   expect_lt(stats::sd(pair["hajek", ]), stats::sd(pair["ht", ]))
 })
 
+test_that("equal probabilities over the rows reached part Hajek from HT", {
+  # A reservoir capped at max_items is a simple random sample of the rows it
+  # reaches, so its weights sum to 100, not 200, and the HT mean, which
+  # divides by all 200, is half the Hajek mean.
+  d <- data.frame(y = 1:200)
+  expect_warning(
+    s <- draw(d, design_reservoir(n = 20, max_items = 100), seed = 1,
+              weights = TRUE),
+    "max_items"
+  )
+  expect_equal(sum(s$.weight), 100)
+  hajek <- ht_mean(s, "y", variance = "none")$mean
+  expect_equal(ht_mean(s, "y", "ht", variance = "none")$mean, hajek / 2)
+})
+
 test_that("the Hajek variance tracks the actual sampling variance", {
   d <- est_pop()
   des <- design_stratified("site", n = 90)

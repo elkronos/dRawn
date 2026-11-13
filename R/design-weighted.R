@@ -15,7 +15,8 @@
 #'     proportional to the weights. How far off depends on the weights: with a
 #'     single dominant unit the two nearly coincide (about 1% apart), but with a
 #'     moderate spread the gap is large — weights `1:10` at `n = 5` give
-#'     inclusion probabilities up to 35% away from proportional. Treating them as
+#'     inclusion probabilities up to about 36% away from proportional, by
+#'     exact enumeration of the ordered draws. Treating them as
 #'     if they were proportional biases a Horvitz-Thompson total by around 1% at
 #'     `n = 15` out of 30 in simulation, small in size but unmistakable in sign.
 #'     There is no closed form for `pi`, so [inclusion_prob()] refuses to give
@@ -31,9 +32,11 @@
 #'     form, so [ht_total()] uses Deville's approximation for the variance,
 #'     which needs only the first-order probabilities.}
 #'   \item{`"poisson"`}{Each row is included independently with probability
-#'     `pi_i = n * p_i`, capped at 1. Inclusion probabilities are exactly
-#'     proportional to size and every pair can co-occur, at the cost of a
-#'     **random sample size** averaging `n`.}
+#'     `pi_i = n * p_i`. Rows heavy enough that `n * p_i > 1` are taken with
+#'     certainty and the rest rescaled, repeatedly, as for `"systematic"`, so
+#'     the probabilities still sum to `n`. Inclusion probabilities are exactly
+#'     proportional to size among the rows below certainty, and every pair can
+#'     co-occur, at the cost of a **random sample size** averaging `n`.}
 #' }
 #'
 #' `replace = TRUE` is with-replacement PPS and applies only to

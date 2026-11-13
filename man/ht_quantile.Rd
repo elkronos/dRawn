@@ -31,9 +31,11 @@ one of the table's own, such as \code{n} or \code{se}, is refused.}
 \item{variance}{How to compute it. \code{"auto"} uses the design's own estimator
 (see "Variance") and falls back to the jackknife when that declines;
 \code{"analytic"} insists on the design's own estimator, returning \code{NA} with
-the reason in \code{note} rather than falling back; \code{"jackknife"} always
-resamples; \code{"none"} skips it. The result reports which was used in
-\code{method}, and \code{"none"} when nothing could produce a figure.}
+the reason in \code{note} rather than falling back; \code{"jackknife"} uses the
+jackknife, and returns \code{NA} with the reason in \code{note} for systematic and
+Poisson samples, where it does not apply; \code{"none"} skips it. The result
+reports which was used in \code{method}, and \code{"none"} when nothing could
+produce a figure.}
 
 \item{level}{Confidence level for the interval.}
 

@@ -18,9 +18,13 @@ design_systematic(
 \code{interval}-th row of the walk is taken. Give \code{interval} or \code{n}, not both.
 For a step that is not a whole number, give \code{n}.}
 
-\item{start}{Starting row, in \code{1:interval}. Drawn at random from that range
-when \code{NULL}. A fixed start makes the design deterministic: each row is
-selected with probability 0 or 1, so \code{\link[=inclusion_prob]{inclusion_prob()}},
+\item{start}{Position in the walk of the first row taken, in
+\code{1:interval}. The walk is the frame's rows in their order, or sorted by
+\code{order_by} when given, so with \code{order_by} a \code{start} of 3 takes the row
+with the third smallest value, not the frame's third row. Drawn at
+random from that range when \code{NULL}. A fixed start makes the design
+deterministic: each row is selected with probability 0 or 1, so
+\code{\link[=inclusion_prob]{inclusion_prob()}},
 \code{\link[=sampling_weight]{sampling_weight()}}, \code{\link[=joint_prob]{joint_prob()}}, \code{draw(weights = TRUE)},
 \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} refuse it, while
 \code{inclusion_prob(simulate = TRUE)} reports those 0s and 1s. Not used with
@@ -30,8 +34,10 @@ selected with probability 0 or 1, so \code{\link[=inclusion_prob]{inclusion_prob
 changes which rows can appear together, so \code{\link[=inclusion_prob]{inclusion_prob()}} and
 \code{\link[=joint_prob]{joint_prob()}} compute against the sorted order too. Text is sorted byte
 by byte, as in the C locale, so the walk is the same in every session;
-ties keep frame order. One column: to walk by several, add a column of
-ranks built from them and give its name, as in the examples.}
+ties keep frame order, so a seed draws the same rows only from a frame
+with its rows in the same order, as for every design. One column: to
+walk by several, add a column of ranks built from them and give its
+name, as in the examples.}
 
 \item{na_rm}{When \code{order_by} is given, drop rows whose sort key is \code{NA}
 instead of raising an error.}

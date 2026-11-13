@@ -185,12 +185,21 @@ est <- vapply(1:200, function(i) {
 round(rowMeans(est) / true_var, 2)
 ```
 
-Both are ratios to the true variance; the successive-difference figure is far
-closer. Its limits are shared by every estimator from a single systematic
-sample: a
-frame that cycles with a period matching the interval, and a trend so smooth
-that the random start is almost the only source of variation, both make it run
-low.
+Both are ratios to the true variance. The successive-difference estimator
+averaged `r round(rowMeans(est)[["successive"]] / true_var, 1)` times it on
+this frame and the simple-random formula
+`r round(rowMeans(est)[["as_if_srs"]] / true_var, 1)` times. Neither is
+design-unbiased, and how far the successive-difference figure lands from the
+truth changes from one frame to the next.
+
+Its limits are shared by every estimator from a single systematic sample. A
+frame that cycles with a period equal to the interval, or one that divides it,
+shows every start the same phase of the cycle, and the estimate runs far low.
+A period of twice the interval puts neighbouring sampled rows at opposite
+phases, and it runs high, 29 times the truth in one simulation. A trend so
+smooth that the random start is almost the only source of variation makes it
+run low, with no floor. For a straight line with no noise the ratio is
+$6k / (n(k + 1))$, about $6/n$, for $n$ rows at interval $k$.
 
 ### Several starts: random groups
 
@@ -293,9 +302,13 @@ with no unit below certainty has a variance of 0 and `df = Inf`.
 Every estimator is checked in the package's tests against the empirical
 sampling variance of its own estimator over many repeated draws, and every
 inclusion and joint probability against the observed frequency. A condensed
-version, run when this page was built — the ratio of the average estimated
-variance to the actual variance of the estimates (1 is perfect), and the
-coverage of the nominal 95% interval:
+version, run when this page was built, gives the ratio of the average
+estimated variance to the true variance of the total (1 is perfect) and the
+coverage of the nominal 95% interval. For the five designs whose joint
+probabilities have a closed form, the true variance is computed from them,
+$\sum_{k,l} \pi_{kl} \frac{y_k}{\pi_k} \frac{y_l}{\pi_l} - Y^2$ over the
+frame. Systematic PPS and spread have none, and their ratio is to the variance
+of the simulated totals:
 
 ```{r check-all}
 set.seed(7)
@@ -320,19 +333,32 @@ designs <- list(
   spread        = design_spread(c("x", "yy"), n = 40, scale = FALSE)
 )
 
-check <- function(d, R = 400) {
+exact <- c("simple", "stratified", "cluster", "multistage", "pps_poisson")
+exact_variance <- function(d) {
+  z <- frame$y / inclusion_prob(frame, d)
+  sum(joint_prob(frame, d) * outer(z, z)) - truth^2
+}
+
+check <- function(name, R = 1000) {
+  d <- designs[[name]]
   out <- vapply(seq_len(R), function(i) {
     r <- ht_total(draw(frame, d, seed = i, weights = TRUE), "y")
     c(r$total, r$variance, r$ci[1] <= truth && truth <= r$ci[2])
   }, numeric(3))
-  c(variance_ratio = mean(out[2, ]) / var(out[1, ]),
-    coverage = mean(out[3, ]))
+  against <- if (name %in% exact) "exact" else "simulated"
+  v <- if (name %in% exact) exact_variance(d) else var(out[1, ])
+  data.frame(variance_ratio = round(mean(out[2, ]) / v, 2), against,
+             coverage = round(mean(out[3, ]), 2))
 }
-round(t(vapply(designs, check, numeric(2))), 2)
+do.call(rbind, setNames(lapply(names(designs), check), names(designs)))
 ```
 
-With a few hundred replicates the ratios carry Monte Carlo error of several
-percent; the test suite uses more.
+Against the exact variance, the ratio's Monte Carlo error is that of the
+average estimate alone, under 1.5% here. A ratio to the variance of simulated
+totals also carries the error of that variance, about 5% at the 1,000 draws
+used here and 7% to 9% at 400. At 400 draws the cluster and Poisson samples
+gave ratios of 0.85 and 0.87 to the simulated variance and 0.98 to the exact
+one. The coverage carries an error of about 0.7 percentage points.
 
 ## Agreement with `survey`
 

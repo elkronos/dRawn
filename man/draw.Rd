@@ -136,6 +136,8 @@ parallel code often selects, or under \code{sample.kind = "Rounding"} as it
 does in a session left at R's defaults. It must be a whole number from
 \code{-.Machine$integer.max} to \code{.Machine$integer.max}. The same holds for the
 \code{seed} of \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=joint_prob]{joint_prob()}} and \link[=plot.drawn_design]{plot()}.
+A design selects rows by their position in \code{data}, so a seed draws the
+same rows again only from a frame with the same rows in the same order.
 
 With \code{weights = TRUE} the sample records how it was drawn in its
 \code{drawn_meta} attribute: \code{seed} (\code{NULL} without one), \code{rng_kind} (the

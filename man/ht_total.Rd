@@ -29,9 +29,11 @@ variables" and "Categories".}
 \item{variance}{How to compute it. \code{"auto"} uses the design's own estimator
 (see "Variance") and falls back to the jackknife when that declines;
 \code{"analytic"} insists on the design's own estimator, returning \code{NA} with
-the reason in \code{note} rather than falling back; \code{"jackknife"} always
-resamples; \code{"none"} skips it. The result reports which was used in
-\code{method}, and \code{"none"} when nothing could produce a figure.}
+the reason in \code{note} rather than falling back; \code{"jackknife"} uses the
+jackknife, and returns \code{NA} with the reason in \code{note} for systematic and
+Poisson samples, where it does not apply; \code{"none"} skips it. The result
+reports which was used in \code{method}, and \code{"none"} when nothing could
+produce a figure.}
 
 \item{level}{Confidence level for the interval.}
 
@@ -157,12 +159,22 @@ its neighbour in the order the design walked (Wolter 2007). It removes a
 trend along that order rather than counting it as noise, which is why it
 beats treating the sample as simple random: on a frame sorted by a
 variable related to \code{y}, the simple random formula overstated the
-variance two- to thirtyfold in the package's simulations, where this one
-stayed near the truth. Two limits no estimator from a single systematic
-sample can escape: it is understated if the frame cycles with a period
-matching the step, and when a smooth trend so dominates \code{y} that the
-random start is almost the only source of variation, it runs low (0.3 to
-0.7 of the truth when the trend spanned 25 noise standard deviations).
+variance two- to thirtyfold in the package's simulations. This one came
+closer, but its average over the random starts depends on the frame,
+and on the estimation article's example it was 1.6 times the true
+variance. No estimator from a single systematic sample escapes its
+limits. A frame that cycles with a period equal to the step, or one
+that divides it, such as 5 rows at a step of 10, shows every start the
+same phase of the cycle, and the variance is understated, to under
+0.001 of the truth in one simulation. A period of twice the step puts
+neighbouring sampled rows at opposite phases, and the variance is
+overstated, 29-fold in the same simulation. When a smooth trend so
+dominates \code{y} that the random start is almost the only source of
+variation, it runs low, and has no floor. It was 0.3 to 0.7 of the
+truth when the trend spanned 25 noise standard deviations, 0.2 at 100
+and 0.06 at 1,000. With \code{y} a straight line along the walk and no
+noise, it is \code{6 * k / (n * (k + 1))} times the truth, about \code{6 / n},
+for \code{n} rows sampled at a step of \code{k}.
 When \code{interval} does not divide the number of rows walked, the sample
 size is random, one of two values, and the total moves with it in a way
 successive differences cannot see. A term for that,
@@ -251,6 +263,21 @@ as Poisson sampling that drew one row, gives a standard error but no
 interval, and \code{note} says why. \code{df} set by hand must be at least 1. A
 proportion of 0 or 1 is the exception to the first rule; see
 "Proportions" in \code{\link[=ht_mean]{ht_mean()}}.
+
+The t interval assumes the estimate is close to normally distributed over
+repeated samples. When \code{y / pi} is skewed and the sample small it is not,
+and the interval covers less often than \code{level} says, even where the
+variance estimate is close to unbiased. Drawing 30 of 240 rows in
+proportion to a size whose coefficient of variation was 0.66, with \code{y}
+close to proportional to size, the 95\% interval for the total covered 91\%
+of the time under systematic PPS, and that for the Hajek mean 91\% under
+systematic and Poisson PPS. The mean with \code{estimator = "ht"}, which
+\code{\link[=ht_mean]{ht_mean()}} recommends for precision in that case, covered no more often.
+The same happens with equal probabilities. A simple random sample of 30
+from 600 lognormal values with a coefficient of variation of 1.5 covered
+87\%. A larger sample brings the coverage closer to \code{level}. The
+audit-sampling article checks a bound's coverage by drawing the design
+many times, which is how to check it on a frame of your own.
 
 \code{alternative = "less"} gives a one-sided upper bound, the figure an auditor
 signs off against, and \code{"greater"} a lower bound. The other end of \code{ci} is

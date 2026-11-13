@@ -19,7 +19,7 @@
 #'   [design_systematic()]  \tab `1 / interval` with a random `start`, or `n / N` with `n`, for every row walked, exactly \cr
 #'   [design_cluster()]     \tab `n_clusters / N_clusters`; with `balanced = TRUE`, that times the cluster's average take over its size, worked out exactly (see [design_cluster()]) \cr
 #'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)`; with `size`, the cluster's `pi_h = n_clusters * M_h / sum(M)` in place of `n_clusters / N_clusters` \cr
-#'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods; with `strata`, `n_h * p_i` within each stratum \cr
+#'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods, with rows past 1 taken with certainty and the rest rescaled to sum to `n`; with `strata`, `n_h * p_i` within each stratum \cr
 #'   [design_certainty()]   \tab `1` above the threshold, `rest`'s own below it \cr
 #'   [design_reservoir()]   \tab `n / min(N, max_items)`, and `0` past `max_items` \cr
 #'   [design_temporal()]    \tab `per_interval / N_bucket` within each interval \cr
@@ -54,7 +54,8 @@
 #'   has no closed-form inclusion probability; this is the whole reason the other
 #'   two methods exist. Note that its realised probabilities are not merely
 #'   unknown but genuinely different from proportional-to-size: for weights
-#'   `1:10` at `n = 5`, simulation puts them up to 35% away.
+#'   `1:10` at `n = 5`, enumerating every ordered draw puts them up to about
+#'   36% away.
 #' * [design_bootstrap()] — resampling with replacement from the sample is not a
 #'   probability sample of a finite population, so there is no `pi` to report.
 #'

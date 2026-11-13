@@ -101,6 +101,54 @@ test_that("successive sampling really does differ from proportional", {
   expect_gt(max(abs(obs - target) / target), 0.2)
 })
 
+test_that("successive sampling of 1:10 at n = 5 is up to 36% off, exactly", {
+  # Every ordered draw enumerated; ?design_weighted and ?inclusion_prob
+  # quote the figure.
+  enumerate <- function(w, n) {
+    p <- numeric(length(w))
+    step <- function(chosen, prob, left) {
+      if (length(chosen) == n) {
+        p[chosen] <<- p[chosen] + prob
+        return(invisible())
+      }
+      for (i in left) {
+        step(c(chosen, i), prob * w[i] / sum(w[left]), setdiff(left, i))
+      }
+    }
+    step(integer(0), 1, seq_along(w))
+    p
+  }
+  w <- 1:10
+  exact <- enumerate(w, 5)
+  expect_equal(sum(exact), 5)
+  expect_equal(max(abs(exact / (5 * w / sum(w)) - 1)), 0.3626,
+               tolerance = 1e-3)
+  sim <- inclusion_prob(data.frame(w = w), design_weighted("w", n = 5),
+                        simulate = TRUE, R = 2000, seed = 1)
+  expect_equal(sim, exact, tolerance = 0.05)
+})
+
+test_that("Poisson takes rows past certainty and rescales the rest", {
+  # Capping n * p_i at 1 alone would leave the light rows at 0.12 and an
+  # expected size of 1.6 rather than 3.
+  df <- data.frame(id = 1:6, w = c(1, 1, 1, 1, 1, 20))
+  p <- inclusion_prob(df, design_weighted("w", n = 3, method = "poisson"))
+  expect_equal(p, c(rep(0.4, 5), 1))
+  expect_equal(p, inclusion_prob(df, design_weighted("w", n = 3,
+                                                     method = "systematic")))
+})
+
+test_that("only successive PPS returns rows in draw order", {
+  df <- data.frame(id = 1:120, w = 1 + (1:120 * 37) %% 53)
+  for (m in c("systematic", "poisson")) {
+    for (i in 1:3) {
+      ids <- draw(df, design_weighted("w", n = 15, method = m), seed = i)$id
+      expect_false(is.unsorted(ids))
+    }
+  }
+  expect_true(is.unsorted(draw(df, design_weighted("w", n = 15), seed = 1)$id))
+})
+
 test_that("replace = TRUE cannot be combined with the PPS methods", {
   expect_error(design_weighted("w", n = 5, replace = TRUE, method = "systematic"),
                "cannot be combined")

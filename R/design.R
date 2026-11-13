@@ -63,13 +63,14 @@
 #'   `"weights"` gives a matrix instead, and [design_reservoir()] a list
 #'   when `data` is not a data frame, unless `batches = TRUE`.
 #' * Rows come back in frame order for every design that selects a set of rows,
-#'   including [design_systematic()] with `order_by`.
-#'   The two exceptions are the ones where draw order is meaningful:
-#'   [design_simple()] and [design_weighted()] return rows in the order they
-#'   were drawn, and [design_bootstrap()] returns replicates in order with a
-#'   leading `.replicate` column. A design with `reserve` returns its main
-#'   sample and then its reserves, in the order they are used, with a
-#'   leading `.reserve` column.
+#'   including [design_systematic()] with `order_by` and [design_weighted()]
+#'   with `method = "systematic"` or `"poisson"`.
+#'   The exceptions are the ones where draw order is meaningful:
+#'   [design_simple()] and `design_weighted(method = "successive")` return
+#'   rows in the order they were drawn, and [design_bootstrap()] returns
+#'   replicates in order with a leading `.replicate` column. A design with
+#'   `reserve` returns its main sample and then its reserves, in the order
+#'   they are used, with a leading `.reserve` column.
 #'
 #' @section Estimating from a sample:
 #' Because a design is a value, it can report its own inclusion probabilities

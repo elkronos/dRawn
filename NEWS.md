@@ -1332,6 +1332,33 @@
   with no contract beside `draw()`.
 * `?inclusion_prob` says what a simulation costs: `R` draws, each of which
   takes time in proportion to `N^2` for `design_spread()`.
+* Claims that went further than the code or the simulations are corrected.
+  `?ht_total` said the successive-difference variance of a systematic sample
+  stayed near the truth. Its average over the starts depends on the frame,
+  1.6 times the true variance on the estimation article's example; a cycle
+  whose period divides the interval understates it as a matching period
+  does; a period of twice the interval overstated it 29-fold in one
+  simulation; and under a pure trend it falls towards `6 / n` of the truth.
+  `?ht_total` also says that intervals cover less often than `level` when
+  `y / pi` is skewed and the sample small, 87% to 91% in the cases it cites,
+  and that `variance = "jackknife"` declines for systematic and Poisson
+  samples, where it said the jackknife always resamples. `?ht_mean` says the
+  Hajek and Horvitz-Thompson means coincide for an equal-probability design
+  that can reach every row of the frame, which a region or `max_items` can
+  prevent. `?designs` says that only `method = "successive"` of
+  `design_weighted()` returns rows in draw order. `?design_weighted` says
+  that Poisson sampling takes rows past certainty with certainty and
+  rescales the rest, as systematic PPS does, where it said they were capped
+  at 1, and puts successive sampling of weights `1:10` at `n = 5` up to
+  about 36% from proportional, by exact enumeration, where it said 35%.
+  `?design_systematic` says that `start` counts along the walk, sorted by
+  `order_by` when given, and `?draw` that a seed draws the same rows only
+  from a frame in the same row order. The estimation article checks five
+  designs against their exact variance at 1,000 draws, where the ratios of
+  0.85 and 0.87 it printed for cluster and Poisson samples were Monte Carlo
+  error. The spatial-sampling article shows the mean it promised, and the
+  choosing-a-design article says why one cluster sample's design effect came
+  out below 1.
 
 # drawn 0.2.0
 

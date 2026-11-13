@@ -70,13 +70,14 @@ column order, and the frame's own row names on the rows drawn.
 \code{"weights"} gives a matrix instead, and \code{\link[=design_reservoir]{design_reservoir()}} a list
 when \code{data} is not a data frame, unless \code{batches = TRUE}.
 \item Rows come back in frame order for every design that selects a set of rows,
-including \code{\link[=design_systematic]{design_systematic()}} with \code{order_by}.
-The two exceptions are the ones where draw order is meaningful:
-\code{\link[=design_simple]{design_simple()}} and \code{\link[=design_weighted]{design_weighted()}} return rows in the order they
-were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns replicates in order with a
-leading \code{.replicate} column. A design with \code{reserve} returns its main
-sample and then its reserves, in the order they are used, with a
-leading \code{.reserve} column.
+including \code{\link[=design_systematic]{design_systematic()}} with \code{order_by} and \code{\link[=design_weighted]{design_weighted()}}
+with \code{method = "systematic"} or \code{"poisson"}.
+The exceptions are the ones where draw order is meaningful:
+\code{\link[=design_simple]{design_simple()}} and \code{design_weighted(method = "successive")} return
+rows in the order they were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns
+replicates in order with a leading \code{.replicate} column. A design with
+\code{reserve} returns its main sample and then its reserves, in the order
+they are used, with a leading \code{.reserve} column.
 }
 }
 

@@ -13,9 +13,13 @@
 #' @param interval Sampling interval, a whole number of 1 or more: every
 #'   `interval`-th row of the walk is taken. Give `interval` or `n`, not both.
 #'   For a step that is not a whole number, give `n`.
-#' @param start Starting row, in `1:interval`. Drawn at random from that range
-#'   when `NULL`. A fixed start makes the design deterministic: each row is
-#'   selected with probability 0 or 1, so [inclusion_prob()],
+#' @param start Position in the walk of the first row taken, in
+#'   `1:interval`. The walk is the frame's rows in their order, or sorted by
+#'   `order_by` when given, so with `order_by` a `start` of 3 takes the row
+#'   with the third smallest value, not the frame's third row. Drawn at
+#'   random from that range when `NULL`. A fixed start makes the design
+#'   deterministic: each row is selected with probability 0 or 1, so
+#'   [inclusion_prob()],
 #'   [sampling_weight()], [joint_prob()], `draw(weights = TRUE)`,
 #'   [ht_total()] and [ht_mean()] refuse it, while
 #'   `inclusion_prob(simulate = TRUE)` reports those 0s and 1s. Not used with
@@ -24,8 +28,10 @@
 #'   changes which rows can appear together, so [inclusion_prob()] and
 #'   [joint_prob()] compute against the sorted order too. Text is sorted byte
 #'   by byte, as in the C locale, so the walk is the same in every session;
-#'   ties keep frame order. One column: to walk by several, add a column of
-#'   ranks built from them and give its name, as in the examples.
+#'   ties keep frame order, so a seed draws the same rows only from a frame
+#'   with its rows in the same order, as for every design. One column: to
+#'   walk by several, add a column of ranks built from them and give its
+#'   name, as in the examples.
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`
 #'   instead of raising an error.
 #' @param n Number of rows to draw, in place of `interval`. With `N` rows

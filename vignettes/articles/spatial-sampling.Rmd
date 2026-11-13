@@ -118,11 +118,13 @@ nrow(plots)
 sample_summary(plots)
 ```
 
-After fieldwork, the total, and a mean per hectare-cell:
+After fieldwork, the total, and the mean per cell:
 
 ```{r estimate}
 ht_total(plots, "biomass")
 c(truth = sum(grid$biomass))
+ht_mean(plots, "biomass")
+c(truth = mean(grid$biomass))
 ```
 
 The variance is the local mean estimator: each plot is compared with its three

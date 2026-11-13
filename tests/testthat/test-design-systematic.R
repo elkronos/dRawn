@@ -489,3 +489,27 @@ test_that("order_by takes one column, and a column of ranks walks by several", {
   expect_length(unique((pos[match(ids$walk, d$walk)] - 1L) %% 4L), 1L)
   expect_identical(drawn:::systematic_positions(des, d), pos)
 })
+
+test_that("start counts along the walk sorted by order_by", {
+  df <- data.frame(id = 1:10, value = c(5, 3, 9, 1, 7, 2, 8, 4, 10, 6))
+  res <- draw(df, design_systematic(interval = 10, start = 3,
+                                    order_by = "value"))
+  # The third smallest value, not the frame's third row
+  expect_equal(res$id, 2L)
+})
+
+test_that("on a straight line the successive difference is 6k / (n(k + 1))", {
+  # ?ht_total quotes this limit: the random start is then the only source
+  # of variation, which differences between neighbours cannot see.
+  k <- 10L
+  n <- 10L
+  d <- data.frame(y = seq_len(n * k))
+  totals <- vapply(seq_len(k), function(st) {
+    k * sum(draw(d, design_systematic(k, start = st))$y)
+  }, numeric(1))
+  truth <- mean((totals - mean(totals))^2)
+  for (i in 1:3) {
+    s <- draw(d, design_systematic(k), seed = i, weights = TRUE)
+    expect_equal(ht_total(s, "y")$variance / truth, 6 * k / (n * (k + 1)))
+  }
+})

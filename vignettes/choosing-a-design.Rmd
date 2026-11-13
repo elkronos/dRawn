@@ -592,7 +592,7 @@ round(cbind(
 
 ## Clusters, when fieldwork costs more than precision
 
-Visiting five teams is cheaper than visiting twenty. `design_cluster()` takes
+Visiting four teams is cheaper than visiting twenty. `design_cluster()` takes
 whole clusters, so the row count follows from which ones you get:
 
 ```{r}
@@ -626,9 +626,13 @@ ht_total(draw(teams, ms_pps, seed = 1, weights = TRUE), "cost")
 Had the measure been each team's number of invoices, every invoice would have
 had the same chance, `n / N`.
 
-Both are estimable, but cluster designs pay for their convenience in precision —
-and in degrees of freedom. With four clusters there are three degrees of
-freedom, and the interval uses t on three rather than the normal
+Both are estimable. Cluster designs usually pay for their convenience in
+precision, because rows of one cluster tend to resemble each other, and they
+always pay in degrees of freedom. These teams are blocks of 30 invoices whose
+values have nothing to do with the team, so here clustering costs no
+precision on average, and the design effect estimated from one sample can
+fall below 1 by chance, as it does below. With four clusters there are three
+degrees of freedom, and the interval uses t on three rather than the normal
 distribution. That is why it is so wide, and it is right to be: a normal
 interval here covers about 87% of the time where it claims 95%.
 

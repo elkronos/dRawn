@@ -109,9 +109,14 @@ certainty, the estimate is exact and the interval has no width.
 \section{When the two differ, and which to use}{
 
 They coincide \strong{exactly} whenever the design weights of the rows you drew
-sum to \code{N} — which covers every fixed-size equal-probability design and every
-\code{\link[=design_stratified]{design_stratified()}} without replacement, because each stratum contributes
-\code{n_h * N_h / n_h = N_h}. There is nothing to choose between them there.
+sum to \code{N} — which covers every fixed-size equal-probability design that
+can reach every row of the frame, and every \code{\link[=design_stratified]{design_stratified()}} without
+replacement that draws from every stratum, because each stratum
+contributes \code{n_h * N_h / n_h = N_h}. There is nothing to choose between
+them there. A \code{\link[=design_spatial]{design_spatial()}} sample from a region, or a
+\code{\link[=design_reservoir]{design_reservoir()}} sample whose stream ran past \code{max_items}, is a simple
+random sample of the rows it can reach, and its weights sum to their
+number instead; see the caveat on \code{"ht"} below.
 
 They differ when that sum is random or uneven:
 \itemize{
@@ -131,10 +136,10 @@ estimate.
 
 One caveat on \code{"ht"}. It is unbiased for the frame mean \emph{provided every row
 could have been selected}. Rows with inclusion probability 0 — outside a time
-window, outside a region, dropped under \code{na_rm = TRUE} — sit inside the \code{N}
-it divides by but can never enter the numerator, so the estimate is biased
-low by exactly their share of the frame. \code{\link[=sample_summary]{sample_summary()}} reports how many
-such rows there are.
+window, outside a region, past \code{max_items}, dropped under \code{na_rm = TRUE} —
+sit inside the \code{N} it divides by but can never enter the numerator, so the
+estimate is biased low by exactly their share of the frame.
+\code{\link[=sample_summary]{sample_summary()}} reports how many such rows there are.
 The Hajek mean is unaffected, because it estimates the mean of the part of
 the frame the design can actually reach.
 }

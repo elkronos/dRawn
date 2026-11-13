@@ -109,6 +109,8 @@
 #' does in a session left at R's defaults. It must be a whole number from
 #' `-.Machine$integer.max` to `.Machine$integer.max`. The same holds for the
 #' `seed` of [inclusion_prob()], [joint_prob()] and [plot()][plot.drawn_design].
+#' A design selects rows by their position in `data`, so a seed draws the
+#' same rows again only from a frame with the same rows in the same order.
 #'
 #' With `weights = TRUE` the sample records how it was drawn in its
 #' `drawn_meta` attribute: `seed` (`NULL` without one), `rng_kind` (the
