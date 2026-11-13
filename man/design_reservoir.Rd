@@ -24,11 +24,18 @@ single pass, using Algorithm L (Li 1994), which skips ahead geometrically
 instead of drawing a random number for every item (Vitter 1985).
 }
 \details{
-A data frame is not a stream: its length is already known and it already fits
-in memory, so \code{\link[=draw]{draw()}} takes a direct vectorised path for one. Reach for the
-streaming path when the data genuinely does not fit — pass a connection, or a
-function that returns the next item and \code{NULL} at end of stream. For those,
-\code{\link[=draw]{draw()}} returns a list rather than a data frame.
+A data frame or a list is not a stream: its length is already known and it
+already fits in memory, so \code{\link[=draw]{draw()}} picks \code{n} positions in it at random and
+returns them in their original order. Every element of a list is an item,
+\code{NULL} included, and the elements keep their names. The streaming path is
+for data that does not fit in memory. Pass it a connection, or a function
+that returns the next item and \code{NULL} at end of stream. It holds at most \code{n}
+items at a time and returns them in the order they arrived. For a list, a
+connection or a function, \code{\link[=draw]{draw()}} returns a list rather than a data frame.
+
+The two paths use different algorithms, so for one seed a stream gives a
+different sample from a data frame or list holding the same items. Each
+path on its own gives the same sample for the same seed.
 }
 \examples{
 nrow(draw(data.frame(id = 1:1000), design_reservoir(n = 10), seed = 1))

@@ -4,11 +4,18 @@
 #' single pass, using Algorithm L (Li 1994), which skips ahead geometrically
 #' instead of drawing a random number for every item (Vitter 1985).
 #'
-#' A data frame is not a stream: its length is already known and it already fits
-#' in memory, so [draw()] takes a direct vectorised path for one. Reach for the
-#' streaming path when the data genuinely does not fit — pass a connection, or a
-#' function that returns the next item and `NULL` at end of stream. For those,
-#' [draw()] returns a list rather than a data frame.
+#' A data frame or a list is not a stream: its length is already known and it
+#' already fits in memory, so [draw()] picks `n` positions in it at random and
+#' returns them in their original order. Every element of a list is an item,
+#' `NULL` included, and the elements keep their names. The streaming path is
+#' for data that does not fit in memory. Pass it a connection, or a function
+#' that returns the next item and `NULL` at end of stream. It holds at most `n`
+#' items at a time and returns them in the order they arrived. For a list, a
+#' connection or a function, [draw()] returns a list rather than a data frame.
+#'
+#' The two paths use different algorithms, so for one seed a stream gives a
+#' different sample from a data frame or list holding the same items. Each
+#' path on its own gives the same sample for the same seed.
 #'
 #' @param n Reservoir size. Fewer items come back if the stream is shorter; the
 #'   result is never padded.
@@ -73,11 +80,41 @@ draw_design.drawn_design_reservoir <- function(design, data) {
     return(reindex(data, idx))
   }
 
+  # A list's length is known, so its positions are sampled as a data frame's
+  # rows are. Reading it as a stream would end it at its first NULL element.
+  if (is.list(data)) {
+    n_items <- length(data)
+    if (is.finite(max_items) && max_items < n_items) {
+      truncation_warning(max_items)
+      n_items <- as.integer(max_items)
+    }
+    idx <- if (n >= n_items) seq_len(n_items) else sort(sample.int(n_items, n))
+    return(data[idx])
+  }
+
   next_item <- as_stream(data)
   con <- attr(next_item, "close_when_done")
   if (!is.null(con)) on.exit(close(con), add = TRUE)
-  reservoir <- vector("list", n)
-  count <- 0L
+  out <- reservoir_stream(next_item, n, max_items)
+  if (out$truncated) truncation_warning(max_items)
+  out$items
+}
+
+#' Algorithm L over a next-item function
+#'
+#' Returns `items`, the sampled items in the order they arrived, `count`, the
+#' number of items read, and `truncated`, whether the stream held more than
+#' `max_items`. `count` is a double, which counts exactly past
+#' `.Machine$integer.max`. The reservoir starts with at most 1,024 slots and
+#' doubles until it holds `n`, so a large `n` costs memory only for the items
+#' a stream supplies.
+#'
+#' @noRd
+reservoir_stream <- function(next_item, n, max_items) {
+  slots <- min(n, 1024)
+  reservoir <- vector("list", slots)
+  arrived <- numeric(slots)
+  count <- 0
   truncated <- FALSE
 
   if (n > 0L) {
@@ -96,25 +133,36 @@ draw_design.drawn_design_reservoir <- function(design, data) {
         truncated <- TRUE
         break
       }
-      count <- count + 1L
+      count <- count + 1
 
       if (count <= n) {
+        if (count > slots) {
+          slots <- min(n, 2 * slots)
+          length(reservoir) <- slots
+          length(arrived) <- slots
+        }
         reservoir[[count]] <- item
+        arrived[count] <- count
       } else if (count == next_swap) {
-        reservoir[[sample.int(n, 1L)]] <- item
+        slot <- sample.int(n, 1L)
+        reservoir[[slot]] <- item
+        arrived[slot] <- count
         w <- w * exp(log(stats::runif(1)) / n)
         next_swap <- next_swap + floor(log(stats::runif(1)) / log(1 - w)) + 1
       }
     }
   }
 
-  if (truncated) {
-    warning("Stopped after `max_items` = ", max_items, " item(s); the stream ",
-            "may have held more.", call. = FALSE)
-  }
-
   # Trim rather than pad with NULLs when the stream was short.
-  reservoir[seq_len(min(count, n))]
+  held <- seq_len(min(count, n))
+  list(items = reservoir[held][order(arrived[held])], count = count,
+       truncated = truncated)
+}
+
+#' @noRd
+truncation_warning <- function(max_items) {
+  warning("Stopped after `max_items` = ", max_items, " item(s); the stream ",
+          "may have held more.", call. = FALSE)
 }
 
 #' Turn the supported inputs into a next-item function
@@ -139,14 +187,6 @@ as_stream <- function(x) {
     }
     attr(reader, "close_when_done") <- if (opened_here) x else NULL
     return(reader)
-  }
-  if (is.list(x)) {
-    i <- 0L
-    n <- length(x)
-    return(function() {
-      i <<- i + 1L
-      if (i > n) NULL else x[[i]]
-    })
   }
   stop("`data` must be a data frame, list, connection, or zero-argument ",
        "function for a reservoir design, not a ", class(x)[1], ".",

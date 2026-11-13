@@ -7,34 +7,63 @@
 design_bootstrap(
   n_replicates = 1000L,
   n = NULL,
-  method = c("simple", "block"),
-  block_length = NULL
+  method = c("simple", "block", "circular"),
+  block_length = NULL,
+  output = c("rows", "indices", "weights")
 )
 }
 \arguments{
 \item{n_replicates}{Number of replicates to generate.}
 
 \item{n}{Rows per replicate. \code{NULL} uses \code{nrow(data)}, the standard
-nonparametric bootstrap.}
+nonparametric bootstrap. \code{n = 0} gives replicates with no rows. The
+frame then has no rows but keeps its \code{.replicate} column, so \code{split()}
+returns no replicates at all, while
+\code{split(out, factor(out$.replicate, seq_len(n_replicates)))} returns
+\code{n_replicates} empty ones.}
 
-\item{method}{\code{"simple"} or \code{"block"}.}
+\item{method}{\code{"simple"}, \code{"block"} or \code{"circular"}.}
 
-\item{block_length}{Block length for \code{method = "block"}, and an error for
-\code{method = "simple"}, where it would have no effect. \code{NULL} uses
-\code{floor(nrow(data)^(1/3))}, a common rule of thumb.}
+\item{block_length}{Run length for \code{method = "block"} and \code{"circular"}, and
+an error for \code{method = "simple"}, where it would have no effect. \code{NULL}
+uses \code{floor(nrow(data)^(1/3))}, a common rule of thumb.}
+
+\item{output}{What \code{\link[=draw]{draw()}} returns.
+\itemize{
+\item \code{"rows"}, the default, returns the resampled rows of every replicate in
+one data frame, with a leading \code{.replicate} column.
+\item \code{"indices"} returns an integer matrix with \code{n} rows and a column per
+replicate, holding the rows of \code{data} that each replicate drew, in
+order. Row \code{i} of replicate \code{r} is \code{data[out[i, r], ]}.
+\item \code{"weights"} returns an integer matrix with a row for each row of \code{data}
+and a column per replicate, holding the number of times each replicate
+drew that row. With the default \code{n}, these are replicate weights for
+\code{survey::svrepdesign(type = "bootstrap", combined.weights = TRUE)}.
+}
+
+For one seed, all three hold the same replicates.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Generates bootstrap replicates. \code{"simple"} resamples rows independently;
-\code{"block"} is a moving-block bootstrap, which preserves the serial dependence
-in ordered data by concatenating \code{ceiling(n / block_length)} independently
-chosen blocks per replicate.
+Generates bootstrap replicates. \code{"simple"} resamples rows independently.
+\code{"block"} is the moving-block bootstrap (Künsch 1989), which keeps the
+serial dependence in ordered data by concatenating \code{ceiling(n / block_length)} runs of \code{block_length} consecutive rows per replicate, each
+starting at a row chosen at random. A run must fit inside the frame, so
+fewer runs cover the first and last \code{block_length - 1} rows, and the first
+row and the last turn up only \code{1 / block_length} as often as a row in the
+middle. \code{"circular"} (Politis and Romano 1992) joins the last row to the
+first, so a run can wrap around the end and every row turns up equally
+often on average.
 }
 \details{
-\code{\link[=draw]{draw()}} returns all replicates in one data frame with a leading \code{.replicate}
-column. Split them with \code{split(out, out$.replicate)}.
+By default \code{\link[=draw]{draw()}} returns all replicates in one data frame with a leading
+\code{.replicate} column. Split them with \code{split(out, out$.replicate)}. That
+frame holds \code{n_replicates * n} rows, a copy of the data for each replicate,
+and \code{\link[=draw]{draw()}} warns, with class \code{drawn_bootstrap_size}, when it would exceed
+10 million rows. \code{output = "indices"} and \code{output = "weights"} return the
+same replicates as a matrix instead.
 }
 \section{Not a survey design}{
 
@@ -42,9 +71,16 @@ The bootstrap resamples the data you already have to approximate the
 sampling distribution of a statistic (Efron 1979). It is not a probability
 sample of a finite population, so it has no inclusion probabilities and
 cannot be passed to \code{\link[=ht_total]{ht_total()}}. For the design-based variance of a total
-or mean, use the estimators there; for a statistic they do not cover, such
-as a median, this is the tool. Blocks preserve short-range dependence in
-ordered data (Künsch 1989).
+or mean, use the estimators there.
+
+Resampling rows treats them as independent draws from one distribution.
+For such data and a statistic those estimators do not cover, such as a
+median, the bootstrap is the standard tool. A sample drawn with strata or
+clusters is not such data, and resampling its rows one by one ignores the
+strata and treats the rows of a cluster as independent. Resample the
+clusters within strata instead, for example with
+\code{survey::as.svrepdesign(as_svydesign(s), type = "subbootstrap")}. Runs of
+rows keep short-range dependence in ordered data (Künsch 1989).
 }
 
 \examples{
@@ -56,6 +92,17 @@ table(reps$.replicate)
 # A statistic per replicate
 vapply(split(reps, reps$.replicate), function(r) mean(r$value), numeric(1))
 
+# The same replicates as row numbers, without copying the data
+idx <- draw(df, design_bootstrap(n_replicates = 5, n = 20,
+                                 output = "indices"), seed = 1)
+apply(idx, 2, function(i) mean(df$value[i]))
+
+# Runs of 10 rows that may wrap from the last row to the first
+circ <- draw(df, design_bootstrap(n_replicates = 200, method = "circular",
+                                  block_length = 10, output = "weights"),
+             seed = 1)
+range(rowMeans(circ))
+
 }
 \references{
 Efron, B. (1979). Bootstrap methods: another look at the jackknife.
@@ -63,6 +110,10 @@ Efron, B. (1979). Bootstrap methods: another look at the jackknife.
 
 Künsch, H. R. (1989). The jackknife and the bootstrap for general
 stationary observations. \emph{Annals of Statistics}, 17, 1217–1241.
+
+Politis, D. N. and Romano, J. P. (1992). A circular block-resampling
+procedure for stationary data. In R. LePage and L. Billard (eds.),
+\emph{Exploring the Limits of Bootstrap}, 263–270. Wiley.
 }
 \seealso{
 \code{\link[=draw]{draw()}}

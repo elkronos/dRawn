@@ -567,8 +567,8 @@ ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
 
 ## Streams, when the data does not fit
 
-A data frame is not a stream: its length is already known, so `design_reservoir()`
-takes a direct vectorised path for one. The streaming path is for data you cannot
+A data frame or a list is not a stream: its length is already known, so
+`design_reservoir()` takes a direct vectorised path for one. The streaming path is for data you cannot
 hold — pass a connection, or a function that returns the next item and `NULL` when
 exhausted.
 
@@ -584,7 +584,8 @@ drawn_ids
 ```
 
 One pass, five items held, a hundred thousand seen. Algorithm L skips ahead
-geometrically rather than drawing a random number per item.
+geometrically rather than drawing a random number per item, and the items come
+back in the order they arrived.
 
 ## Bootstrap, for the uncertainty of a statistic
 
@@ -610,6 +611,12 @@ randomly chosen runs instead of independent rows:
 ```{r}
 design_bootstrap(n_replicates = 100, method = "block", block_length = 20)
 ```
+
+A run must fit inside the data, so the first and last rows are drawn less often
+than the rest. `method = "circular"` lets a run wrap from the last row to the
+first, which draws every row equally often on average. For many replicates of a
+large frame, `output = "indices"` returns the row numbers of each replicate as a
+matrix instead of copying the rows.
 
 ## Reproducibility without side effects
 

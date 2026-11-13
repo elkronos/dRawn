@@ -9,9 +9,12 @@
 #'
 #' * [design_bootstrap()] prepends a `.replicate` column identifying which
 #'   replicate each row belongs to, so all replicates come back in one frame.
-#'   Split them with `split(out, out$.replicate)` if you need a list.
-#' * [design_reservoir()] returns a list when `data` is a stream rather than a
-#'   data frame, because there is nothing to make a data frame out of.
+#'   Split them with `split(out, out$.replicate)` if you need a list. With
+#'   `output = "indices"` or `"weights"` it returns a matrix of row numbers or
+#'   counts instead, with a column per replicate.
+#' * [design_reservoir()] returns a list when `data` is a list or a stream
+#'   rather than a data frame, because there is nothing to make a data frame
+#'   out of.
 #'
 #' @section Design weights:
 #' `weights = TRUE` prepends three columns: `.prob`, the probability that the

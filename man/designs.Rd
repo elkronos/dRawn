@@ -56,7 +56,9 @@ probability describes distinct units, and a sample holding duplicates
 cannot be weighted by one.
 \item \code{\link[=draw]{draw()}} always restores the caller's random number stream before
 returning, and always gives back a data frame with the input's class and
-column order.
+column order. \code{\link[=design_bootstrap]{design_bootstrap()}} with \code{output = "indices"} or
+\code{"weights"} gives a matrix instead, and \code{\link[=design_reservoir]{design_reservoir()}} a list
+when \code{data} is not a data frame.
 \item Rows come back in frame order for every design that selects a set of rows,
 including \code{\link[=design_systematic]{design_systematic()}} with \code{order_by}.
 The two exceptions are the ones where draw order is meaningful:

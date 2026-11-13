@@ -157,6 +157,8 @@ plot_selection <- function(x, y, shown, seed, ncol, main, sub, pal, ...) {
   }
   tagged <- y
   tagged[[key]] <- seq_len(nrow(y))
+  # The rows, not a matrix of row numbers or counts, whatever `output` says.
+  if (inherits(x, "drawn_design_bootstrap")) x$output <- "rows"
 
   picked <- tryCatch({
     s <- draw(tagged, x, seed = seed)

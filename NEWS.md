@@ -264,6 +264,17 @@
   row's `y`. Every row with a probability above 0 now takes part, however
   small, and only the rounding error in a pooled probability is settled to
   0 or 1.
+* **`design_reservoir()` stopped reading a list at its first `NULL`
+  element.** A list was read as a stream, in which `NULL` marks the end, so
+  the elements after a `NULL`, common in lists built from JSON or with
+  `lapply()`, were never sampled, and nothing said so. A list's length is
+  known, so `draw()` now picks positions in it as it does in a data frame.
+  Every element is an item, `NULL` included, and the elements keep their
+  names.
+* **`design_bootstrap()` renamed or dropped a duplicated column name.** A
+  data frame with two columns named `a` came back with `a` and `a.1`, and a
+  tibble lost the second `a` without a word. Both now come back as they went
+  in, after `.replicate`, as with every other design.
 
 ## Refusals and clearer errors
 
@@ -418,6 +429,12 @@
   outside -90 to 90 or a longitude outside -180 to 360, which `sf` only
   warned about, and says the columns may be in (lat, lon) order or hold
   projected coordinates.
+* The refusals of `inclusion_prob()`, and of `simulate = TRUE` in
+  `inclusion_prob()` and `joint_prob()`, for
+  `design_bootstrap(method = "block")` said each row appears
+  `n_replicates * n / nrow(data)` times on average. Under the moving-block
+  bootstrap the first and last `block_length - 1` rows appear less often,
+  and the message now says so.
 
 ## Behaviour changes
 
@@ -510,6 +527,18 @@
   the time. They were unparseable, so such rows stopped the draw or, under
   `na_rm = TRUE`, were dropped. A date written day or month first, such as
   `"01/02/2024"`, is still refused rather than guessed.
+* `design_reservoir()` returns the items of a connection or generator in
+  the order they arrived, as it returns the rows of a data frame in frame
+  order. They came back in the order of the reservoir's slots. The items
+  drawn for a seed are unchanged. A list is now sampled as a data frame is,
+  so it gives a different sample for a seed than it did. `?design_reservoir`
+  says that the streaming path and the data-frame path use different
+  algorithms and so give different samples for one seed.
+* `design_bootstrap(method = "block")` with the default `block_length` uses
+  `floor(nrow(data)^(1/3))` when the row count is a perfect cube too. The
+  cube root in floating point fell below the whole number, so 64 rows
+  got runs of 3 instead of 4, and 1,000 rows runs of 9 instead of 10. Such
+  frames get different replicates for a seed.
 
 ## New
 
@@ -588,6 +617,20 @@
   help page advised spreading within strata for large frames without a way
   to do it, and samples drawn stratum by stratum and bound with `rbind()`
   are refused by the estimators.
+* `design_bootstrap()` takes `method = "circular"`, the circular block
+  bootstrap of Politis and Romano (1992), in which a run of rows can wrap
+  from the last row to the first, so every row appears equally often on
+  average. Under `method = "block"` the first row and the last appear only
+  `1 / block_length` as often as a row in the middle, which
+  `?design_bootstrap` now says.
+* `design_bootstrap()` takes `output`. `"indices"` returns the replicates as
+  an integer matrix of row numbers with a column per replicate, and
+  `"weights"` as a matrix of the number of times each replicate drew each
+  row, which
+  `survey::svrepdesign(type = "bootstrap", combined.weights = TRUE)` takes
+  as replicate weights. Neither copies the data. The default, `"rows"`,
+  still returns the stacked frame, and for one seed all three hold the same
+  replicates.
 
 ## Speed and memory
 
@@ -638,6 +681,17 @@
   `design_temporal()` sample count the rows of every interval in one pass,
   where they went over the rows once per interval. 200,000 rows in hourly
   intervals over a year took about 6 seconds and now take 0.03.
+* `design_bootstrap()` subsets the data once for all replicates, where it
+  subset it once per replicate and bound the pieces with `rbind()`. The
+  default 1,000 replicates of a 5,000-row frame with four columns took 13
+  seconds and now take 0.4, with the same rows for a seed. It warns, with
+  class `drawn_bootstrap_size`, when the stacked frame would pass 10 million
+  rows, and points to `output`.
+* `design_reservoir()` on a connection or generator grows its reservoir as
+  the stream fills it. It set aside all `n` slots before reading, so
+  `n = 5e7` took 400 MB for a stream of five items. It counts the items read
+  in a double, so a stream of more than 2,147,483,647 items no longer stops
+  with "missing value where TRUE/FALSE needed".
 
 ## Handing off to survey
 
@@ -691,6 +745,12 @@
   bow under spherical geometry, how to keep them on their straight lines in
   degrees, and how to pass a region larger than a hemisphere as a list of
   parts.
+* `?design_bootstrap` says that resampling rows suits independent rows, and
+  points a sample drawn with strata or clusters to
+  `survey::as.svrepdesign()`, which resamples clusters within strata. It said
+  the bootstrap was the tool for any statistic the estimators do not cover.
+  It also says that `n = 0` gives a frame with no rows that keeps its
+  `.replicate` column.
 
 # drawn 0.2.0
 

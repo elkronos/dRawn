@@ -87,3 +87,82 @@ test_that("a stream of exactly max_items is not reported as truncated", {
   expect_warning(draw(make_gen(9), design_reservoir(n = 3, max_items = 5),
                       seed = 1), "may have held more")
 })
+
+make_counter <- function(k) {
+  i <- 0L
+  function() {
+    i <<- i + 1L
+    if (i > k) NULL else i
+  }
+}
+
+test_that("a NULL element of a list is an item, not the end of the stream", {
+  expect_identical(draw(list(1, NULL, 3, 4, 5), design_reservoir(n = 10),
+                        seed = 1),
+                   list(1, NULL, 3, 4, 5))
+
+  recs <- list(a = "a", b = NULL, c = "c", d = "d", e = "e", f = "f")
+  seen <- unlist(lapply(1:200, function(s) {
+    names(draw(recs, design_reservoir(n = 2), seed = s))
+  }))
+  expect_true(all(table(factor(seen, letters[1:6])) > 40))
+})
+
+test_that("a list is sampled by position, as a data frame is", {
+  expect_identical(
+    unlist(draw(as.list(1:50), design_reservoir(n = 5), seed = 9)),
+    draw(data.frame(x = 1:50), design_reservoir(n = 5), seed = 9)$x
+  )
+})
+
+test_that("the stream counter is a double, which does not overflow at 2^31", {
+  out <- reservoir_stream(make_counter(10), n = 2, max_items = Inf)
+  expect_type(out$count, "double")
+  expect_equal(out$count, 10)
+})
+
+test_that("a stream's items come back in the order they arrived", {
+  for (s in 1:5) {
+    got <- unlist(draw(make_counter(500), design_reservoir(n = 20), seed = s))
+    expect_length(got, 20)
+    expect_false(is.unsorted(got, strictly = TRUE))
+  }
+})
+
+test_that("growing the reservoir keeps the items Algorithm L keeps", {
+  # The reservoir set aside all n slots at the start. Growing it as the stream
+  # fills it, and returning items in arrival order, must not change which
+  # items are kept for a seed.
+  algorithm_l <- function(items, n) {
+    res <- vector("list", n)
+    w <- exp(log(stats::runif(1)) / n)
+    nxt <- n + floor(log(stats::runif(1)) / log(1 - w)) + 1
+    for (k in seq_along(items)) {
+      if (k <= n) {
+        res[[k]] <- items[[k]]
+      } else if (k == nxt) {
+        res[[sample.int(n, 1L)]] <- items[[k]]
+        w <- w * exp(log(stats::runif(1)) / n)
+        nxt <- nxt + floor(log(stats::runif(1)) / log(1 - w)) + 1
+      }
+    }
+    unlist(res[seq_len(min(n, length(items)))])
+  }
+  for (case in list(c(n = 3, N = 100), c(n = 1500, N = 4000),
+                    c(n = 2000, N = 1800))) {
+    got <- unlist(draw(make_counter(case[["N"]]),
+                       design_reservoir(n = case[["n"]]), seed = 2))
+    ref <- with_seed(2, algorithm_l(seq_len(case[["N"]]), case[["n"]]))
+    expect_identical(got, sort(ref))
+  }
+})
+
+test_that("a large n costs no memory for a short stream", {
+  skip_on_cran()
+  # All n slots were set aside before the first item was read, so n = 2e7
+  # took 150 MB for a stream of five items.
+  before <- gc(reset = TRUE)[2, 6]
+  got <- draw(make_counter(5), design_reservoir(n = 2e7), seed = 1)
+  expect_lt(gc()[2, 6] - before, 50)
+  expect_identical(unlist(got), 1:5)
+})

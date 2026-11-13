@@ -76,9 +76,22 @@ with_seed <- function(seed, code) {
 #'
 #' `drop = FALSE` matters: without it a one-column frame collapses to a vector.
 #'
+#' A plain data.frame is subset column by column. `[.data.frame` gives the
+#' same result but also builds unique row names for the repeated rows, which
+#' are then dropped. For the 5 million rows of a default bootstrap of a
+#' 5,000-row frame with four columns, that took 8 seconds, and this takes 0.1.
+#'
 #' @noRd
 reindex <- function(data, idx, sort = FALSE) {
   if (sort) idx <- sort(idx)
+  if (identical(class(data), "data.frame")) {
+    out <- lapply(unclass(data), function(col) {
+      if (length(dim(col)) == 2L) col[idx, , drop = FALSE] else col[idx]
+    })
+    attributes(out) <- attributes(data)
+    attr(out, "row.names") <- .set_row_names(length(idx))
+    return(out)
+  }
   out <- data[idx, , drop = FALSE]
   rownames(out) <- NULL
   out
@@ -130,8 +143,7 @@ refuse_simulation <- function(design) {
     stop("A bootstrap is not a probability sample of a finite population, so ",
          "simulating it does not estimate an inclusion probability: every row ",
          "appears in some replicate, and the count converges to 1 for all of ",
-         "them.\nIf you want the expected number of times each row appears, ",
-         "that is n_replicates * n / nrow(data).", call. = FALSE)
+         "them.\n", bootstrap_counts(design), call. = FALSE)
   }
   invisible(design)
 }

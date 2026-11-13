@@ -49,7 +49,9 @@
 #'   cannot be weighted by one.
 #' * [draw()] always restores the caller's random number stream before
 #'   returning, and always gives back a data frame with the input's class and
-#'   column order.
+#'   column order. [design_bootstrap()] with `output = "indices"` or
+#'   `"weights"` gives a matrix instead, and [design_reservoir()] a list
+#'   when `data` is not a data frame.
 #' * Rows come back in frame order for every design that selects a set of rows,
 #'   including [design_systematic()] with `order_by`.
 #'   The two exceptions are the ones where draw order is meaningful:
