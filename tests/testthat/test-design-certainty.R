@@ -312,3 +312,35 @@ test_that("dropping missing sizes does not shift the probabilities", {
   # And a draw never selects the dropped row
   for (i in 1:20) expect_false(1 %in% draw(d, des, seed = i)$id)
 })
+
+test_that("rows above the threshold carry no degrees of freedom", {
+  d <- cert_pop(200)
+  n_above <- sum(d$value >= 2000)
+  s <- draw(d, design_certainty("value", 2000, design_simple(n = 20)),
+            seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), n_above)
+  expect_equal(ht_total(s, "value")$df, 19)
+  s2 <- draw(d, design_certainty("value", 2000,
+                                 design_stratified("site", n = 20)),
+             seed = 1, weights = TRUE)
+  expect_equal(ht_total(s2, "value")$df, 18)
+})
+
+test_that("a `rest` that drew nothing leaves no degrees of freedom", {
+  # The interval has no variance to stand on, and survey would call the total
+  # exact, so as_svydesign() refuses it.
+  d <- data.frame(id = 1:5, v = c(100, 200, 1, 2, 3), y = c(10, 20, 1, 2, 3))
+  des <- design_certainty("v", 50, design_systematic(interval = 10))
+  for (i in 1:50) {
+    s <- suppressWarnings(draw(d, des, seed = i, weights = TRUE))
+    if (nrow(s) == 2L) break
+  }
+  expect_equal(s$id, 1:2)
+  r <- ht_total(s, "y")
+  expect_true(is.na(r$variance))
+  expect_equal(r$df, 0)
+
+  skip_if_not_installed("survey")
+  expect_error(as_svydesign(s), paste0("`sample` holds none of the 3 rows ",
+                                       "with `v` below 50"), fixed = TRUE)
+})

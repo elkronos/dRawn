@@ -410,3 +410,66 @@ test_that("a variance that overflows is reported as missing, with no success not
   expect_match(r$note, "overflowed")
   expect_false(grepl("Jackknife over", r$note))
 })
+
+# ---- degrees of freedom and units taken with certainty ----------------------
+
+dominant8 <- function() {
+  # Eight units large enough that systematic PPS of 10 takes them with
+  # certainty, and 40 small ones from which the other two are drawn.
+  pop <- data.frame(x = c(rep(100, 8), 1 + 3 * (sin((1:40) * 2.3) + 1)))
+  pop$y <- 2 * pop$x + 3 * cos(1:48)
+  pop$half <- rep(c("a", "b"), 24)
+  pop
+}
+
+test_that("units taken with certainty carry no degrees of freedom", {
+  pop <- dominant8()
+  pps <- design_weighted("x", n = 10, method = "systematic")
+  cert <- design_certainty("x", 100, design_weighted("x", n = 2,
+                                                     method = "systematic"))
+  expect_equal(sort(inclusion_prob(pop, pps)), sort(inclusion_prob(pop, cert)))
+
+  # The same selection built two ways had 9 and 1 degrees of freedom.
+  s <- draw(pop, pps, seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 8L)
+  r <- ht_total(s, "y")
+  expect_equal(r$df, 1)
+  expect_equal(ht_total(draw(pop, cert, seed = 1, weights = TRUE), "y")$df, 1)
+  expect_equal(diff(r$ci) / 2, stats::qt(0.975, 1) * r$se)
+  expect_equal(ht_mean(s, "y")$df, 1)
+  expect_equal(attr(ht_total(s, "y", by = "half"), "df"), 1)
+})
+
+test_that("the t interval covers once certain units stop counting", {
+  skip_on_cran()
+  # On 9 degrees of freedom this interval covered 74% of the time.
+  pop <- dominant8()
+  truth <- sum(pop$y)
+  des <- design_weighted("x", n = 10, method = "systematic")
+  hit <- vapply(1:400, function(i) {
+    r <- ht_total(draw(pop, des, seed = i, weights = TRUE), "y")
+    r$ci[1] <= truth && truth <= r$ci[2]
+  }, logical(1))
+  expect_gt(mean(hit), 0.9)
+})
+
+test_that("a stratum taken whole carries no degrees of freedom", {
+  pop <- data.frame(g = c(rep("all", 5), rep("big", 60)),
+                    y = c(1000 * (1:5), 1:60))
+  s <- draw(pop, design_stratified("g", n = 25, allocation = "equal"),
+            seed = 2, weights = TRUE)
+  expect_true(all(s$.prob[s$g == "all"] == 1))
+  # 20 rows in the stratum that was sampled, less that one stratum
+  expect_equal(ht_total(s, "y")$df, 19)
+})
+
+test_that("a sample with nothing random has infinite degrees of freedom", {
+  pop <- data.frame(g = rep(c("a", "b"), 10), w = 1:20, y = (1:20)^1.5)
+  for (des in list(design_simple(n = 20), design_stratified("g", n = 20),
+                   design_weighted("w", n = 20, method = "systematic"))) {
+    r <- ht_total(draw(pop, des, seed = 1, weights = TRUE), "y")
+    expect_equal(r$df, Inf)
+    expect_equal(r$variance, 0)
+    expect_equal(r$ci, rep(sum(pop$y), 2))
+  }
+})

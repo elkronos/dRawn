@@ -138,6 +138,28 @@ with hundreds of units and decisive with a handful: at four clusters a
 normal interval covers about 87\% where it claims 95\%, and the t interval
 restores most of that. The degrees of freedom used are reported as \code{df};
 pass \code{df = Inf} for the normal interval.
+
+Units taken with certainty count in neither number. They are in every
+sample and carry no variance, and counting them made the interval too
+narrow. With eight certain units among ten, systematic PPS reported 9
+degrees of freedom where the variance rests on two units, and its interval
+covered 79\%. A stratum or interval with no other unit drops out of the
+count of strata. With no unit below certainty the variance is 0 and \code{df}
+is \code{Inf}. \code{\link[=as_svydesign]{as_svydesign()}} hands certain units to \code{survey} in a form that
+makes \code{survey::degf()} give the same count, except for a census, where it
+gives \code{n - 1}.
+}
+
+\section{An empty sample}{
+
+A design of random size, such as Poisson sampling or a systematic sample
+whose random start falls past the last row, can draw nothing. \code{ht_total()}
+then returns a total of 0, which keeps the estimator unbiased over repeated
+draws, with \code{df} 0, the variance, standard error and interval \code{NA}, and a
+note that the sample is empty. \code{\link[=ht_mean]{ht_mean()}} refuses the Hajek mean of an
+empty sample, which is 0 / 0; \code{estimator = "ht"} gives 0. An empty sample
+from a design that gives every row a probability of 0, such as one with
+\code{n = 0}, is refused, and so is any empty sample in \code{\link[=as_svydesign]{as_svydesign()}}.
 }
 
 \section{Domains}{

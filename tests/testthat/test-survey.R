@@ -313,3 +313,136 @@ test_that("survey gets the strata and clusters drawn, whatever the sample says",
     }
   }
 })
+
+# ---- units taken with certainty ----------------------------------------------
+
+dominant_svy <- function() {
+  # Four units heavy enough that PPS of 8 takes them with certainty
+  pop <- data.frame(id = 1:40, v = c(1000, 900, 300, 280, 1 + (1:36 %% 5)),
+                    a = cos(1:40), b = sin(1.7 * (1:40)))
+  pop$y <- 2 * pop$v + 2 * cos(3 * (1:40))
+  pop$flag <- pop$y > stats::median(pop$y)
+  pop
+}
+
+test_that("units PPS takes with certainty are a stratum of their own", {
+  skip_if_not_installed("survey")
+  # Left in the Brewer stratum, they put survey's standard error at 35 and 25
+  # times this package's here.
+  pop <- dominant_svy()
+  for (des in list(
+    design_weighted("v", n = 8, method = "systematic"),
+    design_certainty("v", 500, design_weighted("v", n = 6,
+                                               method = "systematic"))
+  )) {
+    s <- draw(pop, des, seed = 1, weights = TRUE)
+    expect_equal(sum(s$.prob == 1), 4L)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "y")
+    theirs <- survey::svytotal(~y, sv)
+    expect_equal(as.numeric(theirs), ours$total)
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 5e-3)
+    expect_equal(as.numeric(survey::SE(survey::svymean(~y, sv))),
+                 ht_mean(s, "y")$se, tolerance = 5e-3)
+    expect_equal(survey::degf(sv), ours$df)
+    expect_equal(ours$df, 3)
+  }
+})
+
+test_that("Poisson sampling hands its certain units over the same way", {
+  skip_if_not_installed("survey")
+  pop <- dominant_svy()
+  s <- draw(pop, design_weighted("v", n = 8, method = "poisson"), seed = 2,
+            weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 4L)
+  sv <- as_svydesign(s)
+  ours <- ht_total(s, "y")
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, sv))), ours$se,
+               tolerance = 1e-8)
+  expect_equal(survey::degf(sv), ours$df)
+  expect_equal(ours$df, nrow(s) - 5)
+})
+
+test_that("spread with size leaves its certain units out of Brewer", {
+  skip_if_not_installed("survey")
+  pop <- dominant_svy()
+  s <- draw(pop, design_spread(c("a", "b"), n = 8, size = "v"), seed = 1,
+            weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 4L)
+  sv <- as_svydesign(s)
+  free <- as.data.frame(s)[s$.prob < 1, ]
+  brewer <- survey::svydesign(ids = ~1, fpc = ~.prob, weights = ~.weight,
+                              data = free, pps = "brewer")
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, sv))),
+               as.numeric(survey::SE(survey::svytotal(~y, brewer))))
+  expect_equal(survey::degf(sv), ht_total(s, "y")$df)
+})
+
+test_that("certainty designs agree with survey on degrees of freedom", {
+  skip_if_not_installed("survey")
+  # The certainty rows were each a unit of survey's, so survey::degf() counted
+  # them and survey's t and logit intervals came out narrower.
+  d <- svy_pop()
+  d$flag <- d$spend > 250
+  d$tiny <- c(rep("x", 6), rep("y", nrow(d) - 6))
+  designs <- list(
+    cert_srs = design_certainty("size", 900, design_simple(n = 40)),
+    cert_str = design_certainty("size", 900,
+                                design_stratified("site", n = 40)),
+    take_all = design_stratified("tiny", n = 30, allocation = "equal")
+  )
+  for (nm in names(designs)) {
+    s <- draw(d, designs[[nm]], seed = 1, weights = TRUE)
+    expect_true(any(s$.prob == 1), label = nm)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "spend")
+    expect_equal(survey::degf(sv), ours$df, label = nm)
+    expect_equal(as.numeric(survey::SE(survey::svytotal(~spend, sv))),
+                 ours$se, tolerance = 1e-8, label = nm)
+    expect_equal(unname(stats::confint(survey::svytotal(~spend, sv),
+                                       df = survey::degf(sv))[1, ]),
+                 ours$ci, tolerance = 1e-8, label = nm)
+    ci <- attr(survey::svyciprop(~flag, sv, method = "xlogit"), "ci")
+    expect_equal(unname(ci), ht_mean(s, "flag")$ci, tolerance = 1e-8,
+                 label = nm)
+  }
+
+  # A systematic PPS `rest` agrees on the degrees of freedom; the standard
+  # errors differ by Brewer against Deville.
+  s <- draw(d, design_certainty("size", 900,
+                                design_weighted("size", n = 40,
+                                                method = "systematic")),
+            seed = 1, weights = TRUE)
+  expect_equal(survey::degf(as_svydesign(s)), ht_total(s, "spend")$df)
+})
+
+test_that("a census is handed to survey with a variance of 0", {
+  skip_if_not_installed("survey")
+  # The PPS mappings stated a census as probabilities of 1, and svydesign()
+  # stopped with "subscript out of bounds".
+  pop <- dominant_svy()
+  for (des in list(design_weighted("v", n = 40, method = "systematic"),
+                   design_weighted("v", n = 40, method = "poisson"),
+                   design_spread(c("a", "b"), n = 40, size = "v"),
+                   design_certainty("v", 500,
+                                    design_weighted("v", n = 38,
+                                                    method = "systematic")),
+                   design_stratified("flag", n = 40))) {
+    s <- draw(pop, des, seed = 1, weights = TRUE)
+    expect_true(all(s$.prob == 1))
+    sv <- as_svydesign(s)
+    theirs <- survey::svytotal(~y, sv)
+    expect_equal(as.numeric(theirs), sum(pop$y))
+    expect_equal(as.numeric(survey::SE(theirs)), 0)
+    # The one place the degrees of freedom differ, with nothing to scale
+    expect_equal(survey::degf(sv), 39)
+    expect_equal(ht_total(s, "y")$df, Inf)
+  }
+})
+
+test_that("an empty sample is refused before it reaches survey", {
+  skip_if_not_installed("survey")
+  pop <- dominant_svy()
+  s <- draw(pop, design_spread(c("a", "b"), n = 0), seed = 1, weights = TRUE)
+  expect_error(as_svydesign(s), "`sample` has no rows", fixed = TRUE)
+})

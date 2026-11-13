@@ -39,8 +39,8 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} the cluster labels, \code{fpc} the number of clusters \tab identical \cr
 \code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids} the cluster labels then the rows, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size \tab identical \cr
-\code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as their own stratum, taken whole \tab as \code{rest} \cr
-\code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab within about 0.2 percent \cr
+\code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as \code{rest} \cr
+\code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab close for totals, less so for means \cr
 \code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size} \tab \strong{\code{survey}'s is larger} \cr
 \code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the frame size \tab \strong{differ} \cr
 }
@@ -51,8 +51,14 @@ against \code{survey::svytotal()}, as are domain estimates against
 exceptions are real and worth knowing:
 \itemize{
 \item \strong{Systematic PPS.} Neither package has its joint probabilities. This one
-uses Deville's approximation and \code{survey} uses Brewer's; the two are close
-relatives and agree to a fraction of a percent.
+uses Deville's approximation and \code{survey} uses Brewer's. In simulations
+on skewed frames the standard errors of totals agreed within about 1
+percent, and usually within 0.3 percent. Those of means differed more,
+typically by 1 to 4 percent and by up to 7 percent at a sampling fraction
+of one half. On a frame whose units below certainty had probabilities
+from 0.05 to 0.95, with about 17 of them in each sample, totals differed
+by 2 percent typically and by up to 8 percent. The degrees of freedom
+agree.
 \item \strong{Spread.} \code{survey} has no estimator for a spatially balanced sample, so
 it is told only the first-order design and computes a variance that
 ignores the spreading. That errs conservative, often substantially.
@@ -62,8 +68,24 @@ can see a trend along the sort order. Neither is design-unbiased, because
 no such estimator exists for one systematic sample.
 }
 
-Certainty rows arrive in a stratum where \code{n == N}, so \code{survey}'s own finite
-population correction zeroes them out, matching this package's treatment.
+Units taken with certainty are in every sample and add nothing to the
+variance: the rows above a \code{\link[=design_certainty]{design_certainty()}} threshold, strata and
+intervals taken whole, and the units \code{\link[=design_weighted]{design_weighted()}} and
+\code{\link[=design_spread]{design_spread()}} with \code{size} put at probability 1. Each group of them goes
+to \code{survey} as one primary sampling unit in a stratum of its own, with an
+\code{fpc} of 1, so \code{survey} gives them no variance and \code{survey::degf()} leaves
+them out of the degrees of freedom, as \code{\link[=ht_total]{ht_total()}} does. For the PPS
+designs this also keeps them out of Brewer's approximation, which left
+among the other units inflated \code{survey}'s standard error, by a factor of 23
+on a frame with four dominant units.
+
+A sample in which every row was taken with certainty, a census, goes to
+\code{survey} as \code{ids = ~1} with \code{fpc} the number of rows. Both packages then
+report a variance of 0, and \code{survey::degf()} gives \code{n - 1} where
+\code{\link[=ht_total]{ht_total()}} gives \code{Inf}. A sample with no rows is refused, and so is a
+certainty sample whose \code{rest} drew none of the rows below the threshold,
+whose total \code{survey} would report as exact where \code{\link[=ht_total]{ht_total()}} reports no
+variance.
 
 Two compositions have no single \code{survey} design and are refused rather than
 approximated: \code{\link[=design_certainty]{design_certainty()}} over a cluster, multistage or Poisson
@@ -88,8 +110,8 @@ PPS mappings above, and a sample whose \code{.prob} was changed is refused.
 
 Strata, intervals, cluster labels and population counts come from the copy
 of the frame stored with the sample, not from the sample's own columns, and
-are passed in the columns \code{.stratum}, \code{.cluster}, \code{.fpc}, \code{.fpc2} and
-\code{.unit}. Renaming or recoding a design column in the sample after the draw
+are passed in the columns \code{.stratum}, \code{.cluster}, \code{.psu}, \code{.fpc}, \code{.fpc2}
+and \code{.unit}. Renaming or recoding a design column in the sample after the draw
 does not change the survey design.
 }
 

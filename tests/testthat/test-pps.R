@@ -119,3 +119,39 @@ test_that("PPS methods refuse to draw more rows than exist", {
 test_that("an unknown method is rejected at construction", {
   expect_error(design_weighted("w", n = 5, method = "pps"))
 })
+
+test_that("an empty Poisson sample estimates a total of 0 with no variance", {
+  # Poisson sampling can draw nothing. Its total is then 0, which keeps the
+  # estimator unbiased over repeated draws, so a simulation loop gets a number
+  # instead of an error. One empty draw has no variance to report.
+  pop <- data.frame(id = 1:50, w = 1 + (1:50 %% 4), y = 1:50)
+  des <- design_weighted("w", n = 1, method = "poisson")
+  for (i in 1:100) {
+    s <- draw(pop, des, seed = i, weights = TRUE)
+    if (!nrow(s)) break
+  }
+  expect_equal(nrow(s), 0L)
+
+  r <- ht_total(s, "y")
+  expect_equal(r$total, 0)
+  expect_true(is.na(r$variance))
+  expect_true(all(is.na(r$ci)))
+  expect_equal(r$df, 0)
+  expect_equal(r$method, "none")
+  expect_match(r$note, "The sample is empty")
+  expect_output(print(r), "The sample is empty")
+  expect_equal(nrow(ht_total(s, "y", by = "id")), 0L)
+
+  # The Hajek mean is 0 / 0; the Horvitz-Thompson mean divides by N
+  expect_error(ht_mean(s, "y"), "Hajek mean is 0 / 0")
+  expect_equal(ht_mean(s, "y", estimator = "ht")$mean, 0)
+
+  skip_if_not_installed("survey")
+  expect_error(as_svydesign(s), "`sample` has no rows", fixed = TRUE)
+})
+
+test_that("an empty sample from a design that reaches no row is refused", {
+  pop <- data.frame(id = 1:20, w = 1:20, y = 1:20)
+  s <- draw(pop, design_simple(n = 0), seed = 1, weights = TRUE)
+  expect_error(ht_total(s, "y"), "probability of 0")
+})

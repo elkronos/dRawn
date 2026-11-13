@@ -82,8 +82,10 @@ expresses a `drawn` design in `survey`'s own terms — strata, cluster ids, two
 stages, `survey::poisson_sampling()`, Brewer's PPS approximation, or a
 taken-whole certainty stratum — so that the two packages' totals, standard
 errors, domain estimates, degrees of freedom and proportion intervals agree to
-floating point wherever `survey` models the same design. The tests assert that
-agreement design by design.
+floating point wherever `survey` models the same design. Units taken with
+certainty go to `survey` as one sampling unit per stratum, taken whole, so
+neither package counts them among the degrees of freedom. The tests assert
+that agreement design by design, certainty designs included.
 
 **`spsurvey`** implements GRTS spatially balanced designs and an environmental
 monitoring workflow; it is the deeper tool for that field.
@@ -127,8 +129,12 @@ fails it on a function defined in more than one file.
 Documented in `?as_svydesign` and asserted in the tests:
 
 * systematic PPS — neither package has its joint probabilities; `ht_total()`
-  uses Deville's approximation and `survey` Brewer's, and they agree within
-  about 0.2%;
+  uses Deville's approximation and `survey` Brewer's. The degrees of freedom
+  agree. Standard errors of totals agreed within about 1%, usually within
+  0.3%, in simulations on skewed frames; those of means differed by up to
+  7% at a sampling fraction of one half;
+* a census — both packages report a variance of 0, and `survey::degf()`
+  gives `n - 1` where `ht_total()` gives `Inf`;
 * `design_spread()` — `survey` has no estimator for a spatially balanced sample
   and is given the first-order design, so its standard error is larger;
 * systematic sampling — `survey`, told only `ids = ~1`, returns the

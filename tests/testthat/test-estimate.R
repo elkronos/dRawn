@@ -198,14 +198,18 @@ test_that("deff is NA rather than negative when there is no variance", {
                                        "total")))
 })
 
-test_that("an empty sample is refused with a reason, not a crash", {
-  # A start past the end of a short frame selects nothing
+test_that("an empty sample gives a total of 0 and no Hajek mean, not a crash", {
+  # A start past the end of a short frame selects nothing. The total of that
+  # draw is 0, which keeps the estimator unbiased; the Hajek mean is 0 / 0.
   d <- data.frame(y = 1:10)
   s <- suppressWarnings(draw(d, design_systematic(interval = 20), seed = 2,
                              weights = TRUE))
   expect_equal(nrow(s), 0L)
   expect_error(ht_mean(s, "y"), "no rows")
-  expect_error(ht_total(s, "y"), "no rows")
+  r <- ht_total(s, "y")
+  expect_equal(r$total, 0)
+  expect_true(is.na(r$se))
+  expect_match(r$note, "The sample is empty")
 })
 
 # ---- a sample's rows are matched to the frame through `.row` ----------------

@@ -219,6 +219,12 @@ rowMeans(hits)
 
 Pass `df = Inf` for the normal interval.
 
+Units taken with certainty count in neither number. They are in every sample
+and carry no variance, so counting them would make the interval too narrow.
+With eight certain units among ten, systematic PPS had 9 degrees of freedom
+where the variance rests on two units, and the interval covered 79%. A sample
+with no unit below certainty has a variance of 0 and `df = Inf`.
+
 ## How it was checked
 
 Every estimator is checked in the package's tests against the empirical
@@ -270,9 +276,13 @@ percent; the test suite uses more.
 `as_svydesign()` expresses each design in `survey`'s own terms (Lumley 2004),
 and the tests assert that the two packages agree to floating point on totals,
 standard errors, domain estimates and degrees of freedom for every design
-`survey` can represent exactly — and within a fraction of a percent for
-systematic PPS, where `survey` uses Brewer's approximation and `drawn` uses
-Deville's. `?as_svydesign` has the full table.
+`survey` can represent exactly. Units taken with certainty go to `survey` as
+one sampling unit per stratum, taken whole, so that neither package counts
+them among the degrees of freedom. For systematic PPS, `survey` uses Brewer's
+approximation and `drawn` uses Deville's. The degrees of freedom still agree,
+and the standard errors of totals usually agree within 0.3%, but those of
+means can differ by several percent when the sampling fraction is large.
+`?as_svydesign` has the full table.
 
 ## References
 

@@ -131,3 +131,36 @@ test_that("a column mixing dates with date-times keeps both", {
                          interval = 1, per_interval = 1, unit = "days")
   expect_equal(sum(inclusion_prob(d, des) > 0), 4)
 })
+
+sparse_days <- function() {
+  # Nine days with three rows each, which per_interval = 3 takes whole, and
+  # one busy day of 30 rows from which three are drawn.
+  ts <- c(as.POSIXct("2024-01-01", tz = "UTC") + rep(0:8, each = 3) * 86400 +
+            rep(c(1, 2, 3) * 3600, 9),
+          as.POSIXct("2024-01-10", tz = "UTC") + (1:30) * 600)
+  data.frame(ts = ts, v = c(rep(1, 27), 50, 60, rep(1, 28)),
+             y = 100 + 20 * sin(1:57))
+}
+
+test_that("intervals taken whole carry no degrees of freedom", {
+  # Counting the 27 rows of the sparse days gave 20 degrees of freedom where
+  # the three random rows support 2.
+  d <- sparse_days()
+  des <- design_temporal("ts", from = "2024-01-01", to = "2024-01-11",
+                         interval = 24, per_interval = 3, unit = "hours")
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 27L)
+  expect_equal(ht_total(s, "y")$df, 2)
+
+  # The same holds under a certainty design over the temporal one
+  cert <- design_certainty("v", 50, des)
+  sc <- draw(d, cert, seed = 1, weights = TRUE)
+  expect_equal(sum(sc$v >= 50), 2L)
+  expect_equal(ht_total(sc, "y")$df, 2)
+
+  skip_if_not_installed("survey")
+  expect_equal(survey::degf(as_svydesign(s)), 2)
+  expect_equal(survey::degf(as_svydesign(sc)), 2)
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, as_svydesign(sc)))),
+               ht_total(sc, "y")$se, tolerance = 1e-8)
+})

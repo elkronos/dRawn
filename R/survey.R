@@ -19,8 +19,8 @@
 #'   [design_cluster()] \tab `ids` the cluster labels, `fpc` the number of clusters \tab identical \cr
 #'   [design_multistage()] \tab two stages, `ids` the cluster labels then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size \tab identical \cr
-#'   [design_certainty()] \tab the certainty rows as their own stratum, taken whole \tab as `rest` \cr
-#'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab within about 0.2 percent \cr
+#'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
+#'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab close for totals, less so for means \cr
 #'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size` \tab **`survey`'s is larger** \cr
 #'   [design_systematic()] \tab `ids = ~1` with `fpc` the frame size \tab **differ** \cr
 #' }
@@ -31,8 +31,14 @@
 #' exceptions are real and worth knowing:
 #'
 #' * **Systematic PPS.** Neither package has its joint probabilities. This one
-#'   uses Deville's approximation and `survey` uses Brewer's; the two are close
-#'   relatives and agree to a fraction of a percent.
+#'   uses Deville's approximation and `survey` uses Brewer's. In simulations
+#'   on skewed frames the standard errors of totals agreed within about 1
+#'   percent, and usually within 0.3 percent. Those of means differed more,
+#'   typically by 1 to 4 percent and by up to 7 percent at a sampling fraction
+#'   of one half. On a frame whose units below certainty had probabilities
+#'   from 0.05 to 0.95, with about 17 of them in each sample, totals differed
+#'   by 2 percent typically and by up to 8 percent. The degrees of freedom
+#'   agree.
 #' * **Spread.** `survey` has no estimator for a spatially balanced sample, so
 #'   it is told only the first-order design and computes a variance that
 #'   ignores the spreading. That errs conservative, often substantially.
@@ -41,8 +47,24 @@
 #'   can see a trend along the sort order. Neither is design-unbiased, because
 #'   no such estimator exists for one systematic sample.
 #'
-#' Certainty rows arrive in a stratum where `n == N`, so `survey`'s own finite
-#' population correction zeroes them out, matching this package's treatment.
+#' Units taken with certainty are in every sample and add nothing to the
+#' variance: the rows above a [design_certainty()] threshold, strata and
+#' intervals taken whole, and the units [design_weighted()] and
+#' [design_spread()] with `size` put at probability 1. Each group of them goes
+#' to `survey` as one primary sampling unit in a stratum of its own, with an
+#' `fpc` of 1, so `survey` gives them no variance and `survey::degf()` leaves
+#' them out of the degrees of freedom, as [ht_total()] does. For the PPS
+#' designs this also keeps them out of Brewer's approximation, which left
+#' among the other units inflated `survey`'s standard error, by a factor of 23
+#' on a frame with four dominant units.
+#'
+#' A sample in which every row was taken with certainty, a census, goes to
+#' `survey` as `ids = ~1` with `fpc` the number of rows. Both packages then
+#' report a variance of 0, and `survey::degf()` gives `n - 1` where
+#' [ht_total()] gives `Inf`. A sample with no rows is refused, and so is a
+#' certainty sample whose `rest` drew none of the rows below the threshold,
+#' whose total `survey` would report as exact where [ht_total()] reports no
+#' variance.
 #'
 #' Two compositions have no single `survey` design and are refused rather than
 #' approximated: [design_certainty()] over a cluster, multistage or Poisson
@@ -65,8 +87,8 @@
 #'
 #' Strata, intervals, cluster labels and population counts come from the copy
 #' of the frame stored with the sample, not from the sample's own columns, and
-#' are passed in the columns `.stratum`, `.cluster`, `.fpc`, `.fpc2` and
-#' `.unit`. Renaming or recoding a design column in the sample after the draw
+#' are passed in the columns `.stratum`, `.cluster`, `.psu`, `.fpc`, `.fpc2`
+#' and `.unit`. Renaming or recoding a design column in the sample after the draw
 #' does not change the survey design.
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
@@ -108,10 +130,18 @@ as_svydesign <- function(sample, ...) {
          "population.", call. = FALSE)
   }
 
+  if (!nrow(sample)) {
+    stop_not_drawn(paste0(
+      "has no rows, so there is no design to hand to `survey`. For an empty ",
+      "draw from a design of random size, ht_total() gives the total, 0, ",
+      "without a variance."))
+  }
+
   # `survey` keeps the data it is given by reference, so it gets its own copy.
   # An in-place reorder of the sample afterwards would otherwise reach it.
   dat <- snapshot_frame(as.data.frame(sample))
   parts <- survey_parts(design, dat, state$units, pop, rows = state$rows)
+  if (all(is_certain(dat$.prob))) parts <- census_parts(dat)
   dat$.fpc <- parts$fpc
   # Cluster labels come from the frame, so a cluster column renamed or
   # recoded in the sample after the draw still gives `survey` the clusters
@@ -126,8 +156,15 @@ as_svydesign <- function(sample, ...) {
     fpc <- stats::as.formula("~.fpc + .fpc2")
   }
   if (!is.null(parts$stratum)) dat$.stratum <- parts$stratum
+  ids <- parts$ids
+  if (any(parts$whole)) {
+    # Units taken with certainty share one primary sampling unit per stratum,
+    # with an `fpc` of one unit, so `survey` treats each group as taken whole.
+    dat$.psu <- shared_psu(parts$stratum, parts$whole)
+    ids <- stats::as.formula("~.psu")
+  }
   args <- c(list(data = dat, weights = stats::as.formula("~.weight"),
-                 ids = parts$ids, fpc = fpc),
+                 ids = ids, fpc = fpc),
             parts$extra)
   if (!is.null(parts$stratum)) {
     args$strata <- stats::as.formula("~.stratum")
@@ -152,8 +189,14 @@ refuse_nested <- function(prefix, what, why) {
 #' inclusion probabilities, so each design has to be expressed in its own terms:
 #' a stratified design as strata, a cluster design as ids, a temporal design as
 #' strata over its intervals, and a certainty design as a stratum that was taken
-#' whole -- where `n == N` makes `survey`'s own correction zero out, matching
-#' this package's treatment of certainty rows.
+#' whole.
+#'
+#' Units taken with certainty -- a certainty design's rows above the threshold,
+#' strata and intervals taken whole, and the units a size-based design puts at
+#' probability 1 -- are flagged in `whole`. Each stratum of them becomes one
+#' primary sampling unit with an `fpc` of 1, which reads the same as a count of
+#' units and as a probability. `survey` gives such a stratum no variance, and
+#' `survey::degf()` no degree of freedom, as `design_df()` does.
 #'
 #' `dat` is the sample handed to `survey`; `units` is the frame's copy of the
 #' same rows, in the same order, and is where strata, intervals and cluster
@@ -163,36 +206,29 @@ refuse_nested <- function(prefix, what, why) {
 #' @noRd
 survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
   one <- stats::as.formula("~1")
-  by_group <- function(cols) {
-    sizes <- table(group_key(pop, cols))
-    lab <- as.character(group_key(units, cols))
-    list(stratum = paste0(prefix, lab),
-         fpc = as.integer(sizes[lab]), ids = one)
+  by_group <- function(sizes, lab) {
+    whole <- taken_whole(lab, dat$.prob)
+    fpc <- as.integer(sizes[lab])
+    fpc[whole] <- 1L
+    list(stratum = paste0(prefix, lab), fpc = fpc, ids = one, whole = whole)
   }
 
   switch(design_type(design),
-    stratified = by_group(design$strata),
-    temporal = {
-      sizes <- table(temporal_bucket(design, pop))
-      lab <- temporal_bucket(design, units)
-      list(stratum = paste0(prefix, lab), fpc = as.integer(sizes[lab]),
-           ids = one)
-    },
+    stratified = by_group(table(group_key(pop, design$strata)),
+                          as.character(group_key(units, design$strata))),
+    temporal = by_group(table(temporal_bucket(design, pop)),
+                        temporal_bucket(design, units)),
     weighted = {
       if (design$method != "poisson") {
         # Neither package has the joint probabilities of systematic PPS.
-        # `survey`'s Brewer approximation and this package's Deville
-        # approximation are close relatives, and agree to a fraction of a
-        # percent.
-        return(list(stratum = NULL, fpc = dat$.prob, ids = one,
-                    extra = list(pps = "brewer")))
+        # `survey` uses Brewer's approximation and this package Deville's.
+        return(pps_parts(dat, prefix, "brewer"))
       }
       # Poisson sampling has a random size, so no finite population correction
       # over a fixed n describes it. `survey` models it directly.
       refuse_nested(prefix, "a Poisson `rest`",
                     "its sample size is random, which no stratum can express")
-      list(stratum = NULL, fpc = dat$.prob, ids = one,
-           extra = list(pps = survey::poisson_sampling(dat$.prob)))
+      pps_parts(dat, prefix, survey::poisson_sampling(dat$.prob))
     },
     cluster = ,
     multistage = {
@@ -225,8 +261,7 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       if (is.null(design$size)) {
         list(stratum = NULL, fpc = rep(length(fr$keep), nrow(dat)), ids = one)
       } else {
-        list(stratum = NULL, fpc = dat$.prob, ids = one,
-             extra = list(pps = "brewer"))
+        pps_parts(dat, prefix, "brewer")
       }
     },
     spatial = {
@@ -237,36 +272,93 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
     },
     certainty = {
       sp <- certainty_split(design, pop)
-      certain_pop <- sp$keep[sp$take]
       below <- sp$data[sp$rest, , drop = FALSE]
       # Membership of the certainty part, not `.prob == 1`: `rest` can put a
       # row at probability 1 of its own accord -- a dominant PPS unit, or an
-      # `n` equal to the rows below the threshold -- and filing those into the
-      # certainty stratum made `svydesign()` reject the whole design with
-      # "FPC implies >100% sampling in some strata".
-      is_certain <- rows %in% sp$keep[sp$take]
+      # `n` equal to the rows below the threshold -- and such rows belong to
+      # `rest`'s strata, which flag them in `whole` themselves.
+      above <- rows %in% sp$keep[sp$take]
+      if (!any(!above) && length(sp$rest)) {
+        stop_not_drawn(paste0(
+          "holds none of the ", rows_below(design, length(sp$rest)),
+          ", because `rest` drew none of them, and `survey` would report the ",
+          "total as exact. ht_total() and ht_mean() report no variance for ",
+          "such a sample; use a `rest` with a fixed sample size to estimate ",
+          "one."))
+      }
 
       out <- list(stratum = character(nrow(dat)), fpc = numeric(nrow(dat)),
-                  ids = one)
-      out$stratum[is_certain] <- paste0(prefix, "(certain)")
-      out$fpc[is_certain] <- length(certain_pop)
-      if (any(!is_certain)) {
-        rest <- survey_parts(design$rest, dat[!is_certain, , drop = FALSE],
-                             units[!is_certain, , drop = FALSE], below,
-                             rows = match(rows[!is_certain], sp$keep[sp$rest]),
+                  ids = one, whole = above)
+      out$stratum[above] <- paste0(prefix, "(certain)")
+      out$fpc[above] <- 1
+      if (any(!above)) {
+        rest <- survey_parts(design$rest, dat[!above, , drop = FALSE],
+                             units[!above, , drop = FALSE], below,
+                             rows = match(rows[!above], sp$keep[sp$rest]),
                              prefix = paste0(prefix, "(rest) "))
-        out$stratum[!is_certain] <- rest$stratum %||%
-          paste0(prefix, "(rest)")
-        out$fpc[!is_certain] <- rest$fpc
-        if (!is.null(rest$extra$pps)) {
-          # A PPS `rest` states its fpc as probabilities, and `survey` needs
-          # the whole design in the same terms: certainty rows are probability 1.
-          out$fpc[is_certain] <- 1
-          out$extra <- rest$extra
-        }
+        out$stratum[!above] <- rest$stratum %||% paste0(prefix, "(rest)")
+        out$fpc[!above] <- rest$fpc
+        out$whole[!above] <- rest$whole %||% FALSE
+        out$extra <- rest$extra
       }
       out
     },
     list(stratum = NULL, fpc = rep(nrow(pop), nrow(dat)), ids = one)
   )
+}
+
+#' Which rows lie in a stratum taken whole
+#'
+#' Rows of a stratum or interval are drawn with one probability, so a stratum
+#' is taken whole when every sampled row in it is certain.
+#'
+#' @noRd
+taken_whole <- function(stratum, prob) {
+  certain <- is_certain(prob)
+  stratum %in% stratum[certain] & !(stratum %in% stratum[!certain])
+}
+
+#' A size-based design, with its certain units in a stratum of their own
+#'
+#' `survey`'s Brewer approximation and its Poisson variance read `fpc` as
+#' probabilities. A unit at probability 1 left among the others still enters
+#' Brewer's centring on the mean of `y / pi` and its `n / (n - 1)` scaling,
+#' which put `survey`'s standard error at 23 times this package's on one frame
+#' with four dominant units. In a stratum of their own, taken whole, they add
+#' nothing and Brewer runs over the units below certainty.
+#'
+#' @noRd
+pps_parts <- function(dat, prefix, pps) {
+  certain <- is_certain(dat$.prob)
+  list(stratum = if (any(certain)) {
+         paste0(prefix, ifelse(certain, "(certain)", "(pps)"))
+       },
+       fpc = ifelse(certain, 1, dat$.prob), ids = stats::as.formula("~1"),
+       whole = certain, extra = list(pps = pps))
+}
+
+#' One primary sampling unit for each stratum of units taken with certainty
+#'
+#' Every other row is its own unit. The ids are unique across strata, so the
+#' units nest in their strata without `nest = TRUE`.
+#'
+#' @noRd
+shared_psu <- function(stratum, whole) {
+  psu <- seq_along(whole)
+  psu[whole] <- length(whole) + match(stratum[whole], unique(stratum[whole]))
+  psu
+}
+
+#' A sample whose every row was taken with certainty
+#'
+#' One stratum, every row its own unit, and `fpc` the number of rows, so that
+#' `survey`'s finite population correction is 0. `svydesign()` reads an `fpc`
+#' made only of 1s as neither counts nor probabilities, and stopped with
+#' "subscript out of bounds" on the probabilities of 1 the PPS mappings gave
+#' a census.
+#'
+#' @noRd
+census_parts <- function(dat) {
+  n <- nrow(dat)
+  list(stratum = NULL, fpc = rep(n, n), ids = stats::as.formula("~1"))
 }

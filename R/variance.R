@@ -83,6 +83,26 @@
 #' restores most of that. The degrees of freedom used are reported as `df`;
 #' pass `df = Inf` for the normal interval.
 #'
+#' Units taken with certainty count in neither number. They are in every
+#' sample and carry no variance, and counting them made the interval too
+#' narrow. With eight certain units among ten, systematic PPS reported 9
+#' degrees of freedom where the variance rests on two units, and its interval
+#' covered 79%. A stratum or interval with no other unit drops out of the
+#' count of strata. With no unit below certainty the variance is 0 and `df`
+#' is `Inf`. [as_svydesign()] hands certain units to `survey` in a form that
+#' makes `survey::degf()` give the same count, except for a census, where it
+#' gives `n - 1`.
+#'
+#' @section An empty sample:
+#' A design of random size, such as Poisson sampling or a systematic sample
+#' whose random start falls past the last row, can draw nothing. `ht_total()`
+#' then returns a total of 0, which keeps the estimator unbiased over repeated
+#' draws, with `df` 0, the variance, standard error and interval `NA`, and a
+#' note that the sample is empty. [ht_mean()] refuses the Hajek mean of an
+#' empty sample, which is 0 / 0; `estimator = "ht"` gives 0. An empty sample
+#' from a design that gives every row a probability of 0, such as one with
+#' `n = 0`, is refused, and so is any empty sample in [as_svydesign()].
+#'
 #' @section Domains:
 #' `by` estimates for each level of one or more columns — sites, regions,
 #' months — without subsetting the sample first. Subsetting a sample and
@@ -221,9 +241,14 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
 #' @noRd
 estimate_one <- function(parts, est, z, variance, level, df, what, class,
                          deff_y = NULL, extra = list(), logit = FALSE) {
-  var_out <- ht_variance_dispatch(parts$design, parts$units, parts$pop,
-                                  parts$rows, z, parts$pi, variance)
-  df <- df %||% design_df(parts$design, parts$units, parts$pop, parts$rows)
+  var_out <- if (nrow(parts$sample)) {
+    ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
+                         parts$pi, variance)
+  } else {
+    empty_sample()
+  }
+  df <- df %||% design_df(parts$design, parts$units, parts$pop, parts$rows,
+                          parts$pi)
   out <- finish_estimate(est, var_out, level, df, nrow(parts$sample),
                          parts$design, deff_y, parts$pi, nrow(parts$pop),
                          what = what, class = class, logit = logit)
@@ -299,32 +324,69 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance) {
 #' Degrees of freedom for a design's confidence interval
 #'
 #' Primary sampling units minus strata, the usual rule (Korn and Graubard
-#' 1999) and the one `survey::degf()` applies, so intervals agree across the two
-#' packages. Strata and clusters are read from `units`, the frame's copy of the
-#' sampled rows.
+#' 1999), counting only units that could have been left out. A unit taken with
+#' certainty is in every sample, so it carries no variance and no degree of
+#' freedom: the units `design_weighted()` and `design_spread(size =)` take with
+#' certainty, strata and intervals taken whole, and the rows above a
+#' certainty design's threshold. A stratum holding none of the other units
+#' drops out of the count of strata. Counting them put eight certain units of
+#' ten at 9 degrees of freedom where the same selection built with
+#' `design_certainty()` had 1, and the t interval covered 79%.
+#'
+#' A cluster counts when any of its sampled rows is below certainty. A
+#' two-stage design that takes every cluster, but not every row in them, has
+#' the number of clusters less one.
+#'
+#' With no unit below certainty the variance is exactly 0 and the result is
+#' `Inf`. An empty sample, and a certainty design whose `rest` drew none of the
+#' rows below the threshold, have no variance to build an interval on and get
+#' 0.
+#'
+#' `as_svydesign()` hands each group of certain units to `survey` as one
+#' primary sampling unit in a stratum of its own, so `survey::degf()` gives the
+#' same count. Strata and clusters are read from `units`, the frame's copy of
+#' the sampled rows; `pi_i` holds their inclusion probabilities.
 #'
 #' @noRd
-design_df <- function(design, units, pop, rows) {
+design_df <- function(design, units, pop, rows, pi_i) {
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_split(design, pop)
+    free <- !(rows %in% sp$keep[sp$take])
+    if (!any(free)) return(if (length(sp$rest)) 0 else Inf)
+    return(design_df(design$rest, units[free, , drop = FALSE],
+                     sp$data[sp$rest, , drop = FALSE],
+                     match(rows[free], sp$keep[sp$rest]), pi_i[free]))
+  }
   n <- nrow(units)
-  out <- switch(design_type(design),
-    stratified = n - length(unique(group_key(units, design$strata))),
-    temporal = n - length(unique(temporal_bucket(design, units))),
+  if (n == 0L) return(0)
+  psu <- switch(design_type(design),
     cluster = ,
-    multistage = length(unique(units[[design$clusters]])) - 1,
-    certainty = {
-      sp <- certainty_split(design, pop)
-      free <- !(rows %in% sp$keep[sp$take])
-      if (!any(free)) {
-        Inf
-      } else {
-        design_df(design$rest, units[free, , drop = FALSE],
-                  sp$data[sp$rest, , drop = FALSE],
-                  match(rows[free], sp$keep[sp$rest]))
-      }
-    },
-    n - 1
+    multistage = units[[design$clusters]],
+    seq_len(n)
   )
-  max(out, 0)
+  stratum <- switch(design_type(design),
+    stratified = as.character(group_key(units, design$strata)),
+    temporal = temporal_bucket(design, units),
+    rep("all", n)
+  )
+  random <- psu %in% psu[!is_certain(pi_i)]
+  if (!any(random)) return(Inf)
+  max(length(unique(psu[random])) - length(unique(stratum[random])), 0)
+}
+
+#' The variance of an empty sample
+#'
+#' A design of random size, such as Poisson sampling or a systematic one whose
+#' start falls past the last row, can draw nothing. The Horvitz-Thompson
+#' estimate is then 0, which keeps it unbiased over repeated draws, but one
+#' empty draw has no spread to measure.
+#'
+#' @noRd
+empty_sample <- function() {
+  list(variance = NA_real_, method = "none", note = paste0(
+    "The sample is empty. The design could have drawn rows, but this draw ",
+    "took none, so the estimate is 0 and has no variance. A design with a ",
+    "fixed sample size, or a larger expected one, avoids this."))
 }
 
 #' @noRd

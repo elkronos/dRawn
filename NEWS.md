@@ -79,6 +79,25 @@
   went unobserved. The total is exact only when no row lies below the
   threshold. Otherwise the variance is now missing, with a note naming the
   rows `rest` did not reach.
+* **Units taken with certainty counted as degrees of freedom.** The t
+  intervals of `ht_total()` and `ht_mean()` counted every sampled unit,
+  including the ones `design_weighted()` and `design_spread(size =)` take
+  with certainty, strata and `design_temporal()` intervals taken whole, and
+  such units inside a certainty design's `rest`. With eight certain units
+  among ten, systematic PPS reported 9 degrees of freedom where the same
+  selection built with `design_certainty()` had 1, and its interval covered
+  79%; a temporal design whose sparse days were taken whole covered 83%.
+  Only units below certainty count now, and a stratum or interval holding
+  none of them drops out. A sample with no unit below certainty has
+  `df = Inf`, and a certainty design whose `rest` drew nothing has `df` 0.
+* **`as_svydesign()` left units taken with certainty in `survey`'s Brewer
+  stratum.** For `design_weighted(method = "systematic")`,
+  `design_spread(size =)` and a certainty design over a systematic PPS
+  `rest`, `survey` still centred and scaled Brewer's approximation over the
+  certain units, which put its standard error at 23 times `ht_total()`'s on
+  a frame with four dominant units. They now go to `survey` in a stratum of
+  their own, taken whole, and the two standard errors agreed within 0.02%
+  there.
 
 ## Refusals and clearer errors
 
@@ -128,12 +147,38 @@
   `.weight` is.
 * A sample drawn from a data.table takes `:=` without the "Invalid
   .internal.selfref" warning. data.table joins `Suggests`.
+* `ht_total()` of an empty sample from a design of random size, which Poisson
+  sampling or a systematic start past the last row can give, returns a total
+  of 0 with no variance and a note, where it stopped with an error. Over
+  repeated draws that 0 is what keeps the total unbiased, so a simulation loop
+  no longer has to catch it. `ht_mean()` refuses the Hajek mean of an empty
+  sample, which is 0 / 0, and gives 0 for `estimator = "ht"`. An empty sample
+  from a design that reaches no row, such as one with `n = 0`, is still
+  refused, and the message says so. `?ht_total` describes this.
 
 ## Handing off to survey
 
 * `as_svydesign()` hands `survey` a copy of the sample, so an in-place sort
   of the sample afterwards no longer changes the survey design's standard
   errors.
+* Units taken with certainty go to `survey` as one primary sampling unit
+  per stratum with an `fpc` of 1, through a new `.psu` id column, so
+  `survey::degf()` gives the same degrees of freedom as `ht_total()` for
+  certainty designs, strata and intervals taken whole, and PPS samples with
+  certain units, and `survey::svyciprop()` gives the same interval as
+  `ht_mean()`. `survey` had counted each certain row as a unit.
+* A census, a sample whose every `.prob` is 1, goes to `survey` as
+  `ids = ~1` with `fpc` the number of rows. Under systematic PPS, alone or
+  as a certainty design's `rest`, Poisson sampling and
+  `design_spread(size =)` it stopped `svydesign()` with "subscript out of
+  bounds". An empty sample is refused with a message
+  instead of failing inside `survey`, and so is a certainty sample whose
+  `rest` drew none of the rows below the threshold, which `survey` would
+  have reported as exact.
+* `?as_svydesign`, the estimation article and `cran-comments.md` no longer
+  say that `survey` agrees with systematic PPS within 0.2%. Standard errors
+  of totals usually agree within 0.3% and within about 1%; those of means
+  differ by up to 7% at a sampling fraction of one half.
 
 # drawn 0.2.0
 

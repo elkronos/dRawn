@@ -84,8 +84,9 @@ the frame the design can actually reach.
 The Hajek mean is a ratio, and its variance is the variance of the total of
 the linearised residuals \code{(y - mean) / N_hat} (Deville 1999), computed with
 whichever estimator suits the design — see \code{\link[=ht_total]{ht_total()}}, which also explains
-the confidence interval's degrees of freedom and how \code{by} estimates domain
-means from the whole sample rather than a subset of it.
+the confidence interval's degrees of freedom, how \code{by} estimates domain
+means from the whole sample rather than a subset of it, and what an empty
+sample gives.
 }
 
 \examples{

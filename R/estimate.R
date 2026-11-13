@@ -45,8 +45,9 @@
 #' The Hajek mean is a ratio, and its variance is the variance of the total of
 #' the linearised residuals `(y - mean) / N_hat` (Deville 1999), computed with
 #' whichever estimator suits the design — see [ht_total()], which also explains
-#' the confidence interval's degrees of freedom and how `by` estimates domain
-#' means from the whole sample rather than a subset of it.
+#' the confidence interval's degrees of freedom, how `by` estimates domain
+#' means from the whole sample rather than a subset of it, and what an empty
+#' sample gives.
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. It is
 #'   read as [ht_total()] reads it: `.prob` for the probabilities, and the
@@ -117,6 +118,11 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                        estimator = estimator))
   }
   warn_grouped(sample, "ht_mean")
+  if (!nrow(parts$sample) && estimator == "hajek") {
+    stop("`sample` has no rows, so the Hajek mean is 0 / 0. Use ",
+         "estimator = \"ht\", which divides the total, 0, by the size of the ",
+         "frame.", call. = FALSE)
+  }
 
   pi_i <- parts$pi
   yv <- parts$y
@@ -167,7 +173,7 @@ estimate_by <- function(parts, by, variance, level, df, what,
   pi_i <- parts$pi
   yv <- parts$y
   df_use <- df %||% design_df(parts$design, parts$units, parts$pop,
-                              parts$rows)
+                              parts$rows, pi_i)
 
   rows <- lapply(levels_in, function(d) {
     ind <- as.numeric(key == d)
@@ -308,9 +314,19 @@ ht_prepare <- function(sample, y, level, df = NULL) {
          call. = FALSE)
   }
   if (nrow(sample) == 0L) {
-    # Possible under Poisson sampling or a systematic start past the end.
-    stop("`sample` has no rows, so there is nothing to estimate from.",
-         call. = FALSE)
+    # Possible under Poisson sampling or a systematic start past the end, and
+    # then a total of 0 (see empty_sample()). A design that reaches no row of
+    # the frame, and a sample that records no probabilities, give nothing to
+    # estimate from.
+    if (is.null(state$pi_all)) {
+      stop("`sample` has no rows, so there is nothing to estimate from.",
+           call. = FALSE)
+    }
+    if (!any(state$pi_all > 0)) {
+      stop("`sample` has no rows, and its design gives every row of the ",
+           "frame a probability of 0, so there is nothing to estimate from. ",
+           "Give the design a sample size above 0.", call. = FALSE)
+    }
   }
   if (!is.null(df) && (!is.numeric(df) || length(df) != 1L || is.na(df) ||
                        df <= 0)) {
