@@ -453,6 +453,26 @@
   are refused by name. `inclusion_prob()`, `joint_prob()`, the variance
   estimators, `as_svydesign()` and `sample_summary()` follow the counts as
   given.
+* `design_stratified(allocation = "neyman")` takes the standard deviation of
+  each stratum as `allocation_by`, from a pilot or an earlier survey, in
+  place of a frame column: a named vector, or a data frame of the `strata`
+  columns and `sd`. The frame then needs no such column for `draw()`,
+  `inclusion_prob()`, `joint_prob()` or the variance estimators. The new
+  `cost` argument takes the cost of one row in each stratum in the same
+  forms and splits `n` in proportion to `size * sd / sqrt(cost)`, the split
+  of least variance for its total cost (Cochran 1977, section 5.5). Before,
+  the only way to get either was a made-up frame column with the wanted
+  spread. A stratum missing from either, or one the frame does not have, is
+  refused by name; a negative or infinite standard deviation, a cost of 0 or
+  less, and `cost` without Neyman allocation are refused when the design is
+  built.
+* `allocation_table()` shows, before drawing, how `design_stratified()`, on
+  its own or as the `rest` of `design_certainty()`, splits `n` over the
+  strata of a frame: each stratum's size, the rows drawn from it, their
+  inclusion probability, the standard deviation and cost a Neyman split
+  used, and whether the stratum was held at its floor, capped at its size,
+  taken whole or left with no rows. It comes from the same computation as
+  `draw()` and `inclusion_prob()`.
 
 ## Speed and memory
 

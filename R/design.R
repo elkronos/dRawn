@@ -63,7 +63,9 @@
 #' probabilities and [sampling_weight()] their reciprocals — the number of
 #' population rows each sampled row stands for, and [certainty_set()] the rows
 #' a design that selects in proportion to size takes with certainty.
-#' [joint_prob()] gives
+#' [allocation_table()] shows how a stratified design splits `n` over the
+#' strata of a frame, and which strata it holds at the floor, takes whole or
+#' leaves empty. [joint_prob()] gives
 #' second-order probabilities, and [ht_total()] and [ht_mean()] turn a sample
 #' into a population total, mean or proportion — overall or by domain — with a
 #' standard error from the variance estimator suited to the design and a

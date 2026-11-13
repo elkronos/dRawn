@@ -26,12 +26,14 @@
 #'   get shares proportional to `size * spread`, which minimises the variance
 #'   of a total for a fixed `n`: a group whose values barely vary needs fewer
 #'   rows to pin down than an equally sized group that varies a lot.
+#' @param cost Per-group cost of one row, in the order of `sizes`, or `NULL`.
+#'   Neyman shares become `size * spread / sqrt(cost)`.
 #' @param noun The group, singular and plural, for the message when the
 #'   floor needs more than `n`.
 #' @noRd
 allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
                      spread = NULL, min_arg = "min_per_stratum",
-                     noun = c("stratum", "strata")) {
+                     noun = c("stratum", "strata"), cost = NULL) {
   k <- length(sizes)
   if (k == 0L) return(integer(0))
 
@@ -40,10 +42,7 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
   # million was enough. Everything downstream is fractional anyway.
   n <- as.numeric(n)
   sizes <- stats::setNames(as.numeric(sizes), names(sizes))
-  lower <- rep(as.numeric(min_per_stratum), k)
-  # Without replacement a group smaller than the floor is taken whole, so it
-  # needs only its own rows.
-  if (cap) lower <- pmin(lower, sizes)
+  lower <- group_floor(min_per_stratum, sizes, cap)
   if (sum(lower) > n) {
     small <- sum(sizes < min_per_stratum)
     stop("`", min_arg, "` = ", min_per_stratum, " needs at least ", sum(lower),
@@ -56,23 +55,7 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
          call. = FALSE)
   }
 
-  share <- switch(allocation,
-    equal = rep(1, k),
-    neyman = {
-      if (is.null(spread)) {
-        stop("Neyman allocation needs `allocation_by`.", call. = FALSE)
-      }
-      sp <- as.numeric(spread)
-      if (length(sp) != k || anyNA(sp) || any(!is.finite(sp) | sp < 0)) {
-        stop("Neyman allocation needs a finite spread of 0 or more for ",
-             "every ", noun[1], ".", call. = FALSE)
-      }
-      # A constant auxiliary variable has no spread to allocate by; fall back
-      # to proportional rather than dividing by zero.
-      if (sum(sizes * sp) <= 0) sizes else sizes * sp
-    },
-    sizes
-  )
+  share <- allocation_share(allocation, sizes, spread, cost, noun)
   raw <- capped_shares(n, share, sizes, cap, lower)
 
   base <- floor(raw)
@@ -99,6 +82,59 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
   }
 
   stats::setNames(as.integer(base), names(sizes))
+}
+
+#' Each group's floor
+#'
+#' `min_per_stratum` for every group, except that without replacement a
+#' group smaller than the floor is taken whole, so it needs only its own
+#' rows.
+#'
+#' @noRd
+group_floor <- function(min_per_stratum, sizes, cap) {
+  lower <- rep(as.numeric(min_per_stratum), length(sizes))
+  if (cap) pmin(lower, as.numeric(sizes)) else lower
+}
+
+#' The share of `n` each group gets under an allocation rule
+#'
+#' Before the floor and the cap. Under Neyman allocation it is
+#' `size * spread`, or `size * spread / sqrt(cost)` with costs, the split of
+#' least variance for what the sample costs (Cochran 1977, section 5.5).
+#' When no group has any spread, every split has the same variance, and the
+#' shares are those for equal spreads: `size`, or `size / sqrt(cost)`.
+#'
+#' @noRd
+allocation_share <- function(allocation, sizes, spread = NULL, cost = NULL,
+                             noun = c("stratum", "strata")) {
+  k <- length(sizes)
+  sizes <- as.numeric(sizes)
+  switch(allocation,
+    equal = rep(1, k),
+    neyman = {
+      if (is.null(spread)) {
+        stop("Neyman allocation needs `allocation_by`.", call. = FALSE)
+      }
+      sp <- as.numeric(spread)
+      if (length(sp) != k || anyNA(sp) || any(!is.finite(sp) | sp < 0)) {
+        stop("Neyman allocation needs a finite spread of 0 or more for ",
+             "every ", noun[1], ".", call. = FALSE)
+      }
+      base <- sizes
+      if (!is.null(cost)) {
+        cs <- as.numeric(cost)
+        if (length(cs) != k || anyNA(cs) || any(!is.finite(cs) | cs <= 0)) {
+          stop("Neyman allocation needs a finite cost above 0 for every ",
+               noun[1], ".", call. = FALSE)
+        }
+        base <- sizes / sqrt(cs)
+      }
+      # A constant auxiliary variable has no spread to allocate by; fall back
+      # to the shares for equal spreads rather than dividing by zero.
+      if (sum(sizes * sp) <= 0) base else base * sp
+    },
+    sizes
+  )
 }
 
 #' Continuous allocation between a floor and a cap
@@ -135,6 +171,60 @@ capped_shares <- function(n, share, sizes, cap,
                               upper[pos])
   }
   raw
+}
+
+#' What the rule asks of each group, at the level the bounds settle on
+#'
+#' The `lambda * share` that `capped_shares()` holds between the floor and
+#' the cap, before the holding: above a group's size when the cap keeps it
+#' from more rows, below its floor when the floor gives it more than its
+#' share. Groups with a share get `Inf` when even taking all of them whole
+#' leaves rows over, and the groups without one then claim in proportion to
+#' size, as `capped_shares()` splits those rows.
+#'
+#' @noRd
+share_claim <- function(n, share, sizes, cap, lower) {
+  sizes <- as.numeric(sizes)
+  upper <- if (cap) sizes else rep(Inf, length(sizes))
+  pos <- share > 0
+  claim <- numeric(length(sizes))
+  if (sum(upper[pos]) + sum(lower[!pos]) < n) {
+    claim[pos] <- Inf
+    if (any(!pos)) {
+      claim[!pos] <- split_level(n - sum(upper[pos]), sizes[!pos],
+                                 lower[!pos], upper[!pos]) * sizes[!pos]
+    }
+  } else if (any(pos)) {
+    claim[pos] <- split_level(n - sum(lower[!pos]), share[pos], lower[pos],
+                              upper[pos]) * share[pos]
+  }
+  claim
+}
+
+#' Why each group was allocated the rows it was
+#'
+#' `"empty"` for a group allocated no rows. Without replacement,
+#' `"capped"` for one the rule asked more rows of than it holds, and
+#' `"take-all"` for one taken whole for another reason: a share that comes to
+#' its size, or a size below the floor. `"floor"` for a group raised to
+#' `min_per_stratum` from a smaller share, and `"rule"` for the rest.
+#' `share` and `lower` are as `allocate()` computes them.
+#'
+#' @noRd
+allocation_status <- function(n, n_alloc, sizes, share, lower, cap) {
+  sizes <- as.numeric(sizes)
+  claim <- share_claim(as.numeric(n), share, sizes, cap, lower)
+  # The level is found in floating point, so a share that comes to a bound
+  # exactly can land a rounding error either side of it.
+  tol <- 1e-9 * pmax(1, sizes)
+  status <- rep("rule", length(sizes))
+  status[claim < lower - tol] <- "floor"
+  if (cap) {
+    status[n_alloc == sizes] <- "take-all"
+    status[claim > sizes + tol] <- "capped"
+  }
+  status[n_alloc == 0L] <- "empty"
+  status
 }
 
 #' Split `n` in proportion to positive `share`, between `lower` and `upper`
@@ -195,8 +285,10 @@ split_level <- function(n, share, lower, upper) {
 #' of 0 asks for no rows at all and is not warned about.
 #'
 #' `flat` marks the groups that Neyman allocation gave no share because the
-#' column `by` does not vary within them. Raising `n` reaches those only once
-#' every other group is taken whole, so their message does not suggest it.
+#' column `by` does not vary within them, or, with `by` `NULL`, because the
+#' standard deviations given for them are 0. Raising `n` reaches those only
+#' once every other group is taken whole, so their message does not suggest
+#' it.
 #' `fix` replaces the closing advice, for counts given per stratum.
 #'
 #' The warning carries its own class so that loops which draw on purpose many
@@ -216,10 +308,14 @@ warn_empty_groups <- function(n_alloc, sizes, labels, noun = "stratum",
   if (any(flat)) {
     some <- !all(flat)
     many <- sum(flat) > 1L
+    who <- if (some) quote_labels(labels[empty[flat]]) else if (many) "them"
+      else "it"
     cause <- paste0(
-      "`", by, "` is constant within ",
-      if (some) quote_labels(labels[empty[flat]]) else if (many) "them"
-      else "it",
+      if (is.null(by)) {
+        paste0("`allocation_by` gives ", who, " a standard deviation of 0")
+      } else {
+        paste0("`", by, "` is constant within ", who)
+      },
       ", so Neyman allocation gives ", if (many) "them" else "it",
       " no share until every other ", noun, " is taken whole. ")
   }

@@ -11,7 +11,8 @@ design_stratified(
   allocation_by = NULL,
   min_per_stratum = 0L,
   replace = FALSE,
-  na_rm = FALSE
+  na_rm = FALSE,
+  cost = NULL
 )
 }
 \arguments{
@@ -25,11 +26,13 @@ it must equal that sum.}
 \item{allocation}{How \code{n} is split across strata: a rule, or the count for
 each stratum. Of the rules, \code{"proportional"} gives each stratum a share
 of \code{n} in proportion to its size; \code{"equal"} splits \code{n} evenly;
-\code{"neyman"} gives shares proportional to \code{size * sd}, using the column
-named by \code{allocation_by} (Neyman 1934). Neyman minimises the variance of
-a total for a fixed \code{n} by putting more rows where the values vary most,
-and is the right choice when you have a frame variable correlated with
-what you are measuring. Under any rule, a stratum that would be
+\code{"neyman"} gives shares proportional to \code{size * sd}, with the standard
+deviation of each stratum from \code{allocation_by} (Neyman 1934). Neyman
+minimises the variance of a total for a fixed \code{n} by putting more rows
+where the values vary most, and is the right choice when you have a
+frame variable correlated with what you are measuring, or estimates of
+each stratum's standard deviation from a pilot or an earlier survey.
+Under any rule, a stratum that would be
 allocated more rows than it holds is taken whole, one that would get
 fewer than \code{min_per_stratum} gets that many, and the rest of \code{n} is
 re-split over the others by the same rule (Cochran 1977, section 5.9).
@@ -44,9 +47,17 @@ replacement no count may exceed the rows in its stratum. The design then
 draws exactly those counts, and the inclusion probabilities, variances
 and \code{\link[=as_svydesign]{as_svydesign()}} follow them.}
 
-\item{allocation_by}{Column whose within-stratum standard deviation drives
-\code{allocation = "neyman"}. Ignored otherwise. Every row allocated over needs
-a finite value.}
+\item{allocation_by}{The standard deviation of each stratum, for
+\code{allocation = "neyman"}. Ignored otherwise. Either a column of the
+frame, whose standard deviation within each stratum is used, and which
+needs a finite value on every row allocated over; or the standard
+deviations themselves, so the frame needs no such column. Those are a
+named vector, such as \code{c(north = 40, south = 15)}, when \code{strata} is one
+column, its names matched to that column's values as text; or a data
+frame holding the \code{strata} columns and a column \code{sd}, matched on the
+values themselves. Every stratum of the frame needs one, a value for a
+stratum the frame does not have is refused, and each must be finite and
+0 or more. A stratum with a standard deviation of 0 gets no share.}
 
 \item{min_per_stratum}{Minimum rows from each stratum, under an allocation
 rule. With the default of
@@ -65,9 +76,24 @@ give each stratum its count there instead.}
 \item{replace}{Sample with replacement within each stratum?}
 
 \item{na_rm}{Drop rows whose stratum key is \code{NA} instead of raising an error.}
+
+\item{cost}{The cost of sampling one row in each stratum, for
+\code{allocation = "neyman"} only. In the same forms as standard deviations
+given in \code{allocation_by}, with the column of a data frame named \code{cost},
+so one data frame of the \code{strata} columns, \code{sd} and \code{cost} can serve
+both. Each must be finite and above 0. The shares become proportional to
+\code{size * sd / sqrt(cost)}, which gives the smallest variance among the
+splits of the same total cost, \code{sum(cost * n_h)} over strata (Cochran
+1977, section 5.5). Before any stratum is held at its floor or its
+size, the \code{n} that spends a budget \code{C}, net of any fixed cost, is
+\code{C * sum(N_h * S_h / sqrt(c_h)) / sum(N_h * S_h * sqrt(c_h))}, rounded
+down. When no stratum has any spread, the shares are
+proportional to \code{size / sqrt(cost)}, as for equal spreads, and without
+\code{cost} to \code{size}.}
 }
 \value{
-A design object, for use with \code{\link[=draw]{draw()}}.
+A design object, for use with \code{\link[=draw]{draw()}}. \code{\link[=allocation_table]{allocation_table()}} shows
+the rows it takes from each stratum of a frame before anything is drawn.
 }
 \description{
 Draws a sample from each stratum. Allocation uses the largest-remainder
@@ -108,6 +134,13 @@ draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1), seed = 1)$g
 fixed <- design_stratified("site", allocation = c(a = 8, b = 4, c = 4, d = 4))
 table(draw(df, fixed, seed = 1)$site)
 
+# Neyman from standard deviations known from an earlier survey, with the
+# cost of reaching a row in each stratum
+pilot <- design_stratified("site", n = 20, allocation = "neyman",
+                           allocation_by = c(a = 4, b = 1, c = 2, d = 8),
+                           cost = c(a = 1, b = 1, c = 4, d = 4))
+allocation_table(df, pilot)
+
 }
 \references{
 Neyman, J. (1934). On the two different aspects of the representative
@@ -116,7 +149,7 @@ method. \emph{Journal of the Royal Statistical Society}, 97, 558–625.
 Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 }
 \seealso{
-\code{\link[=draw]{draw()}}
+\code{\link[=draw]{draw()}}, \code{\link[=allocation_table]{allocation_table()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},

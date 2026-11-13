@@ -33,6 +33,7 @@ reference:
   - sampling_weight
   - joint_prob
   - certainty_set
+  - allocation_table
 
 - title: Estimating from a sample
   desc: >

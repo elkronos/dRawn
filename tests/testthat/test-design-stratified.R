@@ -448,3 +448,263 @@ test_that("counts are checked when the design is built", {
                "Give the count for each stratum as `allocation`",
                fixed = TRUE)
 })
+
+# ---- standard deviations and costs per stratum -----------------------------
+
+sd_frame <- function() {
+  data.frame(id = 1:120, g = rep(c("a", "b", "c"), times = c(60, 40, 20)),
+             v = c(1:60 %% 5, (1:40 * 7) %% 23, (1:20 * 11) %% 37),
+             y = (1:120 * 13) %% 29 + 1)
+}
+
+test_that("Neyman from standard deviations per stratum matches a column", {
+  d <- sd_frame()
+  by_col <- design_stratified("g", n = 24, allocation = "neyman",
+                              allocation_by = "v", min_per_stratum = 2)
+  sds <- vapply(split(d$v, d$g), stats::sd, numeric(1))
+  by_vec <- design_stratified("g", n = 24, allocation = "neyman",
+                              allocation_by = sds, min_per_stratum = 2)
+  by_df <- design_stratified(
+    "g", n = 24, allocation = "neyman", min_per_stratum = 2,
+    allocation_by = data.frame(g = c("c", "a", "b"),
+                               sd = unname(sds[c("c", "a", "b")])))
+  expect_output(print(by_vec), "allocation_by    c(a = ", fixed = TRUE)
+
+  # Given the standard deviations, the frame needs no `v` column, on any
+  # path.
+  bare <- d[c("id", "g", "y")]
+  p <- inclusion_prob(d, by_col)
+  expect_equal(inclusion_prob(bare, by_vec), p)
+  expect_equal(inclusion_prob(bare, by_df), p)
+  expect_identical(draw(bare, by_vec, seed = 1)$id,
+                   draw(d, by_col, seed = 1)$id)
+  rows <- c(1, 2, 61, 101)
+  expect_equal(joint_prob(bare, by_vec, rows = rows),
+               joint_prob(d, by_col, rows = rows))
+  s <- draw(bare, by_vec, seed = 1, weights = TRUE)
+  ref <- draw(d, by_col, seed = 1, weights = TRUE)
+  expect_equal(ht_total(s, "y")$se, ht_total(ref, "y")$se)
+  expect_equal(ht_total(s, "y", variance = "jackknife")$se,
+               ht_total(ref, "y", variance = "jackknife")$se)
+
+  skip_if_not_installed("survey")
+  expect_equal(
+    unname(survey::SE(survey::svytotal(~y, as_svydesign(s)))[1]),
+    ht_total(s, "y")$se)
+})
+
+test_that("costs per stratum give the cost-optimal split", {
+  # Shares proportional to N_h * S_h / sqrt(c_h), rounded by largest
+  # remainder: 27.71, 25.98, 6.93 and 29.39 rows.
+  sizes <- c(a = 400, b = 300, c = 200, d = 100)
+  S <- c(2, 5, 3, 12)
+  cst <- c(1, 4, 9, 2)
+  share <- sizes * S / sqrt(cst)
+  want <- 90 * share / sum(share)
+  got <- drawn:::allocate(90, sizes, "neyman", 0, spread = S, cost = cst)
+  expect_equal(sum(got), 90L)
+  expect_true(all(abs(got - want) < 1))
+  expect_equal(unname(got), c(28L, 26L, 7L, 29L))
+
+  # The same through a frame, with the values in one data frame
+  d <- data.frame(g = rep(names(sizes), times = sizes))
+  pilot <- data.frame(g = names(sizes), sd = S, cost = cst)
+  des <- design_stratified("g", n = 90, allocation = "neyman",
+                           allocation_by = pilot, cost = pilot)
+  expect_equal(inclusion_prob(d, des),
+               unname((got / sizes)[d$g]))
+  expect_equal(c(table(draw(d, des, seed = 1)$g)), got)
+  tab <- allocation_table(d, des)
+  expect_equal(tab$n, unname(got))
+  expect_equal(tab$sd, S)
+  expect_equal(tab$cost, cst)
+
+  # Costs with a column: the spread is the column's within each stratum.
+  f <- sd_frame()
+  sds <- vapply(split(f$v, f$g), stats::sd, numeric(1))
+  costs <- c(a = 1, b = 4, c = 9)
+  by_col <- design_stratified("g", n = 24, allocation = "neyman",
+                              allocation_by = "v", cost = costs)
+  expect_equal(allocation_table(f, by_col)$n,
+               unname(drawn:::allocate(24, c(60, 40, 20), "neyman", 0,
+                                       spread = sds, cost = costs)))
+
+  # With no spread anywhere, the shares are those for equal spreads.
+  expect_equal(drawn:::allocate(30, c(100, 100), "neyman", 0,
+                                spread = c(0, 0), cost = c(1, 4)),
+               c(20L, 10L))
+})
+
+test_that("standard deviations and costs are checked at construction", {
+  ney <- function(...) {
+    design_stratified("g", n = 10, allocation = "neyman", ...)
+  }
+  expect_error(ney(allocation_by = c(a = 1, b = -2)),
+               paste0("The standard deviations in `allocation_by` must be ",
+                      "finite numbers of 0 or more, and stratum `b` has -2."),
+               fixed = TRUE)
+  expect_error(ney(allocation_by = c(a = 1, b = Inf)), "stratum `b` has Inf",
+               fixed = TRUE)
+  expect_error(ney(allocation_by = c(a = 1, b = NA)), "stratum `b` has NA",
+               fixed = TRUE)
+  expect_error(ney(allocation_by = c(1, 2)), "must be named by stratum")
+  expect_error(ney(allocation_by = TRUE),
+               "`allocation_by` must be a column name, or the standard",
+               fixed = TRUE)
+  expect_error(ney(allocation_by = data.frame(g = c("a", "b"),
+                                              sd = c("1", "2"))),
+               "must be numbers, not character", fixed = TRUE)
+  expect_error(ney(allocation_by = data.frame(g = "a", s = 1)),
+               "missing column: `sd`", fixed = TRUE)
+  expect_error(ney(allocation_by = "v", cost = c(a = 1, b = 0)),
+               paste0("The costs in `cost` must be finite numbers above 0, ",
+                      "and stratum `b` has 0."), fixed = TRUE)
+  expect_error(ney(allocation_by = "v", cost = c(a = 1, b = -3)),
+               "stratum `b` has -3", fixed = TRUE)
+  expect_error(design_stratified(c("g", "h"), n = 10, allocation = "neyman",
+                                 allocation_by = "v", cost = c(a = 1)),
+               "a data frame with columns `g`, `h` and `cost`", fixed = TRUE)
+
+  # Costs shape a Neyman split and nothing else.
+  expect_error(design_stratified("g", n = 10, cost = c(a = 1, b = 2)),
+               paste0("`cost` applies only to allocation = \"neyman\", and ",
+                      "`allocation` is \"proportional\"."), fixed = TRUE)
+  expect_error(design_stratified("g", allocation = c(a = 1, b = 2),
+                                 cost = c(a = 1, b = 2)),
+               "`allocation` gives the count for each stratum", fixed = TRUE)
+})
+
+test_that("standard deviations and costs that miss a stratum are refused", {
+  d <- sd_frame()
+  short <- design_stratified("g", n = 12, allocation = "neyman",
+                             allocation_by = c(a = 1, b = 2))
+  msg <- "`allocation_by` has no entry for 1 stratum of `data`: `c`."
+  expect_error(draw(d, short, seed = 1), msg, fixed = TRUE)
+  expect_error(inclusion_prob(d, short), msg, fixed = TRUE)
+  expect_error(allocation_table(d, short), msg, fixed = TRUE)
+  expect_error(
+    inclusion_prob(d, design_stratified(
+      "g", n = 12, allocation = "neyman",
+      allocation_by = c(a = 1, b = 2, c = 3, cc = 4))),
+    "`allocation_by` names 1 stratum that `data` does not have: `cc`.",
+    fixed = TRUE)
+  expect_error(
+    draw(d, design_stratified("g", n = 12, allocation = "neyman",
+                              allocation_by = "v", cost = c(a = 1, c = 2)),
+         seed = 1),
+    "`cost` has no entry for 1 stratum of `data`: `b`.", fixed = TRUE)
+
+  # A standard deviation of 0 leaves a stratum without a share, and the
+  # warning says where that came from.
+  zero <- design_stratified("g", n = 12, allocation = "neyman",
+                            allocation_by = c(a = 0, b = 2, c = 3))
+  w <- tryCatch(draw(d, zero, seed = 1), drawn_empty_stratum = function(w) w)
+  expect_match(conditionMessage(w), paste0(
+    "`allocation_by` gives it a standard deviation of 0, so Neyman ",
+    "allocation gives it no share"), fixed = TRUE)
+})
+
+# ---- allocation_table() ----------------------------------------------------
+
+status_frame <- function() {
+  data.frame(id = 1:262,
+             site = rep(c("a", "b", "c", "d", "e"), c(150, 80, 25, 5, 2)),
+             v = c(1:150 %% 7, (1:80 * 7) %% 19, rep(1:2, length.out = 25),
+                   c(1, 90, 3, 70, 40), c(4, 4)))
+}
+
+test_that("allocation_table() agrees with the draw and inclusion_prob()", {
+  d <- status_frame()
+  des <- design_stratified("site", n = 30, allocation = "neyman",
+                           allocation_by = "v", min_per_stratum = 3)
+  tab <- allocation_table(d, des)
+  expect_identical(names(tab),
+                   c("site", "N", "n", "prob", "sd", "cost", "status"))
+  expect_identical(tab$site, c("a", "b", "c", "d", "e"))
+  expect_equal(tab$N, c(150L, 80L, 25L, 5L, 2L))
+  expect_equal(tab$n, as.vector(table(draw(d, des, seed = 1)$site)))
+  expect_equal(tab$prob,
+               as.vector(tapply(inclusion_prob(d, des), d$site, unique)))
+  expect_equal(tab$sd, as.vector(tapply(d$v, d$site, stats::sd)))
+  expect_true(all(is.na(tab$cost)))
+  # `d` is small and varies most, so the rule asks more of it than its 5
+  # rows; `e` is smaller than the floor; `c` barely varies.
+  expect_identical(tab$status, c("rule", "rule", "floor", "capped",
+                                 "take-all"))
+
+  # Without the floor, `c`'s share rounds to nothing and `e` has no spread.
+  bare <- allocation_table(d, design_stratified(
+    "site", n = 30, allocation = "neyman", allocation_by = "v"))
+  expect_identical(bare$status, c("rule", "rule", "empty", "capped", "empty"))
+  expect_equal(bare$prob[bare$status == "empty"], c(0, 0))
+
+  # With replacement no stratum is capped or taken whole.
+  rep_des <- design_stratified("site", n = 30, allocation = "neyman",
+                               allocation_by = "v", min_per_stratum = 3,
+                               replace = TRUE)
+  tab <- allocation_table(d, rep_des)
+  expect_identical(tab$status, c("rule", "rule", "floor", "rule", "floor"))
+  expect_equal(tab$prob,
+               as.vector(tapply(inclusion_prob(d, rep_des), d$site, unique)))
+
+  # A census takes every stratum whole without capping any.
+  expect_identical(
+    allocation_table(d, design_stratified("site", n = 262))$status,
+    rep("take-all", 5))
+
+  # Counts as given
+  cnt <- allocation_table(d, design_stratified(
+    "site", allocation = c(a = 3, b = 0, c = 25, d = 2, e = 1)))
+  expect_identical(cnt$status, c("count", "empty", "take-all", "count",
+                                 "count"))
+  expect_true(all(is.na(cnt$sd)))
+
+  # Values whose standard deviation overflows inside sd() are split on a
+  # smaller scale; the table reports the spread on the column's own scale.
+  big <- d
+  big$v <- big$v * 1e305
+  expect_equal(allocation_table(big, des)$sd,
+               allocation_table(d, des)$sd * 1e305)
+})
+
+test_that("allocation_table() keeps the strata columns and their order", {
+  d <- data.frame(id = 1:40, g = factor(rep(c("b", "a"), 20),
+                                        levels = c("b", "a")),
+                  h = rep(c(1.5, 2), each = 20))
+  tab <- allocation_table(d, design_stratified(c("g", "h"), n = 8))
+  expect_identical(tab$g, factor(c("b", "b", "a", "a"), levels = c("b", "a")))
+  expect_identical(tab$h, c(1.5, 2, 1.5, 2))
+  expect_equal(tab$n, rep(2L, 4))
+})
+
+test_that("allocation_table() describes the rest of a certainty design", {
+  d <- status_frame()
+  d$w <- c(rep(1, 250), seq(100, 1200, by = 100))
+  rest <- design_stratified("site", n = 20, min_per_stratum = 2)
+  des <- design_certainty("w", threshold = 100, rest = rest)
+  tab <- allocation_table(d, des)
+  below <- d$w < 100
+  expect_equal(tab$N, as.vector(table(d$site[below])))
+  expect_equal(tab$prob, as.vector(tapply(inclusion_prob(d, des)[below],
+                                          d$site[below], unique)))
+  expect_equal(tab, allocation_table(d[below, ], rest))
+
+  # With every row at or above the threshold, `rest` has no strata.
+  none <- allocation_table(d, design_certainty("w", threshold = 0,
+                                               rest = rest))
+  expect_equal(nrow(none), 0L)
+  expect_identical(names(none), names(tab))
+})
+
+test_that("allocation_table() refuses what it cannot describe", {
+  d <- status_frame()
+  expect_error(allocation_table(d, design_simple(n = 3)),
+               "which has no strata to allocate over", fixed = TRUE)
+  expect_error(allocation_table(d, list()),
+               "`design` must come from one of the design_*() constructors",
+               fixed = TRUE)
+  clash <- data.frame(n = rep(c("x", "y"), 5))
+  expect_error(allocation_table(clash, design_stratified("n", n = 4)),
+               paste0("`strata` column `n` has the name of a column ",
+                      "allocation_table() adds."), fixed = TRUE)
+})
