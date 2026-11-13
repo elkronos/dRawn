@@ -1,5 +1,5 @@
 test_that("plan_size delivers the margin it promises, for a mean", {
-  set.seed(3030)
+  local_seed(3030)
   N <- 20000
   pop <- data.frame(id = 1:N, y = stats::rnorm(N, 100, 40))
   truth <- mean(pop$y)
@@ -14,7 +14,7 @@ test_that("plan_size delivers the margin it promises, for a mean", {
 })
 
 test_that("plan_size delivers the margin it promises, for a proportion", {
-  set.seed(4040)
+  local_seed(4040)
   N <- 20000
   pop <- data.frame(id = 1:N, y = stats::rbinom(N, 1, 0.45))
   truth <- mean(pop$y)

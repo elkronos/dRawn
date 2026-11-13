@@ -30,7 +30,7 @@ test_that("a region containing no rows is reported clearly", {
 
 test_that("a list of geometries is unioned, whatever its length", {
   skip_if_not_installed("sf")
-  set.seed(7)
+  local_seed(7)
   df <- data.frame(
     id  = 1:60,
     lon = c(stats::runif(20, 1, 9), stats::runif(20, 21, 29),

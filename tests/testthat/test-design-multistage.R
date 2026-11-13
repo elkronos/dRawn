@@ -41,6 +41,14 @@ test_that("NA cluster labels never fabricate rows", {
               seed = 1)
   expect_false(anyNA(res$x))
   expect_equal(nrow(res), 5)
+
+  # A guard reading the NA-inflated count would let this through, returning 15
+  # rows from a 10-row cluster with replace = FALSE.
+  expect_error(
+    draw(df, design_multistage("cl", n_clusters = 1, n = 15, na_rm = TRUE),
+         seed = 1),
+    "exceeds the 10 row\\(s\\) available"
+  )
 })
 
 test_that("a single numeric cluster id is not read as a range", {

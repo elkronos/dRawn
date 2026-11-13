@@ -1,5 +1,5 @@
 var_pop <- function() {
-  set.seed(7)
+  local_seed(7)
   N <- 240
   d <- data.frame(
     id   = 1:N,
@@ -103,6 +103,9 @@ test_that("the estimated variance matches the estimator's true variance", {
       est[i] <- r$total; vr[i] <- r$variance
     }
     ok <- !is.na(est) & !is.na(vr)
+    # Leaving out the samples without a variance would hide an estimator that
+    # declines on many of them.
+    expect_gt(mean(ok), 0.99, label = paste(nm, "share with a variance"))
     ratio <- mean(vr[ok]) / stats::var(est[ok])
     expect_gt(ratio, 0.75, label = paste(nm, "variance ratio"))
     expect_lt(ratio, 1.35, label = paste(nm, "variance ratio"))
@@ -139,7 +142,7 @@ test_that("the print method shows the interval, or the reason there isn't one", 
 })
 
 test_that("the jackknife supplies a variance where the analytic form cannot", {
-  set.seed(3); N <- 240
+  local_seed(3); N <- 240
   pop <- data.frame(id = 1:N, cl = rep(paste0("c", 1:24), each = 10),
                     y = round(stats::runif(N, 5, 200)))
   pop$w <- pop$y + 50
@@ -153,7 +156,7 @@ test_that("the jackknife supplies a variance where the analytic form cannot", {
 })
 
 test_that("jackknife and analytic agree where both exist", {
-  set.seed(3); N <- 240
+  local_seed(3); N <- 240
   pop <- data.frame(id = 1:N, cl = rep(paste0("c", 1:24), each = 10),
                     y = round(stats::runif(N, 5, 200)))
   for (d in list(design_simple(n = 30), design_cluster("cl", n_clusters = 6))) {
@@ -165,7 +168,7 @@ test_that("jackknife and analytic agree where both exist", {
 })
 
 test_that("systematic sampling refuses the jackknife too", {
-  set.seed(3)
+  local_seed(3)
   pop <- data.frame(id = 1:240, y = round(stats::runif(240, 5, 200)))
   r <- ht_total(draw(pop, design_systematic(interval = 8), seed = 1,
                      weights = TRUE), "y", variance = "jackknife")
@@ -196,7 +199,7 @@ test_that("simulated joints converge on the closed form where one exists", {
 })
 
 test_that("simulation supplies joints for designs with no closed form", {
-  set.seed(5)
+  local_seed(5)
   d <- data.frame(id = 1:30, w = stats::runif(30, 1, 10))
   des <- design_weighted("w", n = 8, method = "systematic")
   expect_error(joint_prob(d, des), "no closed-form joint")
@@ -241,7 +244,7 @@ test_that("cluster variance is honest when clusters differ in size", {
   # is the same size. Sen-Yates-Grundy assumes a fixed size; applied row by row
   # here it came out at 0.39 of the truth, went negative on 57% of samples, and
   # produced zero-width intervals.
-  set.seed(9)
+  local_seed(9)
   sizes <- c(3, 4, 5, 6, 3, 4, 5, 6, 7, 8, 4, 5)
   pop <- data.frame(cl = rep(paste0("c", seq_along(sizes)), times = sizes))
   pop$y <- round(stats::rnorm(nrow(pop), 100, 30) +
@@ -272,7 +275,7 @@ test_that("cluster variance is honest when clusters differ in size", {
 })
 
 test_that("the jackknife declines where deleting rows misrepresents the design", {
-  set.seed(4)
+  local_seed(4)
   pop <- data.frame(w = stats::runif(60, 1, 20), y = round(stats::rnorm(60, 100, 25)))
 
   # Poisson: rows are independent and the exact form is right there.
@@ -295,7 +298,7 @@ test_that("the jackknife declines where deleting rows misrepresents the design",
 })
 
 test_that("the systematic-PPS jackknife tracks the real sampling variance", {
-  set.seed(19)
+  local_seed(19)
   N <- 300
   pop <- data.frame(w = stats::rlnorm(N, 5, 0.9))
   # A response variable distinct from the size measure. Totalling the size
@@ -318,7 +321,7 @@ test_that("the systematic-PPS jackknife tracks the real sampling variance", {
 test_that("the jackknife treats certainty rows as fixed, not as sampling units", {
   # Certainty rows are in every possible sample. Deleting one and inflating the
   # rest invents variance the design does not have -- 4.3x too much.
-  set.seed(12)
+  local_seed(12)
   pop <- data.frame(w = c(rep(100, 6), rep(1, 54)),
                     y = round(stats::rnorm(60, 100, 25), 3))
   des <- design_certainty("w", 50, design_simple(n = 10))
@@ -335,7 +338,6 @@ test_that("a negative analytic variance is reported, not passed on", {
   # Sen-Yates-Grundy can go negative on an unlucky sample. sqrt() was already
   # guarded, but the reason was dropped, `auto` did not fall back, and deff()
   # divided by it and returned a negative design effect.
-  fake <- list(variance = -1234, method = "analytic", note = NULL)
   expect_true(is.na(drawn:::deff_value(-1234, 1:10, rep(0.5, 10), 100, 10,
                                        "total")))
 
@@ -346,10 +348,30 @@ test_that("a negative analytic variance is reported, not passed on", {
     s, pop, attr(s, "drawn_rows"), s$y, s$.prob, "analytic")
   expect_true(is.na(bad$variance))
   expect_true(nzchar(bad$note))
+
+  # A simple random sample's own estimator cannot go negative, so it is
+  # replaced here by one that does.
+  local_mocked_bindings(
+    ht_variance = function(...) list(variance = -1234, note = NULL),
+    .package = "drawn"
+  )
+  a <- ht_total(s, "y", variance = "analytic")
+  expect_true(is.na(a$variance))
+  expect_equal(a$method, "none")
+  expect_match(a$note, "returned a negative variance (-1230)", fixed = TRUE)
+  expect_true(is.na(a$deff))
+
+  auto <- ht_total(s, "y")
+  expect_equal(auto$method, "jackknife")
+  expect_equal(auto$variance,
+               ht_total(s, "y", variance = "jackknife")$variance)
+  expect_match(auto$note, "^The design's own estimator declined")
+  expect_match(auto$note, "negative variance", fixed = TRUE)
+  expect_gt(auto$deff, 0)
 })
 
 test_that("a design neither estimator can handle says so once, truthfully", {
-  set.seed(3)
+  local_seed(3)
   pop <- data.frame(y = stats::rnorm(60, 10, 3), cl = rep(1:6, each = 10))
   r <- ht_total(draw(pop, design_cluster("cl", n_clusters = 1), seed = 1,
                      weights = TRUE), "y")
@@ -565,7 +587,8 @@ test_that("a Hajek mean of a one-row sample has no standard error", {
   expect_true(is.finite(ht_mean(s, "y", estimator = "ht")$se))
 
   # A census of one row is exact.
-  one <- draw(data.frame(y = 7), design_simple(n = 1), weights = TRUE)
+  one <- draw(data.frame(y = 7), design_simple(n = 1), seed = 1,
+              weights = TRUE)
   expect_equal(ht_mean(one, "y")$se, 0)
 })
 

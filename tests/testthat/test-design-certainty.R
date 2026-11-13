@@ -1,5 +1,5 @@
 cert_pop <- function(N = 400) {
-  set.seed(909)
+  local_seed(909)
   d <- data.frame(
     id    = seq_len(N),
     site  = rep(c("a", "b"), times = c(N * 0.6, N * 0.4)),
@@ -45,7 +45,7 @@ test_that("simulated inclusion matches the closed form", {
   des <- design_certainty("value", 1500, design_stratified("site", n = 20))
   exact <- inclusion_prob(d, des)
 
-  set.seed(21)
+  local_seed(21)
   hits <- integer(nrow(d))
   R <- 3000
   for (i in seq_len(R)) {
@@ -343,4 +343,16 @@ test_that("a `rest` that drew nothing leaves no degrees of freedom", {
   skip_if_not_installed("survey")
   expect_error(as_svydesign(s), paste0("`sample` holds none of the 3 rows ",
                                        "with `v` below 50"), fixed = TRUE)
+})
+
+test_that("a frame with the column the draw tags rows with is refused", {
+  d <- data.frame(id = 1:20, w = c(50, 1:19), .drawn_certainty_id = 0)
+  des <- design_certainty("w", 40, design_simple(n = 3))
+  expect_error(draw(d, des, seed = 1),
+               "`data` already has a column called `.drawn_certainty_id`.",
+               fixed = TRUE)
+  names(d)[3] <- "tag"
+  s <- draw(d, des, seed = 1)
+  expect_equal(nrow(s), 4L)
+  expect_true(1L %in% s$id)
 })

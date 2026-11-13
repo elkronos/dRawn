@@ -1,5 +1,5 @@
 spread_pop <- function(N = 300) {
-  set.seed(11)
+  local_seed(11)
   d <- data.frame(id = seq_len(N), x = stats::runif(N), y = stats::runif(N))
   d$smooth <- 100 + 80 * d$x + 60 * sin(4 * d$y) + stats::rnorm(N, 0, 10)
   d$size <- stats::rgamma(N, 3, 1)
@@ -22,19 +22,35 @@ test_that("inclusion probabilities are exactly the ones asked for", {
   d <- spread_pop()
   eq <- design_spread(c("x", "y"), n = 30)
   expect_equal(inclusion_prob(d, eq), rep(0.1, 300))
-  sim <- inclusion_prob(d, eq, simulate = TRUE, R = 4000, seed = 1)
-  z <- (sim - 0.1) / sqrt(0.1 * 0.9 / 4000)
-  expect_lt(max(abs(z)), 4.5)
-  expect_lt(abs(mean(z)), 0.2)
-
   pps <- design_spread(c("x", "y"), n = 30, size = "size")
   expect_equal(inclusion_prob(d, pps),
                inclusion_prob(d, design_weighted("size", n = 30,
                                                  method = "poisson")))
+
+  # The simulation runs 2,000 draws on 120 rows, where a draw costs less than
+  # half what it does on 300. A row's z depends on its probability and the
+  # number of draws, not on the size of the frame.
+  skip_on_cran()
+  d <- spread_pop(120)
+  eq <- design_spread(c("x", "y"), n = 12)
+  sim <- inclusion_prob(d, eq, simulate = TRUE, R = 2000, seed = 1)
+  z <- (sim - 0.1) / sqrt(0.1 * 0.9 / 2000)
+  expect_lt(max(abs(z)), 4.5)
+  # Every draw takes 12 rows, so z sums to 0 over the frame. Over each half of
+  # the space it does not have to: a walk that favoured one side of the plane
+  # would push that half's mean z away from 0.
+  for (half in list(d$x < 0.5, d$y < 0.5)) {
+    expect_lt(abs(mean(z[half])), 0.5)
+  }
+
+  pps <- design_spread(c("x", "y"), n = 12, size = "size")
   ex <- inclusion_prob(d, pps)
-  sim <- inclusion_prob(d, pps, simulate = TRUE, R = 4000, seed = 2)
-  z <- (sim - ex) / sqrt(ex * (1 - ex) / 4000)
+  sim <- inclusion_prob(d, pps, simulate = TRUE, R = 2000, seed = 2)
+  z <- (sim - ex) / sqrt(ex * (1 - ex) / 2000)
   expect_lt(max(abs(z[ex < 1])), 4.5)
+  for (half in list(d$x < 0.5, d$y < 0.5)) {
+    expect_lt(abs(mean(z[half])), 0.5)
+  }
 })
 
 test_that("spreading buys a large variance reduction on a smooth surface", {
@@ -68,9 +84,12 @@ test_that("the local mean variance is conservative but in the right range", {
     r <- ht_total(draw(d, des, seed = i, weights = TRUE), "smooth")
     c(r$total, r$variance)
   }, numeric(2))
+  # The ratio is 1.10 for these seeds, and 1.17 and 1.18 for two other runs
+  # of 400. The window stops at 1.4, so an estimator half again too large
+  # fails.
   ratio <- mean(out[2, ]) / stats::var(out[1, ])
-  expect_gt(ratio, 0.85)
-  expect_lt(ratio, 1.9)
+  expect_gt(ratio, 0.9)
+  expect_lt(ratio, 1.4)
 
   r <- ht_total(draw(d, des, seed = 1, weights = TRUE), "smooth")
   expect_equal(r$method, "local mean")
@@ -146,14 +165,21 @@ test_that("joint probabilities have no closed form, but can be simulated", {
 })
 
 test_that("scaling decides which column drives the distances", {
-  set.seed(4)
+  local_seed(4)
   d <- data.frame(big = stats::runif(200, 0, 1e6), small = stats::runif(200))
   unscaled <- design_spread(c("big", "small"), n = 20, scale = FALSE)
-  s <- draw(d, unscaled, seed = 1)
-  # Unscaled, `small` barely moves the distance; scaled, it counts equally.
-  expect_true(is.data.frame(s))
-  expect_equal(nrow(draw(d, design_spread(c("big", "small"), n = 20), seed = 1)),
-               20L)
+  scaled <- design_spread(c("big", "small"), n = 20)
+  expect_equal(nrow(draw(d, scaled, seed = 1)), 20L)
+  # Unscaled, `small` barely moves the distance, so the sample spreads over
+  # `big` alone and its mean of `small` strays as a simple random sample's
+  # does. Scaled, `small` counts as much as `big`, and the sample is balanced
+  # on it too: about a quarter of the unscaled error over these 40 draws.
+  miss <- function(des) {
+    mean(vapply(1:40, function(i) {
+      abs(mean(draw(d, des, seed = i)$small) - mean(d$small))
+    }, numeric(1)))
+  }
+  expect_lt(miss(scaled), 0.5 * miss(unscaled))
 })
 
 test_that("validates its inputs and honours na_rm", {

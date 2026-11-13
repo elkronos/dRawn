@@ -29,6 +29,13 @@ test_that("NA cluster labels are reported rather than treated as a cluster", {
   expect_equal(nrow(res), 20)
 })
 
+test_that("a single numeric cluster id is not read as a range", {
+  # sample(5, 1) samples from 1:5, so the only real cluster was never selected.
+  d <- data.frame(x = 1:10, cl = rep(5, 10))
+  expect_equal(nrow(draw(d, design_cluster("cl", n_clusters = 1), seed = 1)),
+               10)
+})
+
 test_that("clusters must name a single column", {
   expect_error(design_cluster(c("a", "b"), n_clusters = 2), "a single column")
 })

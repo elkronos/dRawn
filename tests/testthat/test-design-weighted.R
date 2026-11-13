@@ -1,5 +1,5 @@
 weighted_df <- function() {
-  set.seed(99)
+  local_seed(99)
   data.frame(id = 1:100, weight = stats::runif(100, 0.1, 10))
 }
 

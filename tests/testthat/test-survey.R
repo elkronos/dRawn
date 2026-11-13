@@ -1,5 +1,5 @@
 svy_pop <- function(N = 400) {
-  set.seed(1212)
+  local_seed(1212)
   d <- data.frame(
     id    = seq_len(N),
     site  = rep(c("a", "b", "c", "d"), times = c(N / 2, N / 4, N * 0.15,
@@ -13,28 +13,6 @@ svy_pop <- function(N = 400) {
   d$size <- round(d$spend * stats::runif(N, 0.3, 3) + 20)
   d
 }
-
-test_that("survey and this package agree on a stratified total", {
-  skip_if_not_installed("survey")
-  d <- svy_pop()
-  s <- draw(d, design_stratified("site", n = 80), seed = 1, weights = TRUE)
-  des <- as_svydesign(s)
-
-  ours <- ht_total(s, "spend")
-  theirs <- survey::svytotal(~spend, des)
-  expect_equal(as.numeric(theirs), ours$total)
-  expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-6)
-})
-
-test_that("survey and this package agree on a simple random total", {
-  skip_if_not_installed("survey")
-  d <- svy_pop()
-  s <- draw(d, design_simple(n = 100), seed = 2, weights = TRUE)
-  ours <- ht_total(s, "spend")
-  theirs <- survey::svytotal(~spend, as_svydesign(s))
-  expect_equal(as.numeric(theirs), ours$total)
-  expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-6)
-})
 
 test_that("a cluster design maps to cluster ids, and the means agree", {
   skip_if_not_installed("survey")
@@ -63,16 +41,6 @@ test_that("extra arguments reach svydesign", {
   s <- draw(d, design_stratified("site", n = 80), seed = 5, weights = TRUE)
   des <- as_svydesign(s, nest = TRUE)
   expect_s3_class(des, "survey.design")
-})
-
-test_that("a reservoir sample is simple random sampling, and maps as one", {
-  skip_if_not_installed("survey")
-  d <- svy_pop()
-  r <- draw(d, design_reservoir(n = 100), seed = 6, weights = TRUE)
-  ours <- ht_total(r, "spend")
-  theirs <- survey::svytotal(~spend, as_svydesign(r))
-  expect_equal(as.numeric(theirs), ours$total)
-  expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-6)
 })
 
 test_that("a bootstrap design is refused", {
@@ -125,6 +93,7 @@ test_that("survey reproduces this package's standard error, design by design", {
 
 test_that("a temporal design maps to strata over its intervals", {
   skip_if_not_installed("survey")
+  local_seed(126)
   d <- data.frame(
     id = 1:480,
     ts = rep(seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "day",
@@ -194,7 +163,7 @@ test_that("a certainty sample whose Poisson `rest` drew nothing is refused", {
 test_that("a spatial design's population is the region, not the frame", {
   skip_if_not_installed("survey")
   skip_if_not_installed("sf")
-  set.seed(3)
+  local_seed(3)
   pop <- data.frame(lon = stats::runif(60, -10, 10),
                     lat = stats::runif(60, -10, 10),
                     y = round(stats::runif(60, 5, 200)))
@@ -212,7 +181,7 @@ test_that("a `rest` design that puts a row at probability 1 is not a certainty r
   # Classifying by `.prob == 1` filed such rows into the certainty stratum,
   # whose fpc counts only the true certainty rows -- svydesign() then rejected
   # the whole design with "FPC implies >100% sampling in some strata".
-  set.seed(8)
+  local_seed(8)
   pop <- data.frame(v = c(100, 100, 1:10), y = stats::rnorm(12, 50, 5))
   s <- draw(pop, design_certainty("v", 50, design_simple(n = 10)), seed = 1,
             weights = TRUE)
@@ -230,7 +199,7 @@ test_that("a `rest` design that puts a row at probability 1 is not a certainty r
 
 test_that("a multistage design is handed over as two stages, and agrees exactly", {
   skip_if_not_installed("survey")
-  set.seed(3)
+  local_seed(3)
   sizes <- rep(c(8, 12, 16), length.out = 20)
   d <- data.frame(cl = rep(paste0("k", 1:20), times = sizes))
   d$y <- stats::rnorm(nrow(d), rep(stats::rnorm(20, 50, 20), times = sizes), 8)
@@ -276,7 +245,7 @@ test_that("a sample weighted conditional on its clusters agrees with survey", {
 
 test_that("a capped reservoir's population is the rows the stream reached", {
   skip_if_not_installed("survey")
-  set.seed(1)
+  local_seed(1)
   d <- data.frame(y = stats::rnorm(300, 10, 3))
   s <- suppressWarnings(draw(d, design_reservoir(n = 30, max_items = 100),
                              seed = 1, weights = TRUE))
@@ -286,7 +255,7 @@ test_that("a capped reservoir's population is the rows the stream reached", {
 
 test_that("systematic PPS maps to survey's Brewer approximation, and agrees closely", {
   skip_if_not_installed("survey")
-  set.seed(5)
+  local_seed(5)
   pop <- data.frame(x = stats::rgamma(300, 2, 0.1))
   pop$y <- 3 * pop$x + stats::rnorm(300, 0, 15)
   for (des in list(
@@ -734,6 +703,18 @@ test_that("a sample with a column as_svydesign() writes is refused", {
   expect_equal(as.numeric(survey::SE(survey::svytotal(~spend,
                                                       as_svydesign(s)))),
                ht_total(s, "spend")$se, tolerance = 1e-8)
+})
+
+test_that("each column as_svydesign() writes is refused in the sample", {
+  skip_if_not_installed("survey")
+  d <- svy_pop(100)
+  for (col in drawn:::survey_columns()) {
+    e <- d
+    e[[col]] <- 1
+    s <- draw(e, design_stratified("site", n = 20), seed = 1, weights = TRUE)
+    expect_error(as_svydesign(s), paste0("`sample` already has `", col, "`"),
+                 fixed = TRUE, label = col)
+  }
 })
 
 test_that("unnamed arguments to as_svydesign() are refused", {

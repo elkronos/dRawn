@@ -52,6 +52,7 @@ test_that("the default title describes the design", {
 })
 
 test_that("plot leaves graphical parameters as it found them", {
+  local_seed(54)
   pop <- data.frame(id = 1:200, site = rep(c("a", "b"), each = 100),
                     w = stats::runif(200, 1, 5))
   f <- tempfile(fileext = ".png")
@@ -572,4 +573,18 @@ test_that("a title too long for the figure is shrunk to fit", {
   expect_equal(longest[[8]], 0.6)
   expect_match(longest[[1]], "^x+\\.\\.\\.$")
   expect_lt(nchar(longest[[1]]), 1000)
+})
+
+test_that("a frame with the column plot() tags rows with is refused", {
+  pop <- data.frame(id = 1:20, x = 1:20, .drawn_plot_id = 1)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for (type in c("selection", "map")) {
+    expect_error(plot(design_simple(n = 5), pop, type = type, seed = 1,
+                      coords = c("id", "x")),
+                 "`y` already has a column called `.drawn_plot_id`.",
+                 fixed = TRUE)
+  }
+  names(pop)[3] <- "tag"
+  expect_invisible(plot(design_simple(n = 5), pop, seed = 1))
 })

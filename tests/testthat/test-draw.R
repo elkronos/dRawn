@@ -45,7 +45,7 @@ test_that("every design returns the input's class and column order", {
 
 test_that("seeding is local to the draw", {
   df <- make_df()
-  set.seed(42)
+  local_seed(42)
   expected <- stats::runif(3)
 
   designs <- list(
@@ -60,7 +60,7 @@ test_that("seeding is local to the draw", {
                     interval = 6, per_interval = 1, unit = "hours")
   )
   for (d in designs) {
-    set.seed(42)
+    local_seed(42)
     invisible(draw(df, d, seed = 7))
     expect_equal(stats::runif(3), expected, info = class(d)[1])
   }
@@ -68,7 +68,7 @@ test_that("seeding is local to the draw", {
 
 test_that("an unseeded draw still advances the RNG normally", {
   df <- make_df()
-  set.seed(1)
+  local_seed(1)
   a <- draw(df, design_simple(n = 3))$id
   b <- draw(df, design_simple(n = 3))$id
   expect_false(identical(a, b))

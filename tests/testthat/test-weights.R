@@ -83,7 +83,7 @@ test_that("weights = TRUE does not change which rows are drawn", {
 })
 
 test_that("Horvitz-Thompson totals are unbiased across designs", {
-  set.seed(11)
+  local_seed(11)
   pop <- data.frame(id = 1:40,
                     g = rep(c("a", "b"), times = c(30, 10)),
                     cl = rep(letters[1:8], each = 5),

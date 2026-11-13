@@ -3,7 +3,7 @@
 # before it was a test.
 
 strata_pop <- function() {
-  set.seed(71)
+  local_seed(71)
   d <- data.frame(id = 1:400, g = rep(1:20, each = 20))
   d$y <- stats::rnorm(400, d$g * 3, 5)
   d
@@ -90,6 +90,7 @@ test_that("a stratum taken whole is not lonely", {
 })
 
 test_that("one row per interval is refused the same way", {
+  local_seed(92)
   d <- data.frame(
     id = 1:120,
     ts = rep(seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "day",
@@ -106,7 +107,7 @@ test_that("one row per interval is refused the same way", {
 # ---- stratified jackknife ----------------------------------------------------
 
 test_that("the jackknife deletes within strata, and matches the analytic form", {
-  set.seed(8)
+  local_seed(8)
   d <- data.frame(id = 1:400, g = rep(c("a", "b", "c", "d"), each = 100))
   d$y <- rep(c(10, 100, 300, 900), each = 100) + stats::rnorm(400, 0, 5)
   s <- draw(d, design_stratified("g", n = 40), seed = 2, weights = TRUE)
@@ -125,7 +126,7 @@ test_that("the jackknife deletes within strata, and matches the analytic form", 
 })
 
 test_that("temporal intervals are jackknife strata too", {
-  set.seed(9)
+  local_seed(9)
   d <- data.frame(
     ts = rep(seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "day",
                  length.out = 6), each = 30),
@@ -154,6 +155,7 @@ test_that("an over-allocated stratum is taken whole and the rest re-split", {
 })
 
 test_that("a constant stratum under Neyman is flagged, not silently dropped", {
+  local_seed(156)
   d <- data.frame(g = rep(c("a", "b", "c"), each = 100),
                   x = c(rep(5, 100), stats::rnorm(200, 0, 10)))
   des <- design_stratified("g", n = 30, allocation = "neyman",
@@ -195,7 +197,7 @@ test_that("simulation loops do not repeat the empty-stratum warning", {
 # ---- degrees of freedom and t intervals -------------------------------------
 
 test_that("the design's degrees of freedom are PSUs minus strata", {
-  set.seed(3)
+  local_seed(3)
   d <- data.frame(id = 1:240, site = rep(c("a", "b", "c"), each = 80),
                   cl = rep(paste0("c", 1:24), each = 10),
                   y = stats::runif(240, 5, 200))
@@ -209,7 +211,7 @@ test_that("the design's degrees of freedom are PSUs minus strata", {
 })
 
 test_that("the interval uses t on those degrees of freedom, or normal on request", {
-  set.seed(4)
+  local_seed(4)
   d <- data.frame(cl = rep(1:24, each = 10), y = stats::runif(240, 5, 200))
   s <- draw(d, design_cluster("cl", n_clusters = 4), seed = 1, weights = TRUE)
   r <- ht_total(s, "y")
@@ -223,7 +225,7 @@ test_that("the interval uses t on those degrees of freedom, or normal on request
 })
 
 test_that("t intervals restore coverage with few clusters", {
-  set.seed(5)
+  local_seed(5)
   d <- data.frame(id = 1:240, cl = rep(1:24, each = 10))
   d$y <- rep(stats::rnorm(24, 50, 20), each = 10) + stats::rnorm(240, 0, 5)
   truth <- sum(d$y)
@@ -241,7 +243,7 @@ test_that("t intervals restore coverage with few clusters", {
 
 test_that("degrees of freedom agree with survey::degf()", {
   skip_if_not_installed("survey")
-  set.seed(6)
+  local_seed(6)
   d <- data.frame(id = 1:240, site = rep(c("a", "b", "c"), each = 80),
                   cl = rep(paste0("c", 1:24), each = 10),
                   y = stats::runif(240, 5, 200))
@@ -256,7 +258,7 @@ test_that("degrees of freedom agree with survey::degf()", {
 # ---- Deville for systematic PPS ----------------------------------------------
 
 test_that("systematic PPS uses Deville's approximation, exactly as published", {
-  set.seed(5)
+  local_seed(5)
   pop <- data.frame(x = stats::rgamma(300, 2, 0.1))
   pop$y <- 3 * pop$x + stats::rnorm(300, 0, 15)
   s <- draw(pop, design_weighted("x", n = 60, method = "systematic"), seed = 1,
@@ -273,7 +275,7 @@ test_that("systematic PPS uses Deville's approximation, exactly as published", {
 })
 
 test_that("Deville tracks the real sampling variance of systematic PPS", {
-  set.seed(5)
+  local_seed(5)
   pop <- data.frame(x = stats::rgamma(300, 2, 0.1))
   pop$y <- 3 * pop$x + stats::rnorm(300, 0, 15)
   d <- design_weighted("x", n = 60, method = "systematic")
@@ -287,6 +289,7 @@ test_that("Deville tracks the real sampling variance of systematic PPS", {
 })
 
 test_that("certainty rows add nothing to Deville's approximation", {
+  local_seed(289)
   pop <- data.frame(x = c(1000, 900, stats::runif(98, 1, 10)))
   pop$y <- pop$x * 2 + stats::rnorm(100)
   s <- draw(pop, design_weighted("x", n = 10, method = "systematic"), seed = 3,
@@ -433,7 +436,7 @@ test_that("successive differences follow the walk order, not frame order", {
   # A frame sorted on something related to y: the setting systematic sampling
   # is chosen for. Each population's true variance is computed exactly, by
   # enumerating every start, and the ratio is pooled over many populations.
-  set.seed(12)
+  local_seed(12)
   N <- 400; k <- 10
   ratios <- vapply(1:40, function(r) {
     d <- data.frame(x = stats::runif(N, 0, 100))
@@ -462,7 +465,7 @@ test_that("successive differences follow the walk order, not frame order", {
 })
 
 test_that("successive differences approximate the SRS figure on a shuffled frame", {
-  set.seed(13)
+  local_seed(13)
   d <- data.frame(y = stats::rnorm(500, 100, 20))
   out <- vapply(1:500, function(i) {
     r <- ht_total(draw(d, design_systematic(interval = 10), seed = i,
@@ -477,7 +480,7 @@ test_that("successive differences approximate the SRS figure on a shuffled frame
 # ---- one row per cluster -----------------------------------------------------
 
 test_that("one row per cluster falls back to the ultimate-cluster jackknife", {
-  set.seed(3)
+  local_seed(3)
   d <- data.frame(cl = rep(paste0("c", 1:24), each = 10))
   d$y <- rep(stats::rnorm(24, 50, 5), each = 10) + stats::rnorm(240, 0, 20)
   des <- design_multistage("cl", n_clusters = 8, n = 8)
@@ -498,6 +501,7 @@ test_that("one row per cluster falls back to the ultimate-cluster jackknife", {
 # ---- printing ----------------------------------------------------------------
 
 test_that("the HT mean is labelled as such, not as Hajek", {
+  local_seed(500)
   d <- data.frame(y = stats::runif(100))
   s <- draw(d, design_simple(n = 20), seed = 1, weights = TRUE)
   expect_output(print(ht_mean(s, "y", estimator = "ht")),
@@ -513,7 +517,7 @@ test_that("a logical y estimates a proportion", {
 })
 
 test_that("a proportion's interval stays inside [0, 1] and matches survey", {
-  set.seed(14)
+  local_seed(14)
   d <- data.frame(site = rep(c("a", "b"), each = 200),
                   err = stats::runif(400) < 0.05)
   s <- draw(d, design_stratified("site", n = 60), seed = 3, weights = TRUE)

@@ -1,5 +1,5 @@
 est_pop <- function() {
-  set.seed(404)
+  local_seed(404)
   N <- 300
   d <- data.frame(
     id   = 1:N,
@@ -20,10 +20,10 @@ test_that("ht_mean recovers the population mean under a range of designs", {
     design_stratified("site", n = 80),
     design_weighted("w", n = 80, method = "poisson")
   )) {
-    est <- replicate(400, {
-      s <- draw(d, des, weights = TRUE)
+    est <- vapply(1:400, function(i) {
+      s <- draw(d, des, seed = i, weights = TRUE)
       ht_mean(s, "y", variance = "none")$mean
-    })
+    }, numeric(1))
     se <- stats::sd(est) / sqrt(length(est))
     expect_lt(abs(mean(est) - truth), 4 * se)
   }
@@ -118,7 +118,7 @@ test_that("ht_mean refuses samples it cannot estimate from", {
 })
 
 test_that("deff falls below 1 when stratification helps and rises when it hurts", {
-  set.seed(88)
+  local_seed(88)
   N <- 400
   d <- data.frame(
     id   = 1:N,
@@ -194,7 +194,7 @@ test_that("deff is exactly 1 for a simple random sample", {
   # The reference variance divided an n-term sum by N - 1, leaving it short by
   # n(N-1)/(N(n-1)) -- so deff came out at 1 + 1/n and a plain SRS of 10
   # printed as "worse than simple random sampling".
-  set.seed(31)
+  local_seed(31)
   pop <- data.frame(y = stats::rnorm(5000, 100, 20))
   for (n in c(10, 20, 50, 200)) {
     got <- vapply(1:200, function(i) {
@@ -207,7 +207,7 @@ test_that("deff is exactly 1 for a simple random sample", {
 })
 
 test_that("deff is NA rather than negative when there is no variance", {
-  set.seed(5)
+  local_seed(5)
   pop <- data.frame(y = stats::rnorm(60, 10, 3), cl = rep(1:6, each = 10))
   r <- ht_total(draw(pop, design_cluster("cl", n_clusters = 1), seed = 1,
                      weights = TRUE), "y")

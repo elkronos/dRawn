@@ -1,5 +1,5 @@
 dom_pop <- function() {
-  set.seed(21)
+  local_seed(21)
   d <- data.frame(
     id = 1:400,
     site = rep(c("a", "b", "c", "d"), times = c(160, 120, 80, 40)),
@@ -258,6 +258,32 @@ test_that("domain means decide a proportion from the frame, as ht_mean() does", 
   r <- ht_mean(s, "kids", by = "site", proportion = TRUE)
   expect_equal(attr(r, "ci_scale"), "logit")
   expect_output(print(r), "95% CI, logit, ")
+})
+
+test_that("a domain proportion's interval is the logit interval, in numbers", {
+  d <- dom_pop()
+  d$big <- d$y > 300
+  s <- draw(d, design_stratified("site", n = 80), seed = 3, weights = TRUE)
+  r <- ht_mean(s, "big", by = "region")
+  df <- attr(r, "df")
+  expect_equal(df, 76)
+  p <- r$mean
+  expect_true(all(p > 0 & p < 1))
+  # The delta-method interval on the logit scale, mapped back.
+  half <- stats::qt(0.975, df) * r$se / (p * (1 - p))
+  expect_equal(r$ci_lower, stats::plogis(stats::qlogis(p) - half))
+  expect_equal(r$ci_upper, stats::plogis(stats::qlogis(p) + half))
+  # Both proportions are below a half, where the logit interval sits above
+  # the symmetric one.
+  expect_true(all(r$ci_lower > p - stats::qt(0.975, df) * r$se))
+
+  skip_if_not_installed("survey")
+  sv <- as_svydesign(s)
+  theirs <- survey::svyby(~big, ~region, sv, survey::svyciprop,
+                          method = "xlogit", vartype = "ci",
+                          df = survey::degf(sv))
+  expect_equal(r$ci_lower, unname(theirs$ci_l), tolerance = 1e-8)
+  expect_equal(r$ci_upper, unname(theirs$ci_u), tolerance = 1e-8)
 })
 
 test_that("a domain proportion of 0 gets a beta interval and a note", {

@@ -73,7 +73,8 @@ test_that("a list holds the main sample, then reserves disjoint from it", {
 
   clash <- df
   clash$.reserve <- 1
-  expect_error(draw(clash, des), "already has a column called `.reserve`")
+  expect_error(draw(clash, des, seed = 1),
+               "already has a column called `.reserve`")
   expect_equal(nrow(draw(clash, design_simple(n = 3), seed = 1)), 3L)
 })
 

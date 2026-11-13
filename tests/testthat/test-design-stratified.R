@@ -107,7 +107,7 @@ test_that("min_per_stratum still totals n exactly, at every feasible floor", {
 })
 
 test_that("Neyman allocation puts rows where the values vary most", {
-  set.seed(2)
+  local_seed(2)
   d <- data.frame(id = 1:300, g = rep(c("a", "b", "c"), each = 100))
   d$v <- c(stats::rnorm(100, 50, 1), stats::rnorm(100, 50, 10),
            stats::rnorm(100, 50, 30))
@@ -141,7 +141,7 @@ test_that("Neyman validates its auxiliary column", {
 })
 
 test_that("Neyman inclusion probabilities are consistent with the draw", {
-  set.seed(4)
+  local_seed(4)
   d <- data.frame(id = 1:200, g = rep(c("a", "b"), each = 100))
   d$v <- c(stats::rnorm(100, 0, 1), stats::rnorm(100, 0, 20))
   des <- design_stratified("g", n = 40, allocation = "neyman", allocation_by = "v")

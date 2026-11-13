@@ -74,7 +74,7 @@ test_that("an unsupported stream type is reported clearly", {
 })
 
 test_that("the sample is uniform over the stream", {
-  set.seed(4)
+  local_seed(4)
   counts <- integer(20)
   for (i in 1:4000) {
     drawn <- unlist(draw(as.list(1:20), design_reservoir(n = 5)))
@@ -135,6 +135,7 @@ test_that("a list is sampled by position, as a data frame is", {
 })
 
 test_that("the stream counter is a double, which does not overflow at 2^31", {
+  local_seed(1)
   out <- reservoir_stream(make_counter(10), n = 2, max_items = Inf)
   expect_type(out$count, "double")
   expect_equal(out$count, 10)
@@ -335,10 +336,11 @@ test_that("batches = TRUE keeps the batches' class and columns", {
   pop <- data.frame(id = 1:40, f = factor(rep(c("x", "y"), 20)))
   # Empty batches are skipped, and a stream of nothing else keeps the columns.
   empty <- calls(pop[0, ], pop[0, ])
-  expect_identical(draw(empty, design_reservoir(n = 3, batches = TRUE)),
+  expect_identical(draw(empty, design_reservoir(n = 3, batches = TRUE),
+                        seed = 1),
                    pop[0, ])
   expect_identical(draw(function() NULL,
-                        design_reservoir(n = 3, batches = TRUE)),
+                        design_reservoir(n = 3, batches = TRUE), seed = 1),
                    data.frame())
 
   skip_if_not_installed("tibble")
@@ -356,6 +358,7 @@ test_that("batches = TRUE keeps the batches' class and columns", {
 })
 
 test_that("batches = TRUE refuses what is not a batch of rows", {
+  local_seed(2)
   expect_error(design_reservoir(n = 3, batches = NA), "`batches` must be")
   des <- design_reservoir(n = 3, batches = TRUE)
   expect_error(draw(list(data.frame(id = 1)), des), "`data` is a list")
