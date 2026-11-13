@@ -12,14 +12,19 @@
 #'
 #' \describe{
 #'   \item{`"analytic"`}{Exact and design-unbiased. Fixed-size designs with
-#'     known joint probabilities use the Sen-Yates-Grundy estimator; Poisson
-#'     sampling, whose rows are independent, uses `sum((1 - pi) / pi^2 * y^2)`;
-#'     cluster designs apply the estimator at the cluster level, because taking
-#'     whole clusters makes the row count random; certainty designs hand the
-#'     problem to `rest`, since certainty rows are in every sample and add
-#'     nothing. Sen-Yates-Grundy works on matrices with a row and a column per
-#'     sampled row, and past about 4,700 sampled rows they would need more
-#'     than 2 GB, so it declines and says how much.}
+#'     known joint probabilities use the Sen-Yates-Grundy estimator. For
+#'     simple random, reservoir and spatial samples, strata and intervals it
+#'     reduces to the textbook formula built from the variance of `y` within
+#'     each stratum or interval, and for an equal-take [design_multistage()]
+#'     to the two-stage formula built from the variance between the estimated
+#'     cluster totals and within clusters (Särndal, Swensson and Wretman
+#'     1992). Those formulas are what is computed, in time and memory that
+#'     grow with the number of sampled rows rather than with its square.
+#'     Poisson sampling, whose rows are independent, uses
+#'     `sum((1 - pi) / pi^2 * y^2)`; cluster designs apply the estimator at
+#'     the cluster level, because taking whole clusters makes the row count
+#'     random; certainty designs hand the problem to `rest`, since certainty
+#'     rows are in every sample and add nothing.}
 #'   \item{`"deville"`}{Systematic probability-proportional-to-size
 #'     ([design_weighted()] with `method = "systematic"`). Its joint
 #'     probabilities have no closed form, so this uses Deville's (1999)
@@ -593,21 +598,28 @@ ht_variance <- function(design, data, rows, y, pi_i,
 #' Sen-Yates-Grundy, for fixed-size designs with closed-form joint
 #' probabilities
 #'
+#' The designs in the package that select by simple random sampling within
+#' groups have methods of their own built on `srs_variance()` and
+#' `two_stage_variance()`, which give the same figure in linear time and
+#' memory. What reaches this method is a design with a joint matrix and no such
+#' form, or one with no joint probabilities at all, whose `joint_inclusion()`
+#' declines.
+#'
 #' The joint probabilities and the sums over pairs are n x n matrices of
-#' doubles. A stratified sample held about eleven of them at once, 1.4 GB at
-#' 4,000 rows, so past 2 GiB projected the estimator declines with the size it
-#' would need. `variance = "auto"` then uses the jackknife, which gives the
-#' same figure for a simple random or stratified sample in time linear in the
-#' rows.
+#' doubles, about eight of them live at once with `syg_variance()`. Past
+#' `pair_limit()` bytes projected, about 1 GB or 4,000 sampled rows, the
+#' estimator declines with the size it would need, before anything is
+#' allocated. Linux can stop R for want of memory before an allocation error
+#' is raised, so waiting for one is no guard.
 #'
 #' @noRd
 ht_variance.default <- function(design, data, rows, y, pi_i, domain = NULL) {
   n <- length(rows)
-  bytes <- 12 * 8 * as.numeric(n)^2
-  if (bytes > 2^31) {
+  bytes <- 8 * 8 * as.numeric(n)^2
+  if (bytes > pair_limit()) {
     stop_declined(paste0(
-      "The Sen-Yates-Grundy estimator would need about ",
-      format(signif(bytes / 1e9, 2)), " GB of memory for its ", n, " x ", n,
+      "The Sen-Yates-Grundy estimator would need about ", format_gb(bytes),
+      " of memory for its ", n, " x ", n,
       " matrices.\nUse variance = \"auto\" to fall back to the jackknife."))
   }
   pij <- joint_inclusion(design, data, rows)
@@ -633,6 +645,11 @@ all_certain <- function(method = NULL) {
   out
 }
 
+#' The Sen-Yates-Grundy sum over pairs of sampled rows
+#'
+#' Kept as written, over the full joint matrix, as the reference the closed
+#' forms below are tested against.
+#'
 #' @noRd
 syg_variance <- function(y, pi_i, pij) {
   yk <- y / pi_i
@@ -642,6 +659,103 @@ syg_variance <- function(y, pi_i, pij) {
   w[!is.finite(w)] <- 0                 # a zero joint probability contributes nothing
   diag(w) <- 0
   list(variance = 0.5 * sum(w * d), note = NULL)
+}
+
+#' Variance of a total under simple random sampling within groups
+#'
+#' For a design that takes a simple random sample of `n_g` of the `N_g` rows
+#' in each group, independently across groups, the Sen-Yates-Grundy sum comes
+#' to `sum(N_g^2 * (1 - n_g / N_g) * s_g^2 / n_g)`, with `s_g^2` the variance
+#' of `z` over the sampled rows of group `g`. This computes it in that form,
+#' in time and memory linear in the rows, where the sum over pairs held
+#' several n x n matrices: about 1.4 GB for a stratified sample of 4,000 rows.
+#'
+#' `group` is each sampled row's position in `n_g` and `N_g`. A group taken
+#' whole adds exactly 0, a group of one row included. A group with one sampled
+#' row from several has no pair of rows to compare and adds 0, as it does in
+#' the sum over pairs; callers refuse it first with `lonely_note()` where it
+#' matters. `z` is whatever is being totalled: `y`, `y` times a domain's
+#' indicator, or a Hajek mean's linearised residual. The probability is the
+#' same for every row of a group, so the formula holds for all three. An
+#' integer `z` is summed as double, where `rowsum()` would overflow to `NA`.
+#'
+#' @noRd
+srs_variance <- function(z, group, n_g, N_g) {
+  z <- as.numeric(z)
+  live <- sort(unique(group))
+  g <- match(group, live)
+  m <- tabulate(g, length(live))
+  n <- as.numeric(n_g)[live]
+  N <- as.numeric(N_g)[live]
+  use <- m >= 2L & n < N
+  if (!any(use)) return(0)
+  mu <- rowsum(z, g)[, 1L] / m
+  ss <- rowsum((z - mu[g])^2, g)[, 1L]
+  sum((N^2 * (1 - n / N) * ss / ((m - 1) * n))[use])
+}
+
+#' Variance of a total from a two-stage sample with an equal take
+#'
+#' `a` of `A` clusters by simple random sampling, then `m` of the `sizes[i]`
+#' rows of each selected cluster `i`. The unbiased estimator is
+#' `A^2 * (1 - a / A) * s_t^2 / a + (A / a) * sum(N_i^2 * (1 - m / N_i) *
+#' s_i^2 / m)`, with `s_t^2` the variance of the estimated cluster totals
+#' `N_i * mean(z_i)` and `s_i^2` the variance of `z` within cluster `i`. It is
+#' the Sen-Yates-Grundy sum for this design, computed without the n x n joint
+#' matrix. Selecting every cluster leaves nothing between them to vary, and a
+#' cluster taken whole adds nothing within it.
+#'
+#' `cluster` is each sampled row's cluster code, indexing `sizes`.
+#'
+#' @noRd
+two_stage_variance <- function(z, cluster, a, A, m, sizes) {
+  z <- as.numeric(z)
+  live <- sort(unique(cluster))
+  g <- match(cluster, live)
+  N_i <- as.numeric(sizes)[live]
+  totals <- N_i * rowsum(z, g)[, 1L] / tabulate(g, length(live))
+  between <- if (a < A) A^2 * (1 - a / A) * stats::var(totals) / a else 0
+  within <- srs_variance(z, g, rep(m, length(live)), N_i)
+  between + A / a * within
+}
+
+#' The variance of a simple random sample from one group of `N` rows
+#'
+#' Shared by the simple, reservoir and spatial designs, which differ only in
+#' the `N` they draw `n` from. One sampled row has nothing to compare with
+#' unless it is the whole group.
+#'
+#' @noRd
+srs_one_group <- function(z, n, N) {
+  if (length(z) < 2L && n < N) {
+    return(list(variance = NA_real_,
+                note = "A variance needs at least two sampled rows."))
+  }
+  list(variance = srs_variance(z, rep(1L, length(z)), n, N), note = NULL)
+}
+
+#' @noRd
+ht_variance.drawn_design_simple <- function(design, data, rows, y, pi_i,
+                                            domain = NULL) {
+  if (design$replace) return(NextMethod())
+  srs_one_group(y, design$n, nrow(data))
+}
+
+#' @noRd
+ht_variance.drawn_design_reservoir <- function(design, data, rows, y, pi_i,
+                                               domain = NULL) {
+  # Rows past `max_items` are never read: the sample is a simple random one
+  # from the rows before it.
+  reach <- reservoir_reach(design, nrow(data))
+  srs_one_group(y, min(design$n, reach), reach)
+}
+
+#' @noRd
+ht_variance.drawn_design_spatial <- function(design, data, rows, y, pi_i,
+                                             domain = NULL) {
+  require_suggested("sf", "spatial sampling")
+  N <- sum(spatial_inside(design, data))
+  srs_one_group(y, min(design$n, N), N)
 }
 
 #' Refuse a stratified variance with a stratum that holds one sampled row
@@ -706,26 +820,44 @@ known_domain <- function(domain, n) {
   is.logical(domain) && length(domain) == n && !anyNA(domain)
 }
 
+#' Stratified variance, from the allocation the design used
+#'
+#' Each stratum is a simple random sample of its `n_alloc` rows from its
+#' `sizes` rows, both from `stratum_allocation()`, so the variance is
+#' `srs_variance()` over strata. A lonely stratum is refused first.
+#'
 #' @noRd
 ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i,
                                                 domain = NULL) {
-  group <- group_key(data, design$strata)
+  al <- stratum_allocation(design, data)
+  group <- structure(al$code, levels = al$labels, class = "factor")
   note <- lonely_note(group, rows, c("stratum", "strata"),
                       "Draw at least two rows per stratum (min_per_stratum = 2).",
                       domain)
   if (!is.null(note)) return(list(variance = NA_real_, note = note))
-  NextMethod()
+  if (design$replace) return(NextMethod())
+  list(variance = srs_variance(y, al$code[rows], al$n_alloc, al$sizes),
+       note = NULL)
 }
 
+#' Temporal variance: intervals are strata
+#'
+#' Each interval is a simple random sample of `per_interval` of its rows, or
+#' all of them when it holds fewer. A lonely interval is refused first.
+#'
 #' @noRd
 ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i,
                                               domain = NULL) {
-  bucket <- temporal_bucket(design, data)
+  bucket <- key_from_columns(list(temporal_bucket(design, data)))
   note <- lonely_note(bucket, rows, c("interval", "intervals"),
                       "Draw at least two rows per interval (per_interval = 2).",
                       domain)
   if (!is.null(note)) return(list(variance = NA_real_, note = note))
-  NextMethod()
+  code <- as.integer(bucket)
+  sizes <- tabulate(code, nlevels(bucket))
+  list(variance = srs_variance(y, code[rows],
+                               pmin(sizes, design$per_interval), sizes),
+       note = NULL)
 }
 
 #' Variance of a single-stage cluster total
@@ -763,14 +895,18 @@ ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
 
 #' Two-stage variance, declining where a stage is unmeasurable
 #'
+#' With an equal take that divides `n`, drawn without replacement, the exact
+#' estimator is `two_stage_variance()`. Any other multistage design has no
+#' closed-form joint probabilities, and the default method declines.
+#'
 #' A sample from a single cluster has no variation between clusters to
-#' measure. Sen-Yates-Grundy comes out negative on every such sample, or 0 for
+#' measure. Sen-Yates-Grundy came out negative on every such sample, or 0 for
 #' a constant `y`, so this declines first, in the words `design_cluster()`
 #' uses. A sample whose every row is certain goes on to the exact estimator,
 #' which gives 0.
 #'
 #' With one row per selected cluster, pairs inside a cluster can never be drawn
-#' together, so Sen-Yates-Grundy has no way to see the within-cluster
+#' together, so the exact estimator has no way to see the within-cluster
 #' variation. With `f1 = n_clusters / A`, it understates by `f1` times the
 #' within-cluster component of the variance. The delete-a-cluster jackknife
 #' that `variance = "auto"` falls back to is the ultimate-cluster
@@ -795,7 +931,14 @@ ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
       "cannot be measured, and the exact two-stage estimator would understate ",
       "the variance.", fallback_note(design$n_clusters, cl$total))))
   }
-  NextMethod()
+  if (design$replace || design$allocation != "equal" ||
+      design$n %% design$n_clusters != 0L) {
+    return(NextMethod())
+  }
+  v <- two_stage_variance(y, cl$code[rows], design$n_clusters, cl$total,
+                          design$n %/% design$n_clusters,
+                          tabulate(cl$code, cl$total))
+  list(variance = v, note = NULL)
 }
 
 #' What the ultimate-cluster jackknife does to a multistage variance

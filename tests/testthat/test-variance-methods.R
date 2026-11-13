@@ -493,3 +493,152 @@ test_that("a proportion's interval stays inside [0, 1] and matches survey", {
   expect_equal(unname(as.numeric(theirs)), r$mean)
   expect_equal(unname(as.vector(attr(theirs, "ci"))), r$ci, tolerance = 1e-8)
 })
+
+# ---- closed forms ------------------------------------------------------------
+
+# Sen-Yates-Grundy over the full joint matrix, the reference each closed form
+# must reproduce. A certainty design's variance is that of `rest` over the
+# rows below the threshold.
+syg_reference <- function(s, design, pop, z) {
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- drawn:::certainty_split(design, pop)
+    free <- s$.prob < 1
+    pos <- match(s$.row[free], sp$keep[sp$rest])
+    pij <- drawn:::joint_inclusion(design$rest,
+                                   sp$data[sp$rest, , drop = FALSE], pos)
+    return(drawn:::syg_variance(z[free], s$.prob[free], pij)$variance)
+  }
+  pij <- drawn:::joint_inclusion(design, pop, s$.row)
+  drawn:::syg_variance(z, s$.prob, pij)$variance
+}
+
+closed_form_pop <- function() {
+  pop <- data.frame(
+    id = 1:240,
+    site = rep(c("a", "b", "c", "d"), times = c(120, 80, 39, 1)),
+    cl = rep(sprintf("c%02d", 1:24), each = 10),
+    cl2 = rep(sprintf("k%02d", 1:12),
+              times = c(5, 6, 7, 8, 9, 10, 5, 6, 7, 8, 9, 160)),
+    g = rep(1:6, 40),
+    w = 1 + (1:240 %% 13)
+  )
+  pop$y <- 100 + 10 * cos(1:240) + (1:240) / 7
+  # The eleventh day holds two rows, fewer than `per_interval`.
+  pop$ts <- rep(seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "day",
+                    length.out = 12), times = c(rep(20, 10), 2, 38))
+  pop
+}
+
+test_that("the closed-form variances equal Sen-Yates-Grundy", {
+  # They replace sums over every pair of sampled rows, which needed n x n
+  # matrices, so each must give the same figure: for a total, for a domain's
+  # total and for a Hajek mean's residuals.
+  pop <- closed_form_pop()
+  designs <- list(
+    simple = design_simple(n = 30),
+    census = design_simple(n = 240),
+    reservoir = design_reservoir(n = 20, max_items = 150),
+    # Stratum "d" has one row and is taken whole.
+    stratified = design_stratified("site", n = 40, min_per_stratum = 2),
+    neyman = design_stratified("site", n = 30, allocation = "neyman",
+                               allocation_by = "y", min_per_stratum = 2),
+    temporal = design_temporal("ts", from = "2024-01-02", to = "2024-01-12",
+                               interval = 1, per_interval = 3, unit = "days"),
+    multistage = design_multistage("cl", n_clusters = 6, n = 24),
+    unequal = design_multistage("cl2", n_clusters = 4, n = 20),
+    every_cluster = design_multistage("cl", n_clusters = 24, n = 48),
+    certainty = design_certainty("w", 12, design_stratified(
+      "site", n = 20, min_per_stratum = 2))
+  )
+  for (nm in names(designs)) {
+    d <- designs[[nm]]
+    for (seed in 1:2) {
+      if (nm == "reservoir") {
+        expect_warning(s <- draw(pop, d, seed = seed, weights = TRUE),
+                       "sampling only the first 150")
+      } else {
+        s <- draw(pop, d, seed = seed, weights = TRUE)
+      }
+      n_hat <- sum(1 / s$.prob)
+      hajek <- (s$y - sum(s$y / s$.prob) / n_hat) / n_hat
+      domain <- s$y * (s$g == 2)
+      for (z in list(s$y, hajek, domain)) {
+        expect_equal(drawn:::ht_variance(d, pop, s$.row, z, s$.prob)$variance,
+                     syg_reference(s, d, pop, z), tolerance = 1e-10,
+                     label = nm)
+      }
+      expect_equal(ht_total(s, "y", variance = "analytic")$variance,
+                   syg_reference(s, d, pop, s$y), tolerance = 1e-10,
+                   label = nm)
+      expect_equal(ht_mean(s, "y", variance = "analytic")$se^2,
+                   syg_reference(s, d, pop, hajek), tolerance = 1e-10,
+                   label = nm)
+      b <- ht_total(s, "y", by = "g", variance = "analytic")
+      expect_equal(b$se[b$g == 2]^2, syg_reference(s, d, pop, domain),
+                   tolerance = 1e-10, label = nm)
+    }
+  }
+})
+
+test_that("a spatial sample's closed form equals Sen-Yates-Grundy", {
+  skip_if_not_installed("sf")
+  pop <- data.frame(id = 1:120, x = (1:120 * 7) %% 50, yy = (1:120 * 11) %% 50)
+  pop$y <- 20 + pop$x / 3 + 5 * sin(pop$id)
+  box <- sf::st_sfc(sf::st_polygon(list(cbind(c(0, 30, 30, 0, 0),
+                                              c(0, 0, 30, 30, 0)))),
+                    crs = 3857)
+  d <- design_spatial(c("x", "yy"), box, n = 12, crs = 3857)
+  s <- draw(pop, d, seed = 4, weights = TRUE)
+  expect_lt(sum(inclusion_prob(pop, d) > 0), nrow(pop))
+  expect_equal(ht_total(s, "y", variance = "analytic")$variance,
+               syg_reference(s, d, pop, s$y), tolerance = 1e-10)
+})
+
+test_that("a stratum taken whole adds exactly 0 to the closed form", {
+  # Including one of a single row, where the variance of one value is NA.
+  expect_identical(drawn:::srs_variance(c(3, 8, 1), c(1L, 2L, 2L),
+                                        c(1, 2), c(1, 2)), 0)
+  expect_equal(drawn:::srs_variance(c(3, 8, 1, 4), c(1L, 2L, 2L, 2L),
+                                    c(1, 3), c(1, 9)),
+               9^2 * (1 - 3 / 9) * stats::var(c(8, 1, 4)) / 3)
+})
+
+test_that("an integer y is summed without overflowing", {
+  # rowsum() adds integers as integers and gives NA past 2^31 - 1.
+  pop <- data.frame(id = 1:200, g = rep(c("a", "b"), each = 100),
+                    cl = rep(sprintf("c%02d", 1:20), each = 10))
+  pop$y <- as.integer(4e8 + (1:200 * 7919) %% 1000 * 1e5)
+  for (d in list(design_simple(n = 40), design_stratified("g", n = 40),
+                 design_multistage("cl", n_clusters = 5, n = 20))) {
+    s <- draw(pop, d, seed = 1, weights = TRUE)
+    r <- ht_total(s, "y")
+    expect_equal(r$method, "analytic")
+    expect_equal(r$variance, syg_reference(s, d, pop, as.numeric(s$y)),
+                 tolerance = 1e-10)
+  }
+})
+
+test_that("a sample of 10,000 rows is estimated in linear time and memory", {
+  # The sum over pairs needed about 90 bytes for each pair of sampled rows,
+  # 9 GB here.
+  skip_on_cran()
+  N <- 50000
+  pop <- data.frame(id = seq_len(N), g = rep(letters[1:8], length.out = N))
+  pop$y <- 100 + (seq_len(N) * 7919) %% 1000 / 10
+  for (d in list(design_simple(n = 10000), design_stratified("g", n = 10000))) {
+    s <- draw(pop, d, seed = 1, weights = TRUE)
+    took <- system.time(r <- ht_total(s, "y"))[["elapsed"]]
+    expect_equal(r$method, "analytic")
+    expect_lt(took, 10)
+    N_h <- table(pop$g)
+    n_h <- table(s$g)
+    want <- if (inherits(d, "drawn_design_simple")) {
+      N^2 * (1 - 10000 / N) * stats::var(s$y) / 10000
+    } else {
+      sum(N_h^2 * (1 - n_h / N_h) * tapply(s$y, s$g, stats::var) / n_h)
+    }
+    expect_equal(r$variance, want, tolerance = 1e-10)
+    b <- ht_total(s, "y", by = "g")
+    expect_true(all(b$method == "analytic"))
+  }
+})

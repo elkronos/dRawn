@@ -11,9 +11,10 @@ joint_prob(data, design, rows = NULL, simulate = FALSE, R = 5000, seed = NULL)
 
 \item{design}{A design object.}
 
-\item{rows}{Optional row indices. Supply these — usually the rows you drew —
-to get the submatrix for them instead of the full \code{nrow(data)} square,
-which is what makes this usable on a large population.}
+\item{rows}{Optional row indices, usually the rows you drew, which are
+\code{s$.row} for a sample \code{s} from \code{draw(weights = TRUE)}. The result is then
+the submatrix for these rows instead of the full \code{nrow(data)} square,
+which is what makes this usable on a large population. See "Size".}
 
 \item{simulate}{Estimate the probabilities by repeated draws rather than in
 closed form. Works for every probability design, including the ones with no
@@ -64,6 +65,16 @@ before walking them so every pair can co-occur, and \code{\link[=design_spread]{
 both, \code{\link[=ht_total]{ht_total()}} uses a variance approximation that needs only
 first-order probabilities, and \code{simulate = TRUE} here estimates the joint
 probabilities themselves.
+}
+
+\section{Size}{
+
+The matrix has a row and a column for each of \code{rows}, by default every row
+of \code{data}, and holds 8 bytes for each pair: 800 MB for 10,000 rows. Past
+about 1 GB, from about 11,200 rows, \code{joint_prob()} refuses and gives the
+size, rather than risk exhausting memory, which can end the R session.
+\code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} do not build this matrix for any design in
+the package.
 }
 
 \examples{

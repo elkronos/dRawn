@@ -433,7 +433,7 @@ test_that("an error inside a variance estimator reaches the caller", {
   # the note.
   pop <- data.frame(id = 1:60, y = 1:60)
   s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
-  local_mocked_bindings(syg_variance = function(...) stop("internal failure"))
+  local_mocked_bindings(srs_variance = function(...) stop("internal failure"))
   expect_error(ht_total(s, "y"), "internal failure")
   expect_error(ht_total(s, "y", variance = "analytic"), "internal failure")
   expect_error(ht_mean(s, "y"), "internal failure")
@@ -453,7 +453,7 @@ test_that("a declining estimator still falls back to the jackknife", {
   pop <- data.frame(id = 1:60, y = 1:60)
   s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
   want <- ht_total(s, "y", variance = "jackknife")
-  local_mocked_bindings(joint_inclusion = function(...) {
+  local_mocked_bindings(srs_variance = function(...) {
     drawn:::stop_declined("No joint probabilities here.\nA second line.")
   })
   r <- ht_total(s, "y")
@@ -481,18 +481,43 @@ test_that("a refusal from a design is a classed error outside the estimators", {
   expect_s3_class(err, "drawn_declined")
 })
 
-test_that("Sen-Yates-Grundy declines a sample too large to hold its matrices", {
-  # About eleven n x n matrices of doubles were live at once; 8,000 rows
-  # needed 6 GB, and the error was taken for a decline.
+test_that("a simple random sample of 5,000 rows gets its analytic variance", {
+  # Sen-Yates-Grundy held about eleven n x n matrices of doubles at once;
+  # 8,000 rows needed 6 GB. The closed form needs none.
   pop <- data.frame(id = 1:10000, y = (1:10000) %% 97)
   s <- draw(pop, design_simple(n = 5000), seed = 1, weights = TRUE)
   r <- ht_total(s, "y")
-  expect_equal(r$method, "jackknife")
-  expect_match(r$note, "GB of memory")
+  expect_equal(r$method, "analytic")
+  expect_null(r$note)
   f <- 1 - 5000 / 10000
   expect_equal(r$variance, 10000^2 * f * stats::var(s$y) / 5000,
                tolerance = 1e-8)
-  a <- ht_total(s, "y", variance = "analytic")
+  expect_equal(ht_total(s, "y", variance = "analytic")$variance, r$variance)
+})
+
+test_that("Sen-Yates-Grundy declines a sample too large to hold its matrices", {
+  # A design with no closed form of its own reaches the pairwise sum. It
+  # declines from the projected size, before allocating anything.
+  pop <- data.frame(id = 1:10000, y = (1:10000) %% 97)
+  rows <- seq(1L, 10000L, by = 2L)
+  fake <- structure(list(), class = c("drawn_design_nope", "drawn_design"))
+  local_mocked_bindings(joint_inclusion = function(...) {
+    stop("the joint matrix was built")
+  })
+  err <- tryCatch(drawn:::ht_variance(fake, pop, rows, pop$y[rows],
+                                      rep(0.5, 5000)),
+                  error = function(e) e)
+  expect_s3_class(err, "drawn_declined")
+  expect_match(conditionMessage(err), "1.6 GB of memory for its 5000 x 5000")
+
+  r <- drawn:::ht_variance_dispatch(fake, pop[rows, ], pop, rows,
+                                    pop$y[rows], rep(0.5, 5000), "auto")
+  expect_equal(r$method, "jackknife")
+  expect_match(r$note, "GB of memory")
+  expect_equal(r$variance, 10000^2 * 0.5 * stats::var(pop$y[rows]) / 5000,
+               tolerance = 1e-8)
+  a <- drawn:::ht_variance_dispatch(fake, pop[rows, ], pop, rows,
+                                    pop$y[rows], rep(0.5, 5000), "analytic")
   expect_true(is.na(a$variance))
   expect_match(a$note, "variance = \"auto\"", fixed = TRUE)
 })

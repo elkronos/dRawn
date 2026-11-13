@@ -231,7 +231,7 @@ joint_inclusion.drawn_design_certainty <- function(design, data, rows) {
     out[gone, ] <- 0
     out[, gone] <- 0
   }
-  diag(out) <- pi_all[rows]
+  out[diag_index(k)] <- pi_all[rows]
   out
 }
 

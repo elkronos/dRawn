@@ -202,3 +202,71 @@ test_that("Neyman allocation reports probabilities for a design it can draw", {
   expect_equal(p[11:12], c(0, 0))
   expect_equal(nrow(draw(d, des, seed = 1, weights = TRUE)), 4)
 })
+
+test_that("joint_prob refuses a matrix past about 1 GB and says how to avoid it", {
+  # 8 bytes a pair: every row of a 12,000-row frame is 1.2 GB, and a frame
+  # some times larger could end the session.
+  pop <- data.frame(id = seq_len(12000))
+  d <- design_simple(n = 10)
+  expect_error(joint_prob(pop, d),
+               "12,000 x 12,000 matrix for every row of `data`, which needs about 1.2 GB",
+               fixed = TRUE)
+  expect_error(joint_prob(pop, d), "rows = s$.row", fixed = TRUE)
+  expect_error(joint_prob(pop, d, rows = seq_len(12000)),
+               "for the 12,000 `rows` given, which needs about 1.2 GB of memory. Pass fewer `rows`.",
+               fixed = TRUE)
+  expect_error(joint_prob(pop, d, simulate = TRUE, R = 2), "1.2 GB",
+               fixed = TRUE)
+  expect_equal(dim(joint_prob(pop, d, rows = c(5, 9000))), c(2L, 2L))
+})
+
+test_that("joints filled block by block equal the pairwise forms", {
+  # Same group: a simple random sample of n from N. Different groups:
+  # independent. A row in no group co-occurs with nothing. Built here pair by
+  # pair.
+  pairwise <- function(group, n_g, size_g, pi_i) {
+    k <- length(group)
+    out <- outer(pi_i, pi_i)
+    for (i in seq_len(k)) for (j in seq_len(k)) {
+      if (is.na(group[i]) || is.na(group[j])) {
+        out[i, j] <- 0
+      } else if (group[i] == group[j]) {
+        n <- n_g[group[i]]
+        N <- size_g[group[i]]
+        out[i, j] <- if (N > 1) n * (n - 1) / (N * (N - 1)) else 0
+      }
+    }
+    diag(out) <- pi_i
+    out
+  }
+  group <- c(2L, 1L, NA, 3L, 2L, 1L, 2L, 4L, 1L)
+  n_g <- c(2, 3, 1, 1)
+  size_g <- c(5, 3, 4, 1)
+  pi_i <- ifelse(is.na(group), 0, (n_g / size_g)[group])
+  expect_equal(drawn:::joint_from_groups(group, n_g, size_g, pi_i),
+               pairwise(group, n_g, size_g, pi_i))
+
+  # Cluster: the same cluster a / A, different clusters a(a-1) / (A(A-1)).
+  pop <- data.frame(cl = c("a", "a", "b", NA, "c", "b", "c", "c", "d"))
+  d <- design_cluster("cl", n_clusters = 2, na_rm = TRUE)
+  same <- outer(pop$cl, pop$cl, "==")
+  want <- ifelse(same, 2 / 4, 2 * 1 / (4 * 3))
+  want[is.na(pop$cl), ] <- 0
+  want[, is.na(pop$cl)] <- 0
+  diag(want) <- inclusion_prob(pop, d)
+  expect_equal(joint_prob(pop, d), want)
+
+  # Multistage, a = 2 of A = 4 clusters and m = 2 rows from each: the stages
+  # multiplied.
+  pop <- data.frame(cl = c(rep(c("a", "b", "c", "d"), times = c(3, 4, 5, 4)),
+                           NA))
+  d <- design_multistage("cl", n_clusters = 2, n = 4, na_rm = TRUE)
+  N_i <- as.numeric(table(pop$cl)[pop$cl])
+  same <- outer(pop$cl, pop$cl, "==")
+  want <- ifelse(same, (2 / 4) * 2 / (N_i * (N_i - 1)),
+                 2 / (4 * 3) * outer(2 / N_i, 2 / N_i))
+  want[is.na(pop$cl), ] <- 0
+  want[, is.na(pop$cl)] <- 0
+  diag(want) <- inclusion_prob(pop, d)
+  expect_equal(joint_prob(pop, d), want)
+})

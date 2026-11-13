@@ -79,14 +79,19 @@ it, and \code{method} in the result says which one was used:
 
 \describe{
 \item{\code{"analytic"}}{Exact and design-unbiased. Fixed-size designs with
-known joint probabilities use the Sen-Yates-Grundy estimator; Poisson
-sampling, whose rows are independent, uses \code{sum((1 - pi) / pi^2 * y^2)};
-cluster designs apply the estimator at the cluster level, because taking
-whole clusters makes the row count random; certainty designs hand the
-problem to \code{rest}, since certainty rows are in every sample and add
-nothing. Sen-Yates-Grundy works on matrices with a row and a column per
-sampled row, and past about 4,700 sampled rows they would need more
-than 2 GB, so it declines and says how much.}
+known joint probabilities use the Sen-Yates-Grundy estimator. For
+simple random, reservoir and spatial samples, strata and intervals it
+reduces to the textbook formula built from the variance of \code{y} within
+each stratum or interval, and for an equal-take \code{\link[=design_multistage]{design_multistage()}}
+to the two-stage formula built from the variance between the estimated
+cluster totals and within clusters (Särndal, Swensson and Wretman
+1992). Those formulas are what is computed, in time and memory that
+grow with the number of sampled rows rather than with its square.
+Poisson sampling, whose rows are independent, uses
+\code{sum((1 - pi) / pi^2 * y^2)}; cluster designs apply the estimator at
+the cluster level, because taking whole clusters makes the row count
+random; certainty designs hand the problem to \code{rest}, since certainty
+rows are in every sample and add nothing.}
 \item{\code{"deville"}}{Systematic probability-proportional-to-size
 (\code{\link[=design_weighted]{design_weighted()}} with \code{method = "systematic"}). Its joint
 probabilities have no closed form, so this uses Deville's (1999)

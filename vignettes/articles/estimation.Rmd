@@ -69,7 +69,21 @@ $$\hat V_{\mathrm{SYG}} = \frac12 \sum_{k \ne l \in s}
 
 is unbiased whenever every $\pi_{kl} > 0$ (Sen 1953; Yates and Grundy 1953).
 For stratified simple random sampling it reduces to the textbook
-$\sum_h N_h^2 (1 - f_h) s_h^2 / n_h$.
+$\sum_h N_h^2 (1 - f_h) s_h^2 / n_h$, with $s_h^2$ the variance of $y$ among
+the rows sampled in stratum $h$. Simple random, reservoir and spatial samples
+are the case of a single stratum, and temporal intervals are strata. For
+`design_multistage()` with the same take of $m$ rows from each of $a$ clusters
+selected out of $A$, it reduces to the two-stage formula
+
+$$\hat V = A^2 \left(1 - \frac{a}{A}\right) \frac{s_t^2}{a} +
+\frac{A}{a} \sum_{i \in s} N_i^2 \left(1 - \frac{m}{N_i}\right)
+\frac{s_i^2}{m},$$
+
+with $s_t^2$ the variance of the estimated cluster totals $N_i \bar y_i$ and
+$s_i^2$ the variance within cluster $i$. `drawn` computes these forms, which
+take time and memory in proportion to the number of sampled rows. The sum over
+pairs needs matrices with a row and a column per sampled row, more than a
+gigabyte at 4,000 rows.
 
 The condition matters. **A stratum with one sampled row** has no pair inside it,
 so it silently contributes nothing: with one row in every stratum the sum is

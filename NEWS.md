@@ -310,11 +310,6 @@
   understated, which was false for them. A domain with units in the lonely
   stratum is still refused, and when the frame has no `by` columns the note
   says the frame cannot tell.
-* The Sen-Yates-Grundy estimator declines past about 4,700 sampled rows,
-  where its matrices would need more than 2 GB, and the note gives the size.
-  `variance = "auto"` then uses the jackknife, which gives the same figure
-  for simple random and stratified samples. At 8,000 rows it needed about
-  6 GB.
 * `ht_mean()` decides whether `y` is a proportion, and so whether its
   interval is formed on the logit scale, from what `y` is rather than from
   the values the sample drew: a logical `y`, or a column of the frame whose
@@ -373,6 +368,25 @@
 * The jackknife sums each unit with `rowsum()`, so its time grows with the
   number of rows rather than with rows times units. 20,000 rows took 2.6
   seconds and now take 0.03.
+* The analytic variance of simple random, reservoir, spatial, stratified,
+  temporal and equal-take multistage samples, alone or as the `rest` of
+  `design_certainty()`, is computed from the variance within each stratum,
+  interval or cluster, in time and memory that grow with the number of
+  sampled rows. The Sen-Yates-Grundy sum over every pair of sampled rows,
+  which gives the same figures, held several matrices with a row and a
+  column per sampled row: a stratified sample of 4,000 rows took 4.8 seconds
+  and 1.4 GB, growing with the square of the sample, and every `by` domain
+  built them again. The same sample now takes 0.01 seconds, and 10,000 rows
+  take 0.04. A census of one row gets its variance of 0 this way rather than
+  from the jackknife.
+* `joint_prob()` refuses a matrix that would need more than about 1 GB,
+  from about 11,200 rows, and gives the size and `rows = s$.row` as the way
+  to ask for the rows of a sample `s`. It used to go on and could exhaust
+  memory. The full matrix is still the default. Stratified, temporal,
+  cluster, multistage and systematic joint probabilities are filled one
+  group at a time and need little memory beyond the matrix itself, where they
+  needed 4 to 12 times its size: a stratified matrix over 5,000 rows took
+  2.4 GB and 6.7 seconds, and now takes 0.2 GB and 0.4 seconds.
 
 ## Handing off to survey
 

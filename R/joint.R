@@ -34,11 +34,20 @@
 #' first-order probabilities, and `simulate = TRUE` here estimates the joint
 #' probabilities themselves.
 #'
+#' @section Size:
+#' The matrix has a row and a column for each of `rows`, by default every row
+#' of `data`, and holds 8 bytes for each pair: 800 MB for 10,000 rows. Past
+#' about 1 GB, from about 11,200 rows, `joint_prob()` refuses and gives the
+#' size, rather than risk exhausting memory, which can end the R session.
+#' [ht_total()] and [ht_mean()] do not build this matrix for any design in
+#' the package.
+#'
 #' @param data A data frame.
 #' @param design A design object.
-#' @param rows Optional row indices. Supply these — usually the rows you drew —
-#'   to get the submatrix for them instead of the full `nrow(data)` square,
-#'   which is what makes this usable on a large population.
+#' @param rows Optional row indices, usually the rows you drew, which are
+#'   `s$.row` for a sample `s` from `draw(weights = TRUE)`. The result is then
+#'   the submatrix for these rows instead of the full `nrow(data)` square,
+#'   which is what makes this usable on a large population. See "Size".
 #' @param simulate Estimate the probabilities by repeated draws rather than in
 #'   closed form. Works for every probability design, including the ones with no
 #'   closed form, at the cost of Monte Carlo error. Refused for
@@ -67,17 +76,55 @@ joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
   }
   validate_data(data)
   check_flag(simulate, "simulate")
+  given <- !is.null(rows)
   rows <- rows %||% seq_len(nrow(data))
   if (!is.numeric(rows) || anyNA(rows) || any(rows < 1) ||
       any(rows > nrow(data))) {
     stop("`rows` must be valid row indices into `data`.", call. = FALSE)
   }
   rows <- as.integer(rows)
+  check_pair_size(length(rows), given)
   if (isTRUE(simulate)) {
     return(simulate_joint(data, design, rows,
                           check_count(R, "R", allow_zero = FALSE), seed))
   }
   joint_inclusion(design, data, rows)
+}
+
+#' Refuse a joint matrix too large to hold
+#'
+#' `k` rows make a `k` x `k` matrix of doubles. Past `pair_limit()` bytes the
+#' request is refused before anything is allocated, with the size and the
+#' way round it. `given` says whether the caller passed `rows`.
+#'
+#' @noRd
+check_pair_size <- function(k, given) {
+  bytes <- 8 * as.numeric(k)^2
+  if (bytes <= pair_limit()) return(invisible(NULL))
+  k_text <- format(k, big.mark = ",")
+  shape <- paste0(k_text, " x ", k_text)
+  if (given) {
+    stop("`joint_prob()` would build a ", shape, " matrix for the ", k_text,
+         " `rows` given, which needs about ", format_gb(bytes),
+         " of memory. Pass fewer `rows`.", call. = FALSE)
+  }
+  stop("`joint_prob()` would build a ", shape, " matrix for every row of ",
+       "`data`, which needs about ", format_gb(bytes), " of memory. Pass ",
+       "`rows`, such as `rows = s$.row` for the rows of a sample `s` drawn ",
+       "with `weights = TRUE`.", call. = FALSE)
+}
+
+#' The most memory a matrix over pairs of rows may take, in bytes
+#'
+#' About 1 GB. Shared by `joint_prob()` and the Sen-Yates-Grundy estimator.
+#'
+#' @noRd
+pair_limit <- function() 1e9
+
+#' A size in bytes, for a message
+#' @noRd
+format_gb <- function(bytes) {
+  paste(format(signif(bytes / 1e9, 2), big.mark = ","), "GB")
 }
 
 #' Monte Carlo joint inclusion probabilities
@@ -129,6 +176,49 @@ joint_inclusion.default <- function(design, data, rows) {
   )
 }
 
+#' A matrix over pairs of rows, built one group's block at a time
+#'
+#' Pairs of rows in different groups get `between`, times
+#' `product[i] * product[j]` when `product` is given. Pairs in the same group
+#' get that group's entry of `within`. `group` is each row's position in
+#' `within`, or `NA` for a row in no group, which co-occurs with nothing. The
+#' diagonal is `on_diag`.
+#'
+#' The matrix is allocated once and each group's block is assigned in place,
+#' so the memory used beyond the result is one block at a time. Comparing
+#' every pair of codes with `outer()` held up to twelve matrices of the
+#' result's size. `diag<-` is a closure and copies the matrix it is given, so
+#' the diagonal is assigned by position instead.
+#'
+#' @noRd
+pair_matrix <- function(group, within, on_diag, between = 0, product = NULL) {
+  k <- length(group)
+  gone <- which(is.na(group))
+  out <- if (is.null(product)) {
+    matrix(between, k, k)
+  } else {
+    product <- as.numeric(product)
+    product[gone] <- 0
+    tcrossprod(product) * between
+  }
+  if (length(gone)) {
+    out[gone, ] <- 0
+    out[, gone] <- 0
+  }
+  idx <- split(seq_len(k), structure(as.integer(group),
+                                     levels = as.character(seq_along(within)),
+                                     class = "factor"))
+  for (g in which(lengths(idx) > 1L)) {
+    out[idx[[g]], idx[[g]]] <- within[[g]]
+  }
+  out[diag_index(k)] <- on_diag
+  out
+}
+
+#' Positions of the diagonal of a `k` x `k` matrix
+#' @noRd
+diag_index <- function(k) seq.int(1, by = k + 1, length.out = k)
+
 #' Pairwise matrix from a group code and a per-group (n, N)
 #'
 #' Rows in the same group are a simple random sample of `n_g` from `N_g`; rows
@@ -138,22 +228,10 @@ joint_inclusion.default <- function(design, data, rows) {
 #'
 #' @noRd
 joint_from_groups <- function(group, n_g, size_g, pi_i) {
-  k <- length(group)
-  out <- outer(pi_i, pi_i)                     # independent case
-  same <- outer(group, group, "==")
-  same[is.na(same)] <- FALSE
-  if (any(same)) {
-    n <- as.numeric(n_g)[group]
-    N <- as.numeric(size_g)[group]
-    within <- outer(seq_len(k), seq_len(k), function(a, b) {
-      nn <- n[a]; NN <- N[a]
-      ifelse(NN > 1, nn * (nn - 1) / (NN * (NN - 1)), 0)
-    })
-    out[same] <- within[same]
-  }
-  diag(out) <- pi_i
-  dimnames(out) <- NULL
-  out
+  n <- as.numeric(n_g)
+  N <- as.numeric(size_g)
+  within <- ifelse(N > 1, n * (n - 1) / (N * (N - 1)), 0)
+  pair_matrix(group, within, pi_i, between = 1, product = pi_i)
 }
 
 #' @noRd
@@ -164,26 +242,22 @@ joint_inclusion.drawn_design_simple <- function(design, data, rows) {
   }
   N <- nrow(data)
   n <- design$n
-  pi_i <- rep(n / N, length(rows))
-  out <- matrix(if (N > 1) n * (n - 1) / (N * (N - 1)) else 0,
-                length(rows), length(rows))
-  diag(out) <- pi_i
+  k <- length(rows)
+  out <- matrix(if (N > 1) n * (n - 1) / (N * (N - 1)) else 0, k, k)
+  out[diag_index(k)] <- n / N
   out
 }
 
 #' @noRd
 joint_inclusion.drawn_design_reservoir <- function(design, data, rows) {
-  reach <- reservoir_reach(design, nrow(data))
-  out <- joint_inclusion.drawn_design_simple(
-    new_design("simple", list(n = min(design$n, reach), replace = FALSE)),
-    utils::head(data, reach), rows[rows <= reach]
-  )
-  if (reach == nrow(data)) return(out)
-  # Rows past `max_items` are never read, so they co-occur with nothing.
-  full <- matrix(0, length(rows), length(rows))
-  seen <- rows <= reach
-  full[seen, seen] <- out
-  full
+  # A simple random sample from the rows before `max_items`. Rows past it are
+  # never read, so they co-occur with nothing.
+  N <- reservoir_reach(design, nrow(data))
+  n <- min(design$n, N)
+  seen <- rows <= N
+  pair_matrix(ifelse(seen, 1L, NA_integer_),
+              if (N > 1) n * (n - 1) / (N * (N - 1)) else 0,
+              ifelse(seen, n / N, 0))
 }
 
 #' @noRd
@@ -216,12 +290,9 @@ joint_inclusion.drawn_design_spatial <- function(design, data, rows) {
   N <- sum(inside)
   n <- min(design$n, N)
   pi_all <- exact_inclusion(design, data)
-  out <- matrix(if (N > 1) n * (n - 1) / (N * (N - 1)) else 0,
-                length(rows), length(rows))
-  out[!inside[rows], ] <- 0
-  out[, !inside[rows]] <- 0
-  diag(out) <- pi_all[rows]
-  out
+  # A row outside the region co-occurs with nothing.
+  pair_matrix(ifelse(inside[rows], 1L, NA_integer_),
+              if (N > 1) n * (n - 1) / (N * (N - 1)) else 0, pi_all[rows])
 }
 
 #' @noRd
@@ -233,34 +304,12 @@ joint_inclusion.drawn_design_cluster <- function(design, data, rows) {
   cl <- count_clusters(design, data)
   A <- cl$total
   a <- design$n_clusters
-  code <- cl$code[rows]
-
-  same <- outer(code, code, "==")
-  same[is.na(same)] <- FALSE
-  out <- matrix(if (A > 1) a * (a - 1) / (A * (A - 1)) else 0,
-                length(rows), length(rows))
-  out[same] <- a / A
-  out <- no_cluster_pairs(out, code)
   pi_all <- exact_inclusion(design, data)
-  diag(out) <- pi_all[rows]
-  out
-}
-
-#' Zero the pairs of a row with no cluster
-#'
-#' A row whose cluster label is missing, dropped under `na_rm = TRUE`, is in
-#' no sample at all, so it co-occurs with nothing. Without this it inherits
-#' the between-cluster rate, or `NA` where the rate depends on its cluster's
-#' size.
-#'
-#' @noRd
-no_cluster_pairs <- function(out, code) {
-  gone <- is.na(code)
-  if (any(gone)) {
-    out[gone, ] <- 0
-    out[, gone] <- 0
-  }
-  out
+  # Same cluster: that cluster selected. Different clusters: both selected. A
+  # row with no cluster, dropped under `na_rm = TRUE`, is in no sample, so it
+  # co-occurs with nothing.
+  pair_matrix(cl$code[rows], rep(a / A, A), pi_all[rows],
+              between = if (A > 1) a * (a - 1) / (A * (A - 1)) else 0)
 }
 
 #' @noRd
@@ -286,33 +335,28 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
   A <- cl$total
   a <- design$n_clusters
   m <- design$n %/% design$n_clusters
-  sizes <- tabulate(cl$code, A)
-
+  sizes <- as.numeric(tabulate(cl$code, A))
   code <- cl$code[rows]
-  Nh <- as.numeric(sizes[code])
-  same <- outer(code, code, "==")
-  same[is.na(same)] <- FALSE
+  pi_all <- exact_inclusion(design, data)
 
   # Different clusters: both clusters selected, then each row within its own.
-  out <- outer(m / Nh, m / Nh) * (if (A > 1) a * (a - 1) / (A * (A - 1)) else 0)
-  # Same cluster: that cluster selected, then both rows drawn from it.
-  win <- outer(seq_along(rows), seq_along(rows), function(i, j) {
-    NN <- Nh[i]
-    ifelse(NN > 1, (a / A) * (m * (m - 1)) / (NN * (NN - 1)), 0)
-  })
-  out[same] <- win[same]
-  out <- no_cluster_pairs(out, code)
-  pi_all <- exact_inclusion(design, data)
-  diag(out) <- pi_all[rows]
-  out
+  # Same cluster: that cluster selected, then both rows drawn from it. A row
+  # with no cluster co-occurs with nothing.
+  pair_matrix(code,
+              ifelse(sizes > 1,
+                     (a / A) * (m * (m - 1)) / (sizes * (sizes - 1)), 0),
+              pi_all[rows],
+              between = if (A > 1) a * (a - 1) / (A * (A - 1)) else 0,
+              product = m / sizes[code])
 }
 
 #' @noRd
 joint_inclusion.drawn_design_weighted <- function(design, data, rows) {
   if (design$method == "poisson") {
     pi_all <- exact_inclusion(design, data)
-    out <- outer(pi_all[rows], pi_all[rows])   # independent
-    diag(out) <- pi_all[rows]
+    p <- pi_all[rows]
+    out <- tcrossprod(p)                       # independent
+    out[diag_index(length(rows))] <- p
     return(out)
   }
   if (design$method == "systematic") {
@@ -339,13 +383,8 @@ joint_inclusion.drawn_design_systematic <- function(design, data, rows) {
   # changes. Taking them from frame order instead reports 0 for pairs that
   # always co-occur and 1/k for pairs that never can.
   pos <- systematic_positions(design, data)[rows]
-  res <- (pos - 1L) %% k
-  out <- matrix(0, length(rows), length(rows))
-  same <- outer(res, res, "==")
-  same[is.na(same)] <- FALSE
-  out[same] <- 1 / k
-  diag(out) <- ifelse(is.na(pos), 0, 1 / k)
-  out
+  pair_matrix(as.integer((pos - 1L) %% k) + 1L, rep(1 / k, k),
+              ifelse(is.na(pos), 0, 1 / k))
 }
 
 #' @noRd
