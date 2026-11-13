@@ -53,14 +53,19 @@ independent across groups or a simple random sample within them:
 \code{\link[=design_temporal]{design_temporal()}}    \tab within an interval as above; across intervals, independent \cr
 \code{\link[=design_spatial]{design_spatial()}}     \tab simple random sampling inside the region \cr
 \code{\link[=design_weighted]{design_weighted()}}    \tab \code{"poisson"} only, where rows are independent: \code{pi_i * pi_j} \cr
-\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero} \cr
+\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero}; with \code{n}, the overlap of the two rows' stretches, from 0 to \code{n / N} \cr
 }
 
 Systematic sampling is the awkward one. Most pairs can never co-occur, so
 their joint probability is genuinely 0 and no design-unbiased variance
 estimator exists; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation
 instead, and says so. Its residue classes follow the order the design walks,
-so \code{order_by} changes which pairs can co-occur.
+so \code{order_by} changes which pairs can co-occur. Given \code{n}, the design walks
+at a step of \code{N / n} rows from a start \code{u} uniform on (0, 1), each row
+covering a stretch of length \code{n / N}, and a pair is drawn together when \code{u}
+falls where both stretches, moved into (0, 1), overlap. With a fixed
+\code{start} the design is deterministic, and it is refused as in
+\code{\link[=inclusion_prob]{inclusion_prob()}}.
 
 Two designs have joint probabilities that are positive but have no closed
 form: \code{design_weighted(method = "systematic")}, which shuffles the rows

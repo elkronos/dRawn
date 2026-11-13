@@ -126,7 +126,7 @@ variable related to \code{y}, the simple random formula overstated the
 variance two- to thirtyfold in the package's simulations, where this one
 stayed near the truth. Two limits no estimator from a single systematic
 sample can escape: it is understated if the frame cycles with a period
-matching \code{interval}, and when a smooth trend so dominates \code{y} that the
+matching the step, and when a smooth trend so dominates \code{y} that the
 random start is almost the only source of variation, it runs low (0.3 to
 0.7 of the truth when the trend spanned 25 noise standard deviations).
 When \code{interval} does not divide the number of rows walked, the sample
@@ -135,7 +135,9 @@ successive differences cannot see. A term for that,
 \code{mean(y / pi)^2 * (r / k) * (1 - r / k)} with \code{k} the interval and \code{r}
 the remainder, is added, and the note says so. Without it a constant
 \code{y} had a standard error of 0, and a variable with a coefficient of
-variation of 0.02 an interval that never covered the truth.}
+variation of 0.02 an interval that never covered the truth. A design
+given \code{n} draws exactly \code{n} rows at a step of \code{N / n} and needs no
+such term.}
 \item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
 well spread precisely because neighbours are rarely taken together, so
 this compares each sampled row with the local mean of its nearest

@@ -9,7 +9,8 @@
 #' \describe{
 #'   \item{[design_simple()]}{Rows uniformly at random.}
 #'   \item{[design_stratified()]}{A share of each stratum.}
-#'   \item{[design_systematic()]}{Every *k*-th row.}
+#'   \item{[design_systematic()]}{Every *k*-th row, or `n` rows at an even
+#'     step.}
 #'   \item{[design_cluster()]}{Whole clusters.}
 #'   \item{[design_multistage()]}{Clusters, then rows within them.}
 #'   \item{[design_weighted()]}{Rows with probability governed by a weight.}

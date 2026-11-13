@@ -50,7 +50,7 @@
 #'
 #' * the sample size itself is random — [design_weighted()] with
 #'   `method = "poisson"`, [design_cluster()] over clusters of unequal size, or
-#'   [design_systematic()] where the interval does not divide `N`;
+#'   [design_systematic()] with an `interval` that does not divide `N`;
 #' * the weights vary within a fixed-size sample — probability-proportional-to-
 #'   size selection.
 #'

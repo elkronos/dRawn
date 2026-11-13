@@ -103,7 +103,7 @@ They differ when that sum is random or uneven:
 \itemize{
 \item the sample size itself is random — \code{\link[=design_weighted]{design_weighted()}} with
 \code{method = "poisson"}, \code{\link[=design_cluster]{design_cluster()}} over clusters of unequal size, or
-\code{\link[=design_systematic]{design_systematic()}} where the interval does not divide \code{N};
+\code{\link[=design_systematic]{design_systematic()}} with an \code{interval} that does not divide \code{N};
 \item the weights vary within a fixed-size sample — probability-proportional-to-
 size selection.
 }

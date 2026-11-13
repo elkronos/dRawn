@@ -18,14 +18,19 @@
 #'   [design_temporal()]    \tab within an interval as above; across intervals, independent \cr
 #'   [design_spatial()]     \tab simple random sampling inside the region \cr
 #'   [design_weighted()]    \tab `"poisson"` only, where rows are independent: `pi_i * pi_j` \cr
-#'   [design_systematic()]  \tab `1/interval` for rows sharing a residue class, otherwise **zero** \cr
+#'   [design_systematic()]  \tab `1/interval` for rows sharing a residue class, otherwise **zero**; with `n`, the overlap of the two rows' stretches, from 0 to `n / N` \cr
 #' }
 #'
 #' Systematic sampling is the awkward one. Most pairs can never co-occur, so
 #' their joint probability is genuinely 0 and no design-unbiased variance
 #' estimator exists; [ht_total()] uses the successive-difference approximation
 #' instead, and says so. Its residue classes follow the order the design walks,
-#' so `order_by` changes which pairs can co-occur.
+#' so `order_by` changes which pairs can co-occur. Given `n`, the design walks
+#' at a step of `N / n` rows from a start `u` uniform on (0, 1), each row
+#' covering a stretch of length `n / N`, and a pair is drawn together when `u`
+#' falls where both stretches, moved into (0, 1), overlap. With a fixed
+#' `start` the design is deterministic, and it is refused as in
+#' [inclusion_prob()].
 #'
 #' Two designs have joint probabilities that are positive but have no closed
 #' form: `design_weighted(method = "systematic")`, which shuffles the rows
@@ -393,17 +398,45 @@ joint_inclusion.drawn_design_weighted <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_systematic <- function(design, data, rows) {
-  if (!is.null(design$start)) {
-    stop_declined(paste0("A systematic design with a fixed `start` is not a ",
-                         "probability sample."))
-  }
-  k <- design$interval
+  refuse_fixed_start(design)
   # Residue classes come from the order the design walks, which `order_by`
   # changes. Taking them from frame order instead reports 0 for pairs that
   # always co-occur and 1/k for pairs that never can.
-  pos <- systematic_positions(design, data)[rows]
+  walk <- systematic_positions(design, data)
+  pos <- walk[rows]
+  if (!is.null(design$n)) {
+    return(fractional_joint(pos, design$n, sum(!is.na(walk))))
+  }
+  k <- design$interval
   pair_matrix(as.integer((pos - 1L) %% k) + 1L, rep(1 / k, k),
               ifelse(is.na(pos), 0, 1 / k))
+}
+
+#' Joint probabilities of a systematic sample of fixed size `n`
+#'
+#' Walk position `p` is taken when the start `u` lands in its stretch moved
+#' into (0, 1): an arc of length `n / N` beginning at `(p - 1) * n / N`
+#' modulo 1. Two positions are taken together when `u` lands where their arcs
+#' overlap. For positions `d` apart, the arcs begin `gap / N` apart, where
+#' `gap` is `(d * n) %% N`, and overlap by
+#' `(max(n - gap, 0) + max(gap + n - N, 0)) / N`. The arithmetic is on whole
+#' numbers, so when `n` divides `N` the result is `n / N` within a residue
+#' class and 0 between them, as for `interval = N / n`.
+#'
+#' @noRd
+fractional_joint <- function(pos, n, N) {
+  k <- length(pos)
+  out <- matrix(0, k, k)
+  ok <- which(!is.na(pos))
+  if (length(ok) == 0L) return(out)
+  # The overlap depends only on the distance along the walk, modulo N.
+  gap <- (as.double(seq.int(0L, N - 1L)) * n) %% N
+  overlap <- (pmax(n - gap, 0) + pmax(gap + n - N, 0)) / N
+  p <- pos[ok]
+  for (j in seq_along(ok)) {
+    out[ok, ok[j]] <- overlap[(p - p[j]) %% N + 1L]
+  }
+  out
 }
 
 #' @noRd

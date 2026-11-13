@@ -56,7 +56,7 @@ Most do, and those are computed exactly:
 \tabular{ll}{
 \code{\link[=design_simple]{design_simple()}}      \tab \code{n / N} \cr
 \code{\link[=design_stratified]{design_stratified()}}  \tab \code{n_h / N_h} within each stratum \cr
-\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1 / interval}, for every row, exactly \cr
+\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1 / interval} with a random \code{start}, or \code{n / N} with \code{n}, for every row walked, exactly \cr
 \code{\link[=design_cluster]{design_cluster()}}     \tab \code{n_clusters / N_clusters} \cr
 \code{\link[=design_multistage]{design_multistage()}}  \tab \code{(n_clusters / N_clusters) * (n_h / N_h)}, when the per-cluster take \code{n_h} is constant; with replacement, \code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)} \cr
 \code{\link[=design_weighted]{design_weighted()}}    \tab \code{n * p_i} for the \code{"systematic"} and \code{"poisson"} methods \cr
@@ -92,6 +92,15 @@ unknown but genuinely different from proportional-to-size: for weights
 \item \code{\link[=design_bootstrap]{design_bootstrap()}} — resampling with replacement from the sample is not a
 probability sample of a finite population, so there is no \code{pi} to report.
 }
+
+A \code{\link[=design_systematic]{design_systematic()}} with a fixed \code{start} is refused too, for another
+reason. It is deterministic: each row has probability 0 or 1, and
+\code{simulate = TRUE} reports exactly that. Without \code{simulate} those values
+are refused, because \code{draw(weights = TRUE)} would give every sampled row a
+weight of 1 and \code{\link[=ht_total]{ht_total()}} would report the sum over the sample as the
+total of the frame. So are \code{\link[=sampling_weight]{sampling_weight()}}, \code{\link[=joint_prob]{joint_prob()}},
+\code{draw(weights = TRUE)} and the estimators. Leave \code{start} as \code{NULL} for a
+probability sample.
 
 For all but the bootstrap, pass \code{simulate = TRUE} to estimate them by Monte
 Carlo instead. The estimate carries \code{R}-sized error, which is fine for

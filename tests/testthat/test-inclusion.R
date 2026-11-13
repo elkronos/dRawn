@@ -30,6 +30,28 @@ test_that("a fixed systematic start is refused as a probability sample", {
   )
 })
 
+test_that("systematic inclusion is n / N with `n`, at any N", {
+  for (N in c(20, 23, 29)) {
+    p <- inclusion_prob(data.frame(id = seq_len(N)), design_systematic(n = 7))
+    expect_equal(p, rep(7 / N, N), info = paste("N =", N))
+  }
+})
+
+test_that("a fixed systematic start is refused by every weighting path alike", {
+  d <- data.frame(id = 1:20)
+  des <- design_systematic(interval = 5, start = 2)
+  want <- paste0("A systematic design with a fixed `start` is not a ",
+                 "probability sample: each row is selected with probability ",
+                 "0 or 1. Leave `start` as NULL for a random start.")
+  expect_error(inclusion_prob(d, des), want, fixed = TRUE)
+  expect_error(sampling_weight(d, des), want, fixed = TRUE)
+  expect_error(joint_prob(d, des, rows = 1:3), want, fixed = TRUE)
+  expect_error(draw(d, des, weights = TRUE), want, fixed = TRUE)
+  # The design is deterministic, and the simulation reports its 0s and 1s.
+  expect_identical(inclusion_prob(d, des, simulate = TRUE, R = 20, seed = 1),
+                   as.numeric(d$id %in% c(2, 7, 12, 17)))
+})
+
 test_that("sampling_weight is the reciprocal, and 0 becomes NA not Inf", {
   d <- data.frame(id = 1:10)
   expect_equal(sampling_weight(d, design_simple(n = 5)), rep(2, 10))

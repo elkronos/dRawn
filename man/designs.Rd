@@ -14,7 +14,8 @@ passed around.
 \describe{
 \item{\code{\link[=design_simple]{design_simple()}}}{Rows uniformly at random.}
 \item{\code{\link[=design_stratified]{design_stratified()}}}{A share of each stratum.}
-\item{\code{\link[=design_systematic]{design_systematic()}}}{Every \emph{k}-th row.}
+\item{\code{\link[=design_systematic]{design_systematic()}}}{Every \emph{k}-th row, or \code{n} rows at an even
+step.}
 \item{\code{\link[=design_cluster]{design_cluster()}}}{Whole clusters.}
 \item{\code{\link[=design_multistage]{design_multistage()}}}{Clusters, then rows within them.}
 \item{\code{\link[=design_weighted]{design_weighted()}}}{Rows with probability governed by a weight.}

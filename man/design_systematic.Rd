@@ -4,15 +4,26 @@
 \alias{design_systematic}
 \title{Systematic sampling}
 \usage{
-design_systematic(interval, start = NULL, order_by = NULL, na_rm = FALSE)
+design_systematic(
+  interval = NULL,
+  start = NULL,
+  order_by = NULL,
+  na_rm = FALSE,
+  n = NULL
+)
 }
 \arguments{
-\item{interval}{Sampling interval. A whole number of 1 or more. Fractional
-intervals are rejected: they produce uneven gaps, which is not a systematic
-design.}
+\item{interval}{Sampling interval, a whole number of 1 or more: every
+\code{interval}-th row of the walk is taken. Give \code{interval} or \code{n}, not both.
+For a step that is not a whole number, give \code{n}.}
 
 \item{start}{Starting row, in \code{1:interval}. Drawn at random from that range
-when \code{NULL}.}
+when \code{NULL}. A fixed start makes the design deterministic: each row is
+selected with probability 0 or 1, so \code{\link[=inclusion_prob]{inclusion_prob()}},
+\code{\link[=sampling_weight]{sampling_weight()}}, \code{\link[=joint_prob]{joint_prob()}}, \code{draw(weights = TRUE)},
+\code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} refuse it, while
+\code{inclusion_prob(simulate = TRUE)} reports those 0s and 1s. Not used with
+\code{n}, whose start is always random.}
 
 \item{order_by}{Optional column to sort by before walking the data. It
 changes which rows can appear together, so \code{\link[=inclusion_prob]{inclusion_prob()}} and
@@ -22,13 +33,24 @@ ties keep frame order.}
 
 \item{na_rm}{When \code{order_by} is given, drop rows whose sort key is \code{NA}
 instead of raising an error.}
+
+\item{n}{Number of rows to draw, in place of \code{interval}. With \code{N} rows
+walked, each row covers a stretch of length \code{n / N} on a line from 0 to
+\code{n}, a start \code{u} is drawn uniformly from (0, 1), and the rows under \code{u},
+\code{u + 1}, ..., \code{u + n - 1} are taken. The step is \code{N / n} rows, every row
+has probability \code{n / N}, and the sample always holds \code{n} rows. When \code{n}
+divides \code{N} the probabilities are those of \code{interval = N / n}.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Takes every \code{interval}-th row, beginning at \code{start}. The number of rows drawn
-follows from the interval and the size of the data, so there is no \code{n}.
+Walks the rows at a fixed step. Give \code{interval} to take every
+\code{interval}-th row, beginning at \code{start}, which is drawn at random unless
+given; the number of rows drawn then follows from the interval and the size
+of the data. Give \code{n} instead to draw exactly \code{n} rows from a random start:
+the step is the number of rows walked divided by \code{n}, and need not be a
+whole number.
 }
 \section{Variance}{
 
@@ -39,13 +61,17 @@ the order the design walked. Sorting on a variable related to what you
 measure (\code{order_by}) is what makes systematic sampling efficient, and this
 estimator is the one that can see it; see \code{\link[=ht_total]{ht_total()}} for its limits.
 When \code{interval} does not divide the number of rows walked, the sample size
-is random, and a term for that is added to the variance.
+is random, and a term for that is added to the variance. A design given
+\code{n} has a fixed size and needs no such term.
 }
 
 \examples{
 df <- data.frame(id = 1:100, value = (1:100) / 10)
 draw(df, design_systematic(interval = 10, start = 3))
 draw(df, design_systematic(interval = 25, order_by = "value"), seed = 1)
+
+# 30 rows from 100, a step of 3.33
+draw(df, design_systematic(n = 30), seed = 1)$id
 
 }
 \references{

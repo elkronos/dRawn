@@ -45,7 +45,7 @@
 #'     variance two- to thirtyfold in the package's simulations, where this one
 #'     stayed near the truth. Two limits no estimator from a single systematic
 #'     sample can escape: it is understated if the frame cycles with a period
-#'     matching `interval`, and when a smooth trend so dominates `y` that the
+#'     matching the step, and when a smooth trend so dominates `y` that the
 #'     random start is almost the only source of variation, it runs low (0.3 to
 #'     0.7 of the truth when the trend spanned 25 noise standard deviations).
 #'     When `interval` does not divide the number of rows walked, the sample
@@ -54,7 +54,9 @@
 #'     `mean(y / pi)^2 * (r / k) * (1 - r / k)` with `k` the interval and `r`
 #'     the remainder, is added, and the note says so. Without it a constant
 #'     `y` had a standard error of 0, and a variable with a coefficient of
-#'     variation of 0.02 an interval that never covered the truth.}
+#'     variation of 0.02 an interval that never covered the truth. A design
+#'     given `n` draws exactly `n` rows at a step of `N / n` and needs no
+#'     such term.}
 #'   \item{`"local mean"`}{[design_spread()]. A spatially balanced sample is
 #'     well spread precisely because neighbours are rarely taken together, so
 #'     this compares each sampled row with the local mean of its nearest
@@ -1301,14 +1303,13 @@ deville_variance <- function(y, pi_i) {
 #' count and the sample mean, and is 0 for the linearised residuals of a Hajek
 #' mean, whose mean is 0.
 #'
+#' A design given `n` walks at a step of `N / n` rows and always draws `n`,
+#' so `f` is `n / N` and no term is added.
+#'
 #' @noRd
 ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
                                                 domain = NULL, ctx = NULL) {
-  if (!is.null(design$start)) {
-    stop_declined(paste0("A systematic design with a fixed `start` is not a ",
-                         "probability sample: each row is selected with ",
-                         "probability 0 or 1."))
-  }
+  refuse_fixed_start(design)
   n <- length(rows)
   if (n < 2L) {
     return(list(variance = NA_real_,
@@ -1317,19 +1318,28 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
   walk <- from_context(ctx, "walk", systematic_positions(design, data))
   pos <- walk[rows]
   u <- (y / pi_i)[order(pos)]
-  k <- design$interval
+  N <- sum(!is.na(walk))
+  if (is.null(design$n)) {
+    k <- design$interval
+    period <- "`interval`"
+    r <- N %% k
+  } else {
+    # A step of N / n rows, which need not be whole, and a fixed size.
+    k <- N / design$n
+    period <- paste0("the step of ", format(k, digits = 4), " rows")
+    r <- 0
+  }
   f <- 1 / k
   v <- (1 - f) * n / (2 * (n - 1)) * sum(diff(u)^2)
-  N <- sum(!is.na(walk))
-  r <- N %% k
   if (r > 0) v <- v + mean(u)^2 * (r / k) * (1 - r / k)
   list(variance = v,
        method = "successive difference",
        note = paste0("Systematic sampling has no design-unbiased variance ",
                      "estimator; this is the successive-difference ",
                      "approximation. It would be understated if the frame ",
-                     "cycled with a period matching `interval`, or if a smooth ",
-                     "trend along the sort order swamped all other variation.",
+                     "cycled with a period matching ", period, ", or if a ",
+                     "smooth trend along the sort order swamped all other ",
+                     "variation.",
                      if (r > 0) {
                        paste0(" The ", N, " rows walked are not a multiple of ",
                               "`interval` (", k, "), so the sample size is ",

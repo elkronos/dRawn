@@ -639,6 +639,17 @@
   data frame: Algorithm L runs over the rows, `draw()` returns `n` of them
   as one data frame, and `max_items` counts rows. A seed gives the same rows
   however the stream is cut into batches.
+* `design_systematic()` takes `n`, in place of `interval`, for a sample of
+  exactly `n` rows. The step is the number of rows walked divided by `n` and
+  need not be whole: a start `u` is drawn from (0, 1), each row covers
+  `n / N` of a line from 0 to `n`, and the rows under `u`, `u + 1`, ...,
+  `u + n - 1` are taken. Every row has probability `n / N`, `joint_prob()`
+  gives each pair the exact share of starts that take both, and the
+  successive-difference variance has no term for a random size. Before, an
+  `interval` that did not divide the frame gave one of two sample sizes, and
+  a fractional `interval` was refused, so 30 rows from 100 could not be
+  asked for. `interval` keeps its place as the first argument, and a seed
+  draws the same rows with it as before.
 
 ## Speed and memory
 
@@ -769,6 +780,14 @@
   is read, to tell a longer stream from one of exactly `max_items`, and a
   function is called once past the cap. A connection that is not open is
   opened, read and closed, as `read.csv()` does.
+* `?design_systematic`, `?inclusion_prob` and `?joint_prob` say that a
+  fixed `start` makes the design deterministic, so `inclusion_prob()`,
+  `sampling_weight()`, `joint_prob()`, `draw(weights = TRUE)` and the
+  estimators refuse it, while `inclusion_prob(simulate = TRUE)` reports its
+  probabilities of 0 and 1. The table in `?inclusion_prob` gave
+  `1 / interval` for every row without saying the start must be random.
+  `joint_prob()` and the estimators now refuse a fixed start with the same
+  message as `inclusion_prob()`, which says to leave `start` as `NULL`.
 
 # drawn 0.2.0
 

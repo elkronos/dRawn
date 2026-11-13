@@ -16,7 +16,7 @@
 #' \tabular{ll}{
 #'   [design_simple()]      \tab `n / N` \cr
 #'   [design_stratified()]  \tab `n_h / N_h` within each stratum \cr
-#'   [design_systematic()]  \tab `1 / interval`, for every row, exactly \cr
+#'   [design_systematic()]  \tab `1 / interval` with a random `start`, or `n / N` with `n`, for every row walked, exactly \cr
 #'   [design_cluster()]     \tab `n_clusters / N_clusters` \cr
 #'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)` \cr
 #'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods \cr
@@ -51,6 +51,15 @@
 #'   `1:10` at `n = 5`, simulation puts them up to 35% away.
 #' * [design_bootstrap()] — resampling with replacement from the sample is not a
 #'   probability sample of a finite population, so there is no `pi` to report.
+#'
+#' A [design_systematic()] with a fixed `start` is refused too, for another
+#' reason. It is deterministic: each row has probability 0 or 1, and
+#' `simulate = TRUE` reports exactly that. Without `simulate` those values
+#' are refused, because `draw(weights = TRUE)` would give every sampled row a
+#' weight of 1 and [ht_total()] would report the sum over the sample as the
+#' total of the frame. So are [sampling_weight()], [joint_prob()],
+#' `draw(weights = TRUE)` and the estimators. Leave `start` as `NULL` for a
+#' probability sample.
 #'
 #' For all but the bootstrap, pass `simulate = TRUE` to estimate them by Monte
 #' Carlo instead. The estimate carries `R`-sized error, which is fine for
