@@ -553,3 +553,122 @@ test_that("a contrast prints its weights, domains and interval", {
                               contrast = c(a = -1, b = 1))),
                 "contrast -`a` + `b`", fixed = TRUE)
 })
+
+# ---- the by table as numbers ------------------------------------------------
+
+table_pop <- function() {
+  id <- 1:300
+  data.frame(id = id, site = rep(c("a", "b", "c"), times = c(150, 100, 50)),
+             half = rep(c("east", "west"), 150),
+             y = 20 + (id * 37) %% 101,
+             flag = id <= 150 & id %% 3 == 0)
+}
+
+test_that("a by table holds each domain's variance and an integer count", {
+  s <- draw(table_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  b <- ht_total(s, "y", by = "site")
+  expect_type(b$n, "integer")
+  expect_equal(b$variance, b$se^2)
+  expect_equal(names(b), c("site", "n", "total", "variance", "se",
+                           "ci_lower", "ci_upper", "method"))
+  expect_equal(attr(b, "variable"), "y")
+  out <- capture.output(print(b))
+  expect_false(any(grepl("variance", out)))
+  expect_error(deff(b), "no design effect")
+})
+
+test_that("a by column named like a column of the table is refused", {
+  # The count overwrote a `by` column called `n`, which then held the counts.
+  d <- data.frame(id = 1:100, n = rep(c("x", "y"), 50), y = 1:100)
+  s <- draw(d, design_simple(n = 20), seed = 1, weights = TRUE)
+  expect_error(ht_total(s, "y", by = "n"), "`by` names `n`, which the table")
+  s$variance <- s$n
+  expect_error(ht_mean(s, "y", by = c("variance", "n")),
+               paste0("`variance`, `n`, which the table of domain estimates ",
+                      "uses for its own columns"), fixed = TRUE)
+  # A contrast builds no table, so the name does not matter there.
+  expect_s3_class(ht_total(s, "y", by = "n", contrast = c(x = 1, y = -1)),
+                  "drawn_contrast")
+})
+
+test_that("a by table gives coef(), vcov(), confint() and tidy() by domain", {
+  s <- draw(table_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  b <- ht_mean(s, "y", by = "site")
+  expect_equal(coef(b), c(a = b$mean[1], b = b$mean[2], c = b$mean[3]))
+  v <- vcov(b)
+  expect_equal(diag(v), c(a = b$variance[1], b = b$variance[2],
+                          c = b$variance[3]))
+  expect_equal(v[upper.tri(v)], c(0, 0, 0))
+  expect_equal(unname(confint(b)), cbind(b$ci_lower, b$ci_upper))
+  b8 <- ht_mean(s, "y", by = "site", level = 0.8)
+  expect_equal(unname(confint(b, level = 0.8)),
+               cbind(b8$ci_lower, b8$ci_upper))
+
+  # A proportion keeps its logit interval, and the domains at 0 their beta
+  # interval, at another level.
+  p <- ht_mean(s, "flag", by = "site")
+  p8 <- ht_mean(s, "flag", by = "site", level = 0.8)
+  expect_equal(unname(confint(p, level = 0.8)),
+               cbind(p8$ci_lower, p8$ci_upper))
+  q <- ht_mean(s, "flag", by = "site", ci_method = "beta",
+               alternative = "less")
+  q8 <- ht_mean(s, "flag", by = "site", ci_method = "beta",
+                alternative = "less", level = 0.8)
+  expect_equal(unname(confint(q, level = 0.8)),
+               cbind(q8$ci_lower, q8$ci_upper))
+
+  # Domains of several columns are named as `contrast` names them.
+  two <- ht_total(s, "y", by = c("site", "half"))
+  expect_equal(names(coef(two))[1:2], c("a . east", "a . west"))
+
+  skip_if_not_installed("survey")
+  expect_equal(unname(survey::SE(b)), b$se)
+  skip_if_not_installed("generics")
+  t <- generics::tidy(b, conf.int = TRUE)
+  expect_equal(names(t), c("site", "term", "estimate", "std.error",
+                           "conf.low", "conf.high"))
+  expect_equal(t$term, rep("y", 3))
+  expect_equal(t$conf.high, b$ci_upper)
+})
+
+test_that("selecting rows of a by table keeps its methods; columns drop them", {
+  s <- draw(table_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  b <- ht_total(s, "y", by = "site")
+  r <- b[c(3, 1), ]
+  expect_equal(coef(r), coef(b)[c(3, 1)])
+  expect_equal(confint(r, level = 0.8), confint(b, level = 0.8)[c(3, 1), ])
+  expect_output(print(r), "by domain")
+
+  # Selecting columns keeps the class but not the attributes the heading
+  # reads, and print() stopped with "argument is of length zero".
+  cols <- b[, c("site", "total")]
+  out <- capture.output(print(cols))
+  expect_false(any(grepl("by domain", out)))
+  expect_true(any(grepl("site", out)) && any(grepl("total", out)))
+  expect_output(print(subset(b, total > 0, select = c(site, se))), "se")
+  expect_error(coef(cols), "attributes of a `by` table")
+  expect_error(confint(cols), "attributes of a `by` table")
+
+  plain <- as.data.frame(b)
+  expect_identical(class(plain), "data.frame")
+  expect_null(attr(plain, "what"))
+  expect_equal(plain$total, b$total)
+})
+
+test_that("a contrast gives the same methods, named by its weights", {
+  s <- draw(table_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  k <- ht_total(s, "y", by = "site", contrast = c(a = 1, b = -1))
+  expect_equal(coef(k), c("a - b" = k$contrast))
+  expect_equal(vcov(k)[1, 1], k$variance)
+  k8 <- ht_total(s, "y", by = "site", contrast = c(a = 1, b = -1),
+                 level = 0.8)
+  expect_equal(unname(confint(k, level = 0.8)[1, ]), k8$ci)
+  df <- as.data.frame(k)
+  expect_equal(df$domains, "a - b")
+  expect_equal(df$contrast, k$contrast)
+  expect_true(is.na(deff(k)))
+})

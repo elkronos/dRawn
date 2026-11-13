@@ -42,12 +42,14 @@ way. See "Proportions".}
 }
 \value{
 A list with a \code{print()} method, holding \code{mean}, \code{estimator},
-\code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}, \code{n}, \code{design},
-\code{deff}, \code{method}, \code{note}, \code{ci_scale} (\code{"linear"}, \code{"logit"} or \code{"beta"})
-and \code{unreachable}. See \code{\link[=ht_total]{ht_total()}} for what \code{method}, \code{df}, \code{note} and
-\code{unreachable} say, and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data
-frame with one row per domain, and with \code{contrast} a \code{drawn_contrast}, as
-for \code{\link[=ht_total]{ht_total()}}.
+\code{variable}, \code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}, \code{n},
+\code{n_random}, \code{design}, \code{deff}, \code{method}, \code{note}, \code{ci_scale} (\code{"linear"},
+\code{"logit"} or \code{"beta"}) and \code{unreachable}. See \code{\link[=ht_total]{ht_total()}} for what
+\code{variable}, \code{n_random}, \code{method}, \code{df}, \code{note} and \code{unreachable} say,
+and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data frame with one row
+per domain, and with \code{contrast} a \code{drawn_contrast}, as for \code{\link[=ht_total]{ht_total()}}.
+Each has \code{coef()}, \code{vcov()}, \code{confint()}, \code{as.data.frame()} and \code{tidy()}
+methods; see "Working with the result" in \code{\link[=ht_total]{ht_total()}}.
 }
 \description{
 The Hajek estimator, \code{sum(y / pi) / sum(1 / pi)}, is the default. It divides

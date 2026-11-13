@@ -229,6 +229,36 @@
 #' weighs rests on one primary sampling unit, the contrast gets no standard
 #' error, for the reason given under "Domains".
 #'
+#' @section Working with the result:
+#' `coef()` gives the estimate, named after `y` when `y` is a column name,
+#' `vcov()` its variance as a 1 by 1 matrix, and `confint()` its interval as
+#' a matrix with a column for each end. At the estimate's own `level`,
+#' `confint()` returns the interval the estimate holds. At another level it
+#' forms the interval again on the design's degrees of freedom and on the
+#' estimate's scale (`ci_scale`), so it gives what `level =` in `ht_total()`
+#' or [ht_mean()] would have given. `survey::SE()` and `survey::cv()` work
+#' through `coef()` and `vcov()`.
+#'
+#' `as.data.frame()` gives one row of `variable`, `n`, the estimate,
+#' `variance`, `se`, `ci_lower`, `ci_upper`, `level`, `df`, `deff` and
+#' `method`, so estimates of several variables can be bound with `rbind()`.
+#' With the generics package installed, `generics::tidy()`, and so
+#' `broom::tidy()`, gives `term`, `estimate` and `std.error`, with
+#' `conf.low` and `conf.high` when `conf.int = TRUE`, at `conf.level`, which
+#' is the estimate's own level unless given.
+#'
+#' A `by` table has the same methods. `coef()` names each domain as
+#' `contrast` names it, `confint()` and `tidy()` give a row per domain,
+#' `tidy()` with the `by` columns, and `as.data.frame()` drops the table's
+#' class and attributes. `vcov()` is a diagonal matrix of the
+#' domains' variances: the covariances between domains are not estimated,
+#' so its off-diagonal entries are 0, and the standard error of a difference
+#' between domains comes from `contrast`, not from `vcov()`. Selecting
+#' columns of the table with `[` or `subset()` drops the attributes these
+#' methods read, and the result prints as a plain data frame. Selecting rows
+#' keeps them. A `drawn_contrast` has the same methods, with the estimate
+#' named by its weights, as in `"a - b"`.
+#'
 #' @section Which columns are read:
 #' `ht_total()` and [ht_mean()] divide by `.prob`, the inclusion probabilities
 #' [draw()] attached, and read strata, clusters, time stamps and the other
@@ -257,7 +287,8 @@
 #'   `method`, and `"none"` when nothing could produce a figure.
 #' @param level Confidence level for the interval.
 #' @param by Optional column name(s) in `sample` defining domains. When given,
-#'   the result is one row per domain. See "Domains".
+#'   the result is one row per domain. See "Domains". A column named like
+#'   one of the table's own, such as `n` or `se`, is refused.
 #' @param df Degrees of freedom for the interval. `NULL` uses the design's
 #'   (see "Confidence intervals"); `Inf` gives a normal interval; otherwise a
 #'   single number of 1 or more.
@@ -280,7 +311,11 @@
 #'     \item{`ci_scale`}{The scale the interval was formed on: `"linear"`
 #'       for a total, and `"logit"` or `"beta"` for a proportion from
 #'       [ht_mean()].}
-#'     \item{`n`, `design`}{Rows used, and the design's type.}
+#'     \item{`variable`}{The name of `y` when it is a column name, and
+#'       `NULL` when it is a vector.}
+#'     \item{`n`, `n_random`, `design`}{Rows used, those of them not taken
+#'       with certainty, which the beta interval of a proportion counts as
+#'       its sample size, and the design's type.}
 #'     \item{`deff`}{The design effect — see [deff()].}
 #'     \item{`method`}{Which estimator produced the variance. See "Variance".}
 #'     \item{`note`}{Why a variance is missing, what approximation was used,
@@ -291,16 +326,22 @@
 #'       0.2.0. See "Rows the design cannot reach".}
 #'   }
 #'   With `by`, a data frame of class `drawn_by` instead: one row per domain,
-#'   with the domain columns, `n`, `total`, `se`, `ci_lower`, `ci_upper` and
-#'   `method`, and the level, alternative, scale, notes and unreachable count
-#'   as attributes.
+#'   with the domain columns, `n` (an integer), `total`, `variance`, `se`,
+#'   `ci_lower`, `ci_upper` and `method`, and the level, alternative, scale,
+#'   degrees of freedom, notes, unreachable count and `variable` as
+#'   attributes. It prints without `variance`, which is the square of `se`.
+#'   A `by` table has no design effect.
 #'
 #'   With `contrast`, a list of class `drawn_contrast` with a `print()`
 #'   method, holding `contrast`, the weighted sum; `weights` and `estimates`,
 #'   the weight and estimate of each domain it weighs; `what` (`"total"` or
-#'   `"mean"`), `estimator` for a mean, and `by`; and `variance`, `se`, `ci`,
-#'   `level`, `alternative`, `df`, `n`, `ci_scale`, `design`, `method`, `note`
-#'   and `unreachable` as above. `deff` is `NA`.
+#'   `"mean"`), `estimator` for a mean, and `by`; and `variable`,
+#'   `variance`, `se`, `ci`, `level`, `alternative`, `df`, `n`, `n_random`,
+#'   `ci_scale`, `design`, `method`, `note` and `unreachable` as above.
+#'   `deff` is `NA`.
+#'
+#'   Each of the three has `coef()`, `vcov()`, `confint()`,
+#'   `as.data.frame()` and `tidy()` methods; see "Working with the result".
 #'
 #' @references
 #' Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling

@@ -32,7 +32,8 @@ resamples; \code{"none"} skips it. The result reports which was used in
 \item{level}{Confidence level for the interval.}
 
 \item{by}{Optional column name(s) in \code{sample} defining domains. When given,
-the result is one row per domain. See "Domains".}
+the result is one row per domain. See "Domains". A column named like
+one of the table's own, such as \code{n} or \code{se}, is refused.}
 
 \item{df}{Degrees of freedom for the interval. \code{NULL} uses the design's
 (see "Confidence intervals"); \code{Inf} gives a normal interval; otherwise a
@@ -59,7 +60,11 @@ design supports no variance.}
 \item{\code{ci_scale}}{The scale the interval was formed on: \code{"linear"}
 for a total, and \code{"logit"} or \code{"beta"} for a proportion from
 \code{\link[=ht_mean]{ht_mean()}}.}
-\item{\code{n}, \code{design}}{Rows used, and the design's type.}
+\item{\code{variable}}{The name of \code{y} when it is a column name, and
+\code{NULL} when it is a vector.}
+\item{\code{n}, \code{n_random}, \code{design}}{Rows used, those of them not taken
+with certainty, which the beta interval of a proportion counts as
+its sample size, and the design's type.}
 \item{\code{deff}}{The design effect — see \code{\link[=deff]{deff()}}.}
 \item{\code{method}}{Which estimator produced the variance. See "Variance".}
 \item{\code{note}}{Why a variance is missing, what approximation was used,
@@ -70,16 +75,22 @@ which the estimate does not cover; \code{NA} for a sample saved by drawn
 0.2.0. See "Rows the design cannot reach".}
 }
 With \code{by}, a data frame of class \code{drawn_by} instead: one row per domain,
-with the domain columns, \code{n}, \code{total}, \code{se}, \code{ci_lower}, \code{ci_upper} and
-\code{method}, and the level, alternative, scale, notes and unreachable count
-as attributes.
+with the domain columns, \code{n} (an integer), \code{total}, \code{variance}, \code{se},
+\code{ci_lower}, \code{ci_upper} and \code{method}, and the level, alternative, scale,
+degrees of freedom, notes, unreachable count and \code{variable} as
+attributes. It prints without \code{variance}, which is the square of \code{se}.
+A \code{by} table has no design effect.
 
 With \code{contrast}, a list of class \code{drawn_contrast} with a \code{print()}
 method, holding \code{contrast}, the weighted sum; \code{weights} and \code{estimates},
 the weight and estimate of each domain it weighs; \code{what} (\code{"total"} or
-\code{"mean"}), \code{estimator} for a mean, and \code{by}; and \code{variance}, \code{se}, \code{ci},
-\code{level}, \code{alternative}, \code{df}, \code{n}, \code{ci_scale}, \code{design}, \code{method}, \code{note}
-and \code{unreachable} as above. \code{deff} is \code{NA}.
+\code{"mean"}), \code{estimator} for a mean, and \code{by}; and \code{variable},
+\code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}, \code{n}, \code{n_random},
+\code{ci_scale}, \code{design}, \code{method}, \code{note} and \code{unreachable} as above.
+\code{deff} is \code{NA}.
+
+Each of the three has \code{coef()}, \code{vcov()}, \code{confint()},
+\code{as.data.frame()} and \code{tidy()} methods; see "Working with the result".
 }
 \description{
 Forms the Horvitz-Thompson total \code{sum(y / pi)} with a standard error, a
@@ -320,6 +331,38 @@ of 0. A name that is not a domain with a sampled row is refused, and so is
 a contrast whose weights are all 0. When a Hajek mean that the contrast
 weighs rests on one primary sampling unit, the contrast gets no standard
 error, for the reason given under "Domains".
+}
+
+\section{Working with the result}{
+
+\code{coef()} gives the estimate, named after \code{y} when \code{y} is a column name,
+\code{vcov()} its variance as a 1 by 1 matrix, and \code{confint()} its interval as
+a matrix with a column for each end. At the estimate's own \code{level},
+\code{confint()} returns the interval the estimate holds. At another level it
+forms the interval again on the design's degrees of freedom and on the
+estimate's scale (\code{ci_scale}), so it gives what \verb{level =} in \code{ht_total()}
+or \code{\link[=ht_mean]{ht_mean()}} would have given. \code{survey::SE()} and \code{survey::cv()} work
+through \code{coef()} and \code{vcov()}.
+
+\code{as.data.frame()} gives one row of \code{variable}, \code{n}, the estimate,
+\code{variance}, \code{se}, \code{ci_lower}, \code{ci_upper}, \code{level}, \code{df}, \code{deff} and
+\code{method}, so estimates of several variables can be bound with \code{rbind()}.
+With the generics package installed, \code{generics::tidy()}, and so
+\code{broom::tidy()}, gives \code{term}, \code{estimate} and \code{std.error}, with
+\code{conf.low} and \code{conf.high} when \code{conf.int = TRUE}, at \code{conf.level}, which
+is the estimate's own level unless given.
+
+A \code{by} table has the same methods. \code{coef()} names each domain as
+\code{contrast} names it, \code{confint()} and \code{tidy()} give a row per domain,
+\code{tidy()} with the \code{by} columns, and \code{as.data.frame()} drops the table's
+class and attributes. \code{vcov()} is a diagonal matrix of the
+domains' variances: the covariances between domains are not estimated,
+so its off-diagonal entries are 0, and the standard error of a difference
+between domains comes from \code{contrast}, not from \code{vcov()}. Selecting
+columns of the table with \code{[} or \code{subset()} drops the attributes these
+methods read, and the result prints as a plain data frame. Selecting rows
+keeps them. A \code{drawn_contrast} has the same methods, with the estimate
+named by its weights, as in \code{"a - b"}.
 }
 
 \section{Which columns are read}{

@@ -642,8 +642,7 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
     },
     temporal = {
       bucket <- temporal_bucket(design, pop)
-      labels <- unique(bucket[!is.na(bucket)])
-      by_group(match(bucket, labels), labels)
+      by_group(as.integer(bucket), levels(bucket))
     },
     weighted = {
       if (!is.null(design$strata)) {

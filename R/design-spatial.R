@@ -386,6 +386,32 @@ check_region_type <- function(g, arg) {
        ". ", fix, call. = FALSE)
 }
 
+#' The outline of `region`, as `plot(type = "map")` draws it
+#'
+#' The rings of `region` in the coordinates' CRS, as `x` and `y` with an `NA`
+#' between rings. Under spherical geometry each edge of a longitude/latitude
+#' region is the great-circle arc between its corners, which bows away from
+#' the straight line a flat map would draw, so vertices are added along each
+#' arc at most 50 km apart before the outline is drawn. Under planar
+#' geometry, or with projected coordinates, the edges are the straight lines
+#' between the corners.
+#'
+#' @noRd
+region_outline <- function(design, data) {
+  crs <- spatial_crs(design, data)
+  region <- region_geometry(design$region, crs)
+  if (isTRUE(sf::st_is_longlat(crs)) && isTRUE(sf::sf_use_s2())) {
+    region <- sf::st_segmentize(region, 50000)
+  }
+  cs <- sf::st_coordinates(sf::st_cast(region, "MULTIPOLYGON"))
+  ring <- cs[, intersect(c("L1", "L2", "L3"), colnames(cs)), drop = FALSE]
+  id <- do.call(paste, c(unname(as.data.frame(ring)), sep = "."))
+  pieces <- split(seq_len(nrow(cs)), factor(id, levels = unique(id)))
+  at <- unlist(lapply(pieces, function(i) c(i, NA)), use.names = FALSE)
+  at <- at[-length(at)]
+  list(x = unname(cs[at, "X"]), y = unname(cs[at, "Y"]))
+}
+
 # ---- warnings about the region's edges --------------------------------------
 
 #' Warn about edges that s2 draws differently from a flat map

@@ -127,7 +127,9 @@ test_that("deff is available from both estimators and NA without a variance", {
   expect_true(is.finite(deff(ht_total(s, "y"))))
   expect_true(is.finite(deff(ht_mean(s, "y"))))
   expect_true(is.na(deff(ht_mean(s, "y", variance = "none"))))
-  expect_error(deff(1:10), "ht_total")
+  # Anything else goes to survey's deff(), which has no design effect for it.
+  skip_if_not_installed("survey")
+  expect_warning(expect_null(deff(1:10)), "no design effect")
 })
 
 test_that("the jackknife deletes clusters, not rows", {
@@ -568,4 +570,135 @@ test_that("an estimate says how many frame rows it cannot cover", {
   expect_equal(ht_total(all_rows, "y")$unreachable, 0)
   out <- capture.output(print(ht_total(all_rows, "y")))
   expect_false(any(grepl("unreachable", out)))
+})
+
+# ---- the estimate as numbers ------------------------------------------------
+
+methods_pop <- function() {
+  id <- 1:300
+  w <- 1 + (id * 13) %% 50
+  w[c(5, 160, 260)] <- 500
+  data.frame(id = id, site = rep(c("a", "b", "c"), times = c(150, 100, 50)),
+             y = 20 + (id * 37) %% 101, hit = (id * 7) %% 5 == 0,
+             none = FALSE, w = w)
+}
+
+test_that("an estimate gives coef(), vcov(), confint() and a data frame", {
+  s <- draw(methods_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_equal(r$variable, "y")
+  expect_equal(coef(r), c(y = r$total))
+  expect_equal(vcov(r), matrix(r$variance, 1, 1, dimnames = list("y", "y")))
+  ci <- confint(r)
+  expect_equal(unname(ci[1, ]), r$ci)
+  expect_equal(colnames(ci), c("2.5 %", "97.5 %"))
+  expect_equal(confint(r, "y"), ci)
+  expect_equal(confint(r, 1), ci)
+  expect_error(confint(r, level = 95), "strictly between 0 and 1")
+
+  df <- as.data.frame(r)
+  expect_equal(names(df), c("variable", "n", "total", "variance", "se",
+                            "ci_lower", "ci_upper", "level", "df", "deff",
+                            "method"))
+  expect_equal(unlist(df[c("total", "se", "ci_lower", "ci_upper", "df")]),
+               c(total = r$total, se = r$se, ci_lower = r$ci[1],
+                 ci_upper = r$ci[2], df = r$df))
+
+  # A vector `y` has no name, and the row says so.
+  m <- ht_mean(s, s$y)
+  expect_true("variable" %in% names(m))
+  expect_null(m$variable)
+  expect_equal(names(coef(m)), "mean")
+  both <- rbind(as.data.frame(ht_mean(s, "y")), as.data.frame(m))
+  expect_equal(both$variable, c("y", NA))
+  expect_equal(both$mean, c(m$mean, m$mean))
+})
+
+test_that("confint() at another level is the estimate made at that level", {
+  pop <- methods_pop()
+  s <- draw(pop, design_stratified("site", n = 60), seed = 1, weights = TRUE)
+  same <- function(fit) {
+    expect_equal(unname(confint(fit(0.95), level = 0.8)[1, ]), fit(0.8)$ci)
+  }
+  same(function(l) ht_total(s, "y", level = l))
+  same(function(l) ht_total(s, "y", level = l, alternative = "less"))
+  same(function(l) ht_mean(s, "y", level = l, estimator = "ht"))
+  # Proportions keep their scale: logit, beta, and beta at an estimate of 0.
+  same(function(l) ht_mean(s, "hit", level = l))
+  same(function(l) ht_mean(s, "hit", level = l, ci_method = "beta"))
+  same(function(l) ht_mean(s, "none", level = l, alternative = "less"))
+  expect_equal(colnames(confint(ht_total(s, "y", alternative = "less"),
+                                level = 0.9)), c("0 %", "90 %"))
+
+  # The beta interval's sample size leaves out the rows taken with certainty.
+  cs <- draw(pop, design_certainty("w", 500, design_simple(n = 40)), seed = 2,
+             weights = TRUE)
+  b <- ht_mean(cs, "hit", ci_method = "beta")
+  expect_equal(b$n_random, 40L)
+  expect_equal(b$n, 43L)
+  same(function(l) ht_mean(cs, "hit", level = l, ci_method = "beta"))
+})
+
+test_that("survey's SE() and cv() read an estimate", {
+  skip_if_not_installed("survey")
+  s <- draw(methods_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_equal(survey::SE(r), c(y = r$se))
+  expect_equal(survey::cv(r), c(y = r$se / r$total))
+  m <- ht_mean(s, "y")
+  expect_equal(survey::SE(m), c(y = m$se))
+})
+
+test_that("tidy() gives an estimate in broom's columns", {
+  skip_if_not_installed("generics")
+  s <- draw(methods_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  r <- ht_total(s, "y")
+  t <- generics::tidy(r)
+  expect_equal(t, data.frame(term = "y", estimate = r$total,
+                             std.error = r$se))
+  t <- generics::tidy(r, conf.int = TRUE)
+  expect_equal(c(t$conf.low, t$conf.high), r$ci)
+  t <- generics::tidy(ht_mean(s, "hit"), conf.int = TRUE, conf.level = 0.8)
+  expect_equal(c(t$conf.low, t$conf.high), ht_mean(s, "hit", level = 0.8)$ci)
+})
+
+test_that("deff() answers for survey's objects, and survey's deff() for these", {
+  skip_if_not_installed("survey")
+  s <- draw(methods_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  des <- as_svydesign(s)
+  # drawn attached after survey: this package's deff() is found first and
+  # hands survey's objects to survey.
+  m <- survey::svymean(~y, des, deff = TRUE)
+  expect_equal(deff(m), survey::deff(m))
+  by_site <- survey::svyby(~y, ~site, des, survey::svytotal, deff = TRUE)
+  expect_equal(deff(by_site), survey::deff(by_site))
+  expect_equal(deff(m, quietly = TRUE), survey::deff(m, quietly = TRUE))
+  # survey attached after drawn: survey's deff() is found first and finds the
+  # methods for the estimates made here.
+  r <- ht_total(s, "y")
+  expect_equal(survey::deff(r), r$deff)
+  expect_equal(survey::deff(ht_mean(s, "y")), ht_mean(s, "y")$deff)
+  expect_true(is.na(survey::deff(ht_total(s, "y", by = "site",
+                                          contrast = c(a = 1, b = -1)))))
+  expect_error(survey::deff(ht_total(s, "y", by = "site")),
+               "no design effect")
+})
+
+test_that("a printed estimate and a by table name the method alike", {
+  d <- data.frame(id = 1:200, g = rep(c("a", "b"), 100),
+                  y = 20 + (1:200 * 37) %% 101)
+  s <- draw(d, design_systematic(interval = 8), seed = 1, weights = TRUE)
+  r <- ht_total(s, "y")
+  b <- ht_total(s, "y", by = "g")
+  expect_equal(r$method, "successive difference")
+  expect_equal(unique(b$method), r$method)
+  expect_output(print(r), "(successive difference, an approximation)",
+                fixed = TRUE)
+  expect_output(print(b), "successive difference")
+  srs <- draw(d, design_simple(n = 20), seed = 1, weights = TRUE)
+  expect_output(print(ht_total(srs, "y")), "(analytic)", fixed = TRUE)
 })

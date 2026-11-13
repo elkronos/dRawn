@@ -251,3 +251,112 @@ test_that("sample_summary refuses a subset and explains a lost design", {
   expect_error(sample_summary(merged), "does not carry its design")
   expect_error(sample_summary(merged), "transform()", fixed = TRUE)
 })
+
+test_that("a plan prints a round margin in full", {
+  out <- utils::capture.output(print(plan_size(margin = 1e5, sd = 40,
+                                               N = 20000, target = "total")))
+  expect_true(any(grepl("+/- 100,000 at 95% confidence", out, fixed = TRUE)))
+  expect_false(any(grepl("e+", out, fixed = TRUE)))
+})
+
+test_that("sample_summary lists a stratum allocated no rows", {
+  inv <- data.frame(id = 1:600, site = rep(c("north", "south", "east", "west"),
+                                           times = c(300, 180, 90, 30)))
+  expect_warning(
+    s <- draw(inv, design_stratified("site", n = 12), seed = 1,
+              weights = TRUE),
+    class = "drawn_empty_stratum")
+  x <- sample_summary(s)
+  expect_equal(x$by_group$group, c("east", "north", "south", "west"))
+  expect_equal(x$by_group$drawn, c(2, 6, 4, 0))
+  expect_equal(x$by_group$in_frame, c(90, 300, 180, 30))
+  out <- capture.output(print(x))
+  # Every rate has three decimals, so the column lines up.
+  expect_true(any(grepl("east +2 +90  0.022$", out)))
+  expect_true(any(grepl("north +6 +300  0.020$", out)))
+  expect_true(any(grepl("west +0 +30  0.000$", out)))
+})
+
+test_that("sample_summary gives a certainty design the strata of its rest", {
+  pop <- data.frame(id = 1:200, site = rep(c("a", "b"), times = c(120, 80)),
+                    w = c(rep(500, 3), rep(1, 197)))
+  s <- draw(pop, design_certainty("w", 100,
+                                  design_stratified("site", n = 20)),
+            seed = 1, weights = TRUE)
+  x <- sample_summary(s)
+  expect_equal(x$group_col, "site")
+  expect_equal(x$by_group$group, c("(certain)", "a", "b"))
+  expect_equal(x$by_group$drawn, c(3, 12, 8))
+  expect_equal(x$by_group$in_frame, c(3, 117, 80))
+  expect_equal(x$n_certain, 3L)
+  expect_equal(x$certain_by, c(threshold = 3L, size = 0L, whole = 0L))
+  out <- capture.output(print(x))
+  expect_true(any(grepl("certain rows       3  (3 above the threshold)", out,
+                        fixed = TRUE)))
+  expect_true(any(grepl("(certain)", out, fixed = TRUE)))
+})
+
+test_that("sample_summary says why rows were taken with certainty", {
+  big <- data.frame(id = 1:100, w = c(rep(1, 95), rep(1000, 5)))
+  s <- draw(big, design_weighted("w", n = 20, method = "systematic"), seed = 1,
+            weights = TRUE)
+  x <- sample_summary(s)
+  expect_equal(x$n_certain, 5L)
+  expect_equal(x$certain_by, c(threshold = 0L, size = 5L, whole = 0L))
+  expect_output(print(x), "certain rows       5  (5 by size)", fixed = TRUE)
+
+  # A stratum taken whole is certain too, and neither of the above.
+  st <- data.frame(id = 1:53, site = rep(c("big", "small"), c(50, 3)))
+  s <- draw(st, design_stratified("site", allocation = c(big = 10, small = 3)),
+            seed = 1, weights = TRUE)
+  x <- sample_summary(s)
+  expect_equal(x$certain_by, c(threshold = 0L, size = 0L, whole = 3L))
+
+  srs <- draw(st, design_simple(n = 10), seed = 1, weights = TRUE)
+  x <- sample_summary(srs)
+  expect_equal(x$n_certain, 0L)
+  expect_false(any(grepl("certain rows", capture.output(print(x)))))
+})
+
+test_that("sample_summary gives the expected size of a sample of random size", {
+  pop <- data.frame(id = 1:240)
+  s <- draw(pop, design_systematic(interval = 7), seed = 1, weights = TRUE)
+  x <- sample_summary(s)
+  expect_equal(x$expected_n, 240 / 7)
+  expect_output(print(x), "expected n         34.29", fixed = TRUE)
+
+  fixed <- sample_summary(draw(pop, design_simple(n = 30), seed = 1,
+                               weights = TRUE))
+  expect_equal(fixed$expected_n, 30)
+  expect_false(any(grepl("expected n", capture.output(print(fixed)))))
+})
+
+test_that("sample_summary reports Kish's effective sample size", {
+  pop <- data.frame(id = 1:300, w = 1 + (1:300 * 13) %% 40)
+  s <- draw(pop, design_weighted("w", n = 40, method = "systematic"), seed = 1,
+            weights = TRUE)
+  x <- sample_summary(s)
+  expect_equal(x$n_kish, sum(s$.weight)^2 / sum(s$.weight^2))
+  expect_lt(x$n_kish, nrow(s))
+  expect_output(print(x), "effective n")
+  srs <- sample_summary(draw(pop, design_simple(n = 30), seed = 1,
+                             weights = TRUE))
+  expect_equal(srs$n_kish, 30)
+})
+
+test_that("sample_summary groups a temporal sample by interval", {
+  pop <- data.frame(
+    id = 1:300,
+    ts = seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "hour",
+             length.out = 300)
+  )
+  des <- design_temporal("ts", from = "2024-01-01", to = "2024-01-13",
+                         interval = 1, per_interval = 2, unit = "days")
+  x <- sample_summary(draw(pop, des, seed = 1, weights = TRUE))
+  expect_equal(x$group_col, "ts")
+  # Twelve intervals named by their start, in time order.
+  expect_equal(x$by_group$group,
+               paste(format(as.Date("2024-01-01") + 0:11), "00:00"))
+  expect_equal(x$by_group$drawn, rep(2, 12))
+  expect_equal(x$by_group$in_frame, rep(24, 12))
+})

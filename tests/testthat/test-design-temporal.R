@@ -184,7 +184,10 @@ test_that("days and weeks start at local midnight across a clock change", {
       des <- design_temporal("day", from = start,
                              to = as.Date(start) + 10, interval = 1,
                              per_interval = 1, unit = "days", tz = zone)
-      expect_identical(drawn:::temporal_bucket(des, d), as.character(1:10))
+      b <- drawn:::temporal_bucket(des, d)
+      expect_identical(as.integer(b), 1:10)
+      expect_identical(levels(b),
+                       paste(format(as.Date(start) + 0:9), "00:00"))
       expect_equal(inclusion_prob(d, des), rep(1, 10))
       expect_equal(nrow(draw(d, des, seed = 1)), 10L)
     }
@@ -378,4 +381,59 @@ test_that("inclusion probabilities of a long hourly frame take one pass", {
   expect_lt(time, 2)
   inw <- d$ts < as.POSIXct("2024-12-01", tz = "UTC")
   expect_equal(p, ifelse(inw, 1 / 12, 0))
+})
+
+test_that("intervals are named by their start, in time order", {
+  h <- data.frame(ts = seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "hour",
+                           length.out = 12))
+  des <- design_temporal("ts", from = "2024-01-01", to = "2024-01-01 12:00",
+                         interval = 1, per_interval = 1, unit = "hours")
+  b <- drawn:::temporal_bucket(des, h)
+  expect_identical(as.integer(b), 1:12)
+  expect_identical(levels(b), sprintf("2024-01-01 %02d:00", 0:11))
+  expect_identical(sort(levels(b), method = "radix"), levels(b))
+
+  # Seconds appear when an interval starts between minutes.
+  secs <- design_temporal("ts", from = "2024-01-01", to = "2024-01-01 00:02",
+                          interval = 30, per_interval = 1, unit = "seconds")
+  expect_identical(levels(drawn:::temporal_bucket(secs, h)),
+                   paste("2024-01-01", c("00:00:00", "00:00:30", "00:01:00",
+                                         "00:01:30")))
+
+  # New York repeats 01:00 when its clocks go back, and the two intervals
+  # starting then are told apart by the zone.
+  zone <- "America/New_York"
+  fall <- data.frame(ts = seq(as.POSIXct("2024-11-03 00:00", tz = zone),
+                              by = "hour", length.out = 5))
+  des <- design_temporal("ts", from = "2024-11-03 00:00",
+                         to = "2024-11-03 04:00", interval = 1,
+                         per_interval = 1, unit = "hours")
+  b <- drawn:::temporal_bucket(des, fall)
+  expect_identical(levels(b), c("2024-11-03 00:00", "2024-11-03 01:00 EDT",
+                                "2024-11-03 01:00 EST", "2024-11-03 02:00",
+                                "2024-11-03 03:00"))
+  expect_identical(as.integer(b), 1:5)
+})
+
+test_that("notes and survey's strata name intervals by their start", {
+  d <- data.frame(ts = rep(seq(as.POSIXct("2024-01-01", tz = "UTC"),
+                               by = "day", length.out = 12), each = 4),
+                  y = (1:48 * 7) %% 11)
+  des <- design_temporal("ts", from = "2024-01-01", to = "2024-01-13",
+                         interval = 1, per_interval = 1, unit = "days")
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  # In time order: the intervals were numbered and sorted as text, 1, 10, 11.
+  expect_match(ht_total(s, "y")$note, paste0(
+    "12 intervals `2024-01-01 00:00`, `2024-01-02 00:00`, ",
+    "`2024-01-03 00:00`, `2024-01-04 00:00`, `2024-01-05 00:00`, ... each"),
+    fixed = TRUE)
+
+  skip_if_not_installed("survey")
+  two <- draw(d, design_temporal("ts", from = "2024-01-01", to = "2024-01-13",
+                                 interval = 1, per_interval = 2,
+                                 unit = "days"),
+              seed = 1, weights = TRUE)
+  sv <- as_svydesign(two)
+  expect_setequal(unique(sv$variables$.stratum),
+                  paste(format(as.Date("2024-01-01") + 0:11), "00:00"))
 })

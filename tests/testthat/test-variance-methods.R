@@ -55,8 +55,9 @@ test_that("the jackknife's refusal of a lonely stratum stands on its own", {
                          interval = 1, per_interval = 1, unit = "days")
   s <- draw(t, des, seed = 1, weights = TRUE)
   r <- ht_total(s, "y", variance = "jackknife")
-  expect_match(r$note, "6 intervals `1`, `2`, `3`, `4`, `5`, ... each have",
-               fixed = TRUE)
+  expect_match(r$note, paste0(
+    "6 intervals `2024-01-01 00:00`, `2024-01-02 00:00`, `2024-01-03 00:00`, ",
+    "`2024-01-04 00:00`, `2024-01-05 00:00`, ... each have"), fixed = TRUE)
   expect_match(r$note, "(per_interval = 2).", fixed = TRUE)
   expect_equal(ht_total(s, "y")$note,
                paste("No variance is available for this sample.", r$note))
@@ -252,7 +253,7 @@ test_that("systematic PPS uses Deville's approximation, exactly as published", {
             weights = TRUE)
   r <- ht_total(s, "y")
   expect_equal(r$method, "deville")
-  expect_output(print(r), "Deville approximation")
+  expect_output(print(r), "(deville, an approximation)", fixed = TRUE)
 
   p <- s$.prob; u <- s$y / p; c_k <- 1 - p; a <- c_k / sum(c_k)
   expect_equal(r$variance,

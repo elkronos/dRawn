@@ -68,7 +68,10 @@ finding out.}
 two numeric variables — with the selected ones filled in. This is the
 view for \code{\link[=design_spread]{design_spread()}} and \code{\link[=design_spatial]{design_spatial()}}, where what matters is
 how evenly the sample covers the space: compare a simple random sample's
-clumps and gaps against a spread one.}
+clumps and gaps against a spread one. For \code{\link[=design_spatial]{design_spatial()}} the
+outline of \code{region} is drawn as well, with each edge of a
+longitude/latitude region following its great circle under spherical
+geometry, which is how the design decides which rows are inside.}
 }
 
 Base graphics, so there is no plotting dependency to install.

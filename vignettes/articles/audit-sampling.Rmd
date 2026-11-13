@@ -118,8 +118,11 @@ audit_design
 
 s <- draw(ledger, audit_design, seed = 11, weights = TRUE)
 sample_summary(s)
-table(certain = s$.prob == 1)
 ```
+
+`certain rows` counts the invoices taken with certainty and says why. Here
+every one is above the threshold, so every sample from this design holds
+them.
 
 ## Estimate
 

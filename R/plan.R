@@ -171,7 +171,8 @@ print.drawn_plan <- function(x, ...) {
     cat("  to analyse     ", fmt_n(x$n_effective), "  (after ",
         format(100 * x$response), "% response)\n", sep = "")
   }
-  cat("  margin         +/- ", format(x$margin), " at ",
+  cat("  margin         +/- ",
+      format(x$margin, big.mark = ",", scientific = FALSE), " at ",
       format(100 * x$level), "% confidence\n", sep = "")
   cat("  assuming       sd ", signif(x$spread, 4),
       if (x$deff != 1) paste0(", deff ", signif(x$deff, 3)) else "",
@@ -214,9 +215,30 @@ print.drawn_plan <- function(x, ...) {
 #'       above 0, the population it samples. The printed sampling fraction is
 #'       `n / N_reachable`. `NA` if the design has no closed-form inclusion
 #'       probability, and the fraction is then `n / N`.}
+#'     \item{`expected_n`}{The sample size the design expects, the sum of
+#'       the inclusion probabilities over the frame. It is `n` for a design
+#'       of fixed size, and printed beside `n` when the two differ, as they
+#'       can under Poisson sampling, a [design_systematic()] `interval` that
+#'       does not divide the frame, or clusters of unequal size. `NA` where
+#'       `N_reachable` is, and for weights conditional on the clusters
+#'       selected.}
 #'     \item{`weight_range`}{The smallest and largest design weight.}
 #'     \item{`weight_cv`}{Their coefficient of variation. Large values mean a
 #'       few rows carry most of the estimate.}
+#'     \item{`n_kish`}{Kish's effective sample size, `sum(w)^2 / sum(w^2)`
+#'       over the weights `w`, which is `n / (1 + cv^2)` with the
+#'       coefficient of variation computed with divisor `n`: the size of a
+#'       simple random sample that would estimate a mean as precisely if
+#'       unequal weights were the only cost. Clustering and stratification
+#'       are not in it; [deff()] measures those.}
+#'     \item{`n_certain`}{Sampled rows taken with certainty, at a probability
+#'       of 1.}
+#'     \item{`certain_by`}{Those rows by why they are certain, a named count:
+#'       `threshold`, above the threshold of [design_certainty()]; `size`,
+#'       put at probability 1 by a size measure, in [design_weighted()] or
+#'       in [design_spread()] or [design_multistage()] with `size`; and
+#'       `whole`, in a stratum, interval or cluster taken whole, or a
+#'       census.}
 #'     \item{`conditional`}{The number of clusters selected, when the
 #'       weights are conditional on them, as for [design_cluster()] with
 #'       `balanced = TRUE` (see "Design weights" in [draw()]); otherwise
@@ -225,9 +247,16 @@ print.drawn_plan <- function(x, ...) {
 #'       design could never have selected them. `NA` if the design has no
 #'       closed-form inclusion probability.}
 #'     \item{`by_group`}{A data frame of `group`, `drawn`, `in_frame` and
-#'       `rate` per stratum or cluster, or `NULL` for a design with no
-#'       grouping. The strata are those of [design_stratified()], and of
-#'       [design_spread()] and [design_weighted()] when they have `strata`.}
+#'       `rate` per stratum, interval or cluster, or `NULL` for a design with
+#'       no grouping. The strata are those of [design_stratified()], and of
+#'       [design_spread()] and [design_weighted()] when they have `strata`,
+#'       and every stratum of the frame is listed, one allocated no rows
+#'       included. The intervals of [design_temporal()] are listed in time
+#'       order and named by their start, such as `"2024-01-03 00:00"`. For
+#'       [design_cluster()] and [design_multistage()], only the clusters
+#'       drawn are listed. For [design_certainty()], the groups are those of
+#'       its `rest` over the rows below the threshold, after a `"(certain)"`
+#'       row for the rows above it.}
 #'     \item{`group_col`}{The column(s) `by_group` is keyed on.}
 #'   }
 #'
@@ -247,37 +276,8 @@ sample_summary <- function(sample) {
   design <- state$design
   pop <- state$pop
   w <- sample$.weight
-
-  grp_col <- switch(design_type(design),
-    stratified = ,
-    spread = ,
-    weighted = design$strata,
-    cluster = ,
-    multistage = design$clusters,
-    NULL
-  )
-  by_group <- NULL
-  if (!is.null(grp_col)) {
-    # Keyed on the frame and counted at the sampled frame rows, so a stratum
-    # or cluster column renamed or recoded in the sample after the draw still
-    # counts the groups that were drawn.
-    key <- group_key(pop, grp_col)
-    if (walks_strata(design)) {
-      # Rows the walk leaves out for a missing `order_by` are in no stratum.
-      key[is.na(stratum_allocation(design, pop)$code)] <- NA
-    }
-    code <- as.integer(key)
-    got <- tabulate(code[state$rows], nlevels(key))
-    have <- tabulate(code, nlevels(key))
-    drawn <- which(got > 0L)
-    by_group <- data.frame(
-      group = group_label(levels(key)[drawn]),
-      drawn = got[drawn],
-      in_frame = have[drawn],
-      rate = round(got[drawn] / have[drawn], 4),
-      row.names = NULL
-    )
-  }
+  groups <- summary_groups(design, pop, state$rows)
+  certain <- is_certain(sample$.prob)
 
   pi_all <- state$pi_all %||%
     tryCatch(exact_inclusion(design, pop), error = function(e) NULL)
@@ -291,10 +291,18 @@ sample_summary <- function(sample) {
     } else {
       sum(reachable(pi_all))
     },
+    # Weights conditional on the clusters selected leave the probabilities
+    # of the rest of the frame unknown (NA), and their sum with them.
+    expected_n = if (is.null(pi_all)) NA_real_ else sum(pi_all),
     weight_range = if (length(w)) range(w, na.rm = TRUE) else c(NA, NA),
     weight_cv = if (length(w) > 1L && mean(w, na.rm = TRUE) > 0) {
       stats::sd(w, na.rm = TRUE) / mean(w, na.rm = TRUE)
     } else NA_real_,
+    n_kish = if (length(w) && sum(w^2, na.rm = TRUE) > 0) {
+      sum(w, na.rm = TRUE)^2 / sum(w^2, na.rm = TRUE)
+    } else NA_real_,
+    n_certain = sum(certain),
+    certain_by = certain_counts(design, pop, state$rows, certain),
     conditional = if (is.null(state$selection)) {
       NA_integer_
     } else {
@@ -305,9 +313,101 @@ sample_summary <- function(sample) {
     } else {
       sum(!reachable(pi_all))
     },
-    by_group = by_group,
-    group_col = grp_col
+    by_group = groups$table,
+    group_col = groups$col
   ), class = "drawn_summary")
+}
+
+#' Rows drawn against rows in the frame, per stratum, interval or cluster
+#'
+#' Keyed on the frame and counted at the sampled frame rows `rows`, so a
+#' stratum or cluster column renamed or recoded in the sample after the draw
+#' still counts the groups that were drawn. Strata and intervals are listed
+#' whether drawn or not, so one allocated no rows shows as 0; clusters only
+#' when drawn, since most clusters of a frame are not. A certainty design's
+#' groups are its `rest`'s over the rows below the threshold, after a row for
+#' those above it. Returns `NULL` for a design with no grouping, otherwise
+#' `table` and `col`, the column(s) keyed on.
+#'
+#' @noRd
+summary_groups <- function(design, pop, rows) {
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_parts(design, pop)
+    top <- sp$keep[sp$take]
+    pos <- match(rows, sp$keep[sp$rest])
+    inner <- summary_groups(design$rest, sp$rest_data, pos[!is.na(pos)])
+    if (is.null(inner)) return(NULL)
+    got <- sum(rows %in% top)
+    inner$table <- rbind(
+      data.frame(group = "(certain)", drawn = got, in_frame = length(top),
+                 rate = if (length(top)) round(got / length(top), 4) else NA,
+                 row.names = NULL),
+      inner$table)
+    return(inner)
+  }
+  type <- design_type(design)
+  col <- switch(type,
+    stratified = ,
+    spread = ,
+    weighted = design$strata,
+    cluster = ,
+    multistage = design$clusters,
+    temporal = design$time,
+    NULL
+  )
+  if (is.null(col)) return(NULL)
+  key <- if (type == "temporal") {
+    temporal_bucket(design, pop)
+  } else {
+    group_key(pop, col)
+  }
+  if (walks_strata(design)) {
+    # Rows the walk leaves out for a missing `order_by` are in no stratum.
+    key[is.na(stratum_allocation(design, pop)$code)] <- NA
+  }
+  code <- as.integer(key)
+  got <- tabulate(code[rows], nlevels(key))
+  have <- tabulate(code, nlevels(key))
+  shown <- if (type %in% c("cluster", "multistage")) {
+    which(got > 0L)
+  } else {
+    which(have > 0L)
+  }
+  list(table = data.frame(
+    group = group_label(levels(key)[shown]),
+    drawn = got[shown],
+    in_frame = have[shown],
+    rate = round(got[shown] / have[shown], 4),
+    row.names = NULL
+  ), col = col)
+}
+
+#' Sampled rows taken with certainty, by why they are certain
+#'
+#' `certain` marks the sampled rows at probability 1 and `rows` gives their
+#' frame rows. Rows above a certainty design's threshold count as
+#' `threshold`; the others are put there by the design below it, a size
+#' measure (`size`) or a group taken whole (`whole`).
+#'
+#' @noRd
+certain_counts <- function(design, pop, rows, certain) {
+  out <- c(threshold = 0L, size = 0L, whole = 0L)
+  while (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_parts(design, pop)
+    out[["threshold"]] <- out[["threshold"]] +
+      sum(certain & rows %in% sp$keep[sp$take])
+    pos <- match(rows, sp$keep[sp$rest])
+    certain <- certain[!is.na(pos)]
+    rows <- pos[!is.na(pos)]
+    pop <- sp$rest_data
+    design <- design$rest
+  }
+  by_size <- inherits(design, "drawn_design_weighted") ||
+    (inherits(design, c("drawn_design_spread", "drawn_design_multistage")) &&
+       !is.null(design$size))
+  src <- if (by_size) "size" else "whole"
+  out[[src]] <- out[[src]] + sum(certain)
+  out
 }
 
 #' @export
@@ -323,11 +423,30 @@ print.drawn_summary <- function(x, ...) {
       signif(x$n / if (partial) reach else x$N, 3),
       if (partial) paste0("  (of the ", fmt_n(reach), " reachable rows)"),
       "\n", sep = "")
+  if (isTRUE(abs(x$expected_n - x$n) > 1e-6 * max(1, x$n))) {
+    cat("  expected n         ", signif(x$expected_n, 4),
+        "  (the sample size is random under this design)\n", sep = "")
+  }
   if (all(is.finite(x$weight_range))) {
     cat("  design weights     ", signif(x$weight_range[1], 4), " to ",
         signif(x$weight_range[2], 4), sep = "")
     if (is.finite(x$weight_cv)) {
       cat("   (cv ", signif(x$weight_cv, 3), ")", sep = "")
+    }
+    cat("\n")
+  }
+  if (isTRUE(is.finite(x$n_kish))) {
+    cat("  effective n        ", signif(x$n_kish, 4),
+        "  (Kish, from the weights alone)\n", sep = "")
+  }
+  if (isTRUE(x$n_certain > 0)) {
+    why <- c(threshold = "above the threshold", size = "by size",
+             whole = "taken whole")
+    k <- x$certain_by[x$certain_by > 0]
+    cat("  certain rows       ", fmt_n(x$n_certain), sep = "")
+    if (length(k)) {
+      cat("  (", paste(fmt_n(k), why[names(k)], collapse = ", "), ")",
+          sep = "")
     }
     cat("\n")
   }
@@ -349,7 +468,8 @@ print.drawn_summary <- function(x, ...) {
       cat("    ", formatC(b$group[i], width = -w1),
           formatC(b$drawn[i], width = 7),
           formatC(b$in_frame[i], width = 9),
-          formatC(format(b$rate[i], nsmall = 3), width = 7), "\n", sep = "")
+          formatC(formatC(b$rate[i], format = "f", digits = 3), width = 7),
+          "\n", sep = "")
     }
   }
   invisible(x)

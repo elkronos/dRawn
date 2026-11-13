@@ -36,6 +36,7 @@ Imports:
     utils
 Suggests:
     data.table,
+    generics,
     sampling,
     sf (>= 1.0.0),
     survey,

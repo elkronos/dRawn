@@ -85,3 +85,44 @@ test_that("plot reports the real reason it cannot draw probabilities", {
                     type = "probability"),
                "`site` must be numeric, not character", fixed = TRUE)
 })
+
+test_that("a spatial map draws the region's outline as the design reads it", {
+  skip_if_not_installed("sf")
+  skip_if_not(sf::sf_use_s2(), "spherical geometry is switched off")
+  box <- sf::st_sfc(sf::st_polygon(list(cbind(c(-50, 50, 50, -50, -50),
+                                             c(-30, -30, 30, 30, -30)))),
+                    crs = 4326)
+  d <- data.frame(id = 1:200, lon = (1:200 * 37) %% 120 - 60,
+                  lat = (1:200 * 53) %% 90 - 45)
+  des <- design_spatial(c("lon", "lat"), box, n = 20)
+
+  # Under s2 the top edge follows its great circle up to latitude 41.9.
+  outline <- drawn:::region_outline(des, d)
+  expect_gt(max(outline$y, na.rm = TRUE), 41.9)
+  expect_lt(max(outline$y, na.rm = TRUE), 42)
+  planar <- function() {
+    old <- suppressMessages(sf::sf_use_s2(FALSE))
+    on.exit(suppressMessages(sf::sf_use_s2(old)))
+    drawn:::region_outline(des, d)
+  }
+  flat <- planar()
+  expect_equal(max(flat$y), 30)
+  expect_length(flat$x, 5)
+
+  drawn_calls <- function(code) {
+    grDevices::pdf(NULL)
+    on.exit(grDevices::dev.off())
+    grDevices::dev.control("enable")
+    code
+    vapply(grDevices::recordPlot()[[1]], function(e) {
+      f <- e[[2]][[1]]
+      if (is.list(f)) f$name else as.character(f)[1]
+    }, character(1))
+  }
+  calls <- drawn_calls(expect_warning(plot(des, d, type = "map", seed = 1),
+                                      class = "drawn_geodesic_edges"))
+  expect_true("C_polygon" %in% calls)
+  calls <- drawn_calls(plot(design_simple(n = 20), d, type = "map",
+                            coords = c("lon", "lat"), seed = 1))
+  expect_false("C_polygon" %in% calls)
+})

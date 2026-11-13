@@ -441,6 +441,18 @@
   `?design_systematic` has an example. The message said only that
   `order_by` must name a single column.
 
+* `deff()` of a `by` table says that domain estimates carry no design
+  effect, and points to the estimate without `by`. It said the table "must
+  come from ht_total() or ht_mean()", which it did, and `survey`'s `deff()`
+  returned `NULL` with a warning.
+* A `by` column named `n`, `variance`, `se`, `ci_lower`, `ci_upper` or
+  `method`, or `total` for a total and `mean` for a mean, columns the table
+  of domain estimates uses for its own values, is refused by name. The table's column overwrote it,
+  so `by = "n"` gave domains labelled by their counts.
+* A `by` table whose columns were selected with `[` or `subset()` prints
+  as a plain data frame. It kept its class but lost the attributes its
+  printout reads, and `print()` stopped with "argument is of length zero".
+
 ## Behaviour changes
 
 * `draw(weights = TRUE)` adds a third column, `.row`, after `.prob` and
@@ -550,6 +562,34 @@
 * The default title of `plot()` names the `order_by` of a systematic
   design, its `n_starts` when above 1, and the `within` of a stratified
   design.
+
+* `deff()` is a generic, with methods for the results of `ht_total()` and
+  `ht_mean()`, and passes any other object to `survey::deff()`. Its
+  argument is `object`, as in `survey`'s, where it was `x`, so `deff(x = r)`
+  must become `deff(r)`. Attached after `survey`, drawn's `deff()` masked
+  `survey`'s and refused every `survey` object, such as the result of
+  `survey::svymean(deff = TRUE)`. Either package's `deff()` now answers for
+  both, whichever is attached last.
+* `by` tables gain a `variance` column, and their `n` is an integer where it
+  was a double. The printout leaves `variance` out, since it is the square
+  of `se`.
+* The intervals of `design_temporal()` are named by their start, such as
+  `2024-01-03 00:00`, in the notes of `ht_total()` and `ht_mean()`, the
+  strata `as_svydesign()` hands to `survey` and the table of
+  `sample_summary()`. They were numbered, and a note listed them sorted as
+  text: `1`, `10`, `2`.
+* A printed estimate names its variance method as `method` holds it, the
+  name the `method` column of a `by` table shows, and says when it is an
+  approximation: "successive difference, an approximation" where it said
+  "successive-difference approximation". The README's table of designs uses
+  the same names.
+* A printed `plan_size()` shows a margin of `1e5` as `100,000`, where it
+  showed `1e+05`.
+* `sample_summary()` lists every stratum of the frame, one allocated no rows
+  with 0 drawn, where it listed only the strata drawn. It gives a certainty
+  design the groups of its `rest`, after a `(certain)` row for the rows
+  above the threshold, where it gave none, and groups a temporal sample by
+  interval. The rates print with three decimals, where their widths varied.
 
 ## New
 
@@ -756,6 +796,30 @@
   refused. Calibrating a design from `as_svydesign()` needed the totals
   built by hand. The estimation article has an example; calibration
   itself stays with `survey`.
+
+* The results of `ht_total()` and `ht_mean()`, `by` tables and contrasts
+  have `coef()`, `vcov()`, `confint()` and `as.data.frame()` methods, and
+  `tidy()` methods for `generics::tidy()` and so `broom::tidy()`; generics
+  joins `Suggests`. `confint()` gives the interval the estimate holds, on the
+  design's degrees of freedom and, for a proportion, on the logit or beta
+  scale, and forms it again at another `level`. `survey::SE()` and
+  `survey::cv()` work through these. `vcov()` of a `by` table is diagonal,
+  since the covariances between domains are not estimated. Results record
+  `variable`, the name of `y`, so estimates of several variables can be
+  bound with `rbind()` of their `as.data.frame()`, and `n_random`, the
+  sampled rows below certainty. `?ht_total` describes them under "Working
+  with the result".
+* `sample_summary()` reports `n_kish`, Kish's effective sample size
+  `sum(w)^2 / sum(w^2)`; `n_certain`, the sampled rows taken with certainty,
+  with `certain_by` splitting them into those above a `design_certainty()`
+  threshold, those a size measure put at probability 1 and those in a group
+  taken whole; and `expected_n`, the sum of the inclusion probabilities,
+  printed beside `n` when the sample size is random, as under Poisson
+  sampling.
+* `plot(type = "map")` of a `design_spatial()` design draws the outline of
+  `region`, with each edge of a longitude/latitude region along its great
+  circle under spherical geometry, which is how the design decides which
+  rows are inside.
 
 ## Speed and memory
 

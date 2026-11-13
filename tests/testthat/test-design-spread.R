@@ -74,7 +74,7 @@ test_that("the local mean variance is conservative but in the right range", {
 
   r <- ht_total(draw(d, des, seed = 1, weights = TRUE), "smooth")
   expect_equal(r$method, "local mean")
-  expect_output(print(r), "local-mean approximation")
+  expect_output(print(r), "(local mean, an approximation)", fixed = TRUE)
 })
 
 test_that("a spread census reports an exact total", {

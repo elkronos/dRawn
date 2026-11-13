@@ -4,14 +4,19 @@
 \alias{deff}
 \title{Design effect}
 \usage{
-deff(x)
+deff(object, ...)
 }
 \arguments{
-\item{x}{A result from \code{\link[=ht_total]{ht_total()}} or \code{\link[=ht_mean]{ht_mean()}}.}
+\item{object}{A result from \code{\link[=ht_total]{ht_total()}} or \code{\link[=ht_mean]{ht_mean()}}, or an object from
+\code{survey} that holds a design effect.}
+
+\item{...}{Passed to \code{survey::deff()} for an object from \code{survey}, such as
+its \code{quietly}. Not used for an estimate made here.}
 }
 \value{
 A single number, or \code{NA} when the design has no variance estimate
-or \code{y} is constant in the sample.
+or \code{y} is constant in the sample. For an object from \code{survey}, what
+\code{survey::deff()} returns.
 }
 \description{
 How much precision the design costs against simple random sampling of the
@@ -42,9 +47,15 @@ The design effect is \code{NA} when there is no variance, and when \code{y} take
 one value in every sampled row, where there is no spread for a simple
 random sample to be measured by.
 
-\code{survey} has a \code{deff()} of its own, and attaching \code{survey} after this
-package masks this one. Both work on an estimate from \code{\link[=ht_total]{ht_total()}} or
-\code{\link[=ht_mean]{ht_mean()}}, so the masking is harmless.
+A table of domain estimates from \code{by} carries no design effect, and
+\code{deff()} refuses it with a message saying so. A contrast's design effect
+is \code{NA}.
+
+\code{survey} has a \code{deff()} of its own, and whichever of the two packages is
+attached last masks the other's. Either one answers for both. This
+\code{deff()} is a generic that passes an object it has no method for, such as
+\code{survey::svymean(..., deff = TRUE)}, to \code{survey::deff()}, and \code{survey}'s
+generic finds the methods for the estimates made here.
 }
 \examples{
 set.seed(1)

@@ -39,7 +39,10 @@ drawn_pal <- function() {
 #'     two numeric variables — with the selected ones filled in. This is the
 #'     view for [design_spread()] and [design_spatial()], where what matters is
 #'     how evenly the sample covers the space: compare a simple random sample's
-#'     clumps and gaps against a spread one.}
+#'     clumps and gaps against a spread one. For [design_spatial()] the
+#'     outline of `region` is drawn as well, with each edge of a
+#'     longitude/latitude region following its great circle under spherical
+#'     geometry, which is how the design decides which rows are inside.}
 #' }
 #'
 #' Base graphics, so there is no plotting dependency to install.
@@ -323,6 +326,13 @@ plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
   on.exit(graphics::par(op), add = TRUE)
   graphics::plot(px, py, type = "n", axes = FALSE, ann = FALSE, asp = NA, ...)
   graphics::box(col = pal$rule)
+  # A spatial design's region, drawn under the rows so the rows inside it
+  # and outside it can be told apart.
+  if (inherits(x, "drawn_design_spatial") && identical(coords, x$coords)) {
+    outline <- region_outline(x, y)
+    graphics::polygon(outline$x, outline$y, border = pal$secondary,
+                      col = NA, lwd = 1.2)
+  }
   # Axis() labels a Date or date-time axis with dates.
   graphics::Axis(px, side = 1, cex.axis = 0.7, col = NA,
                  col.ticks = pal$rule, col.axis = pal$secondary, tck = -0.016)

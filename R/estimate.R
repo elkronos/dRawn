@@ -109,12 +109,14 @@
 #'   way. See "Proportions".
 #'
 #' @return A list with a `print()` method, holding `mean`, `estimator`,
-#'   `variance`, `se`, `ci`, `level`, `alternative`, `df`, `n`, `design`,
-#'   `deff`, `method`, `note`, `ci_scale` (`"linear"`, `"logit"` or `"beta"`)
-#'   and `unreachable`. See [ht_total()] for what `method`, `df`, `note` and
-#'   `unreachable` say, and [deff()] for the design effect. With `by`, a data
-#'   frame with one row per domain, and with `contrast` a `drawn_contrast`, as
-#'   for [ht_total()].
+#'   `variable`, `variance`, `se`, `ci`, `level`, `alternative`, `df`, `n`,
+#'   `n_random`, `design`, `deff`, `method`, `note`, `ci_scale` (`"linear"`,
+#'   `"logit"` or `"beta"`) and `unreachable`. See [ht_total()] for what
+#'   `variable`, `n_random`, `method`, `df`, `note` and `unreachable` say,
+#'   and [deff()] for the design effect. With `by`, a data frame with one row
+#'   per domain, and with `contrast` a `drawn_contrast`, as for [ht_total()].
+#'   Each has `coef()`, `vcov()`, `confint()`, `as.data.frame()` and `tidy()`
+#'   methods; see "Working with the result" in [ht_total()].
 #'
 #' @references
 #' Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
@@ -334,6 +336,16 @@ estimate_by <- function(parts, by, variance, level, df, what,
     return(estimate_contrast(parts, dom, est, contrast, variance, level,
                              df_use, what, estimator, alternative, ctx))
   }
+  # The table's own columns would overwrite a `by` column of the same name.
+  own <- c("n", what, "variance", "se", "ci_lower", "ci_upper", "method")
+  clash <- intersect(by, own)
+  if (length(clash)) {
+    stop("`by` names ", paste0("`", clash, "`", collapse = ", "), ", which ",
+         "the table of domain estimates uses for its own column",
+         if (length(clash) > 1L) "s", ". Rename ",
+         if (length(clash) > 1L) "them" else "it", " in `sample` before ",
+         "estimating.", call. = FALSE)
+  }
   vars <- domain_variances(parts, dom, est, variance,
                            ratio = what == "mean" && estimator == "hajek",
                            ctx = ctx)
@@ -345,7 +357,8 @@ estimate_by <- function(parts, by, variance, level, df, what,
     v <- vars[[j]]
     ci <- ci_for(est$est[j], v$variance, level, df_use, alternative,
                  proportion, ci_method, pi_i[dom$idx[[j]]])
-    list(se = if (is.finite(v$variance) && v$variance >= 0)
+    list(variance = v$variance,
+         se = if (is.finite(v$variance) && v$variance >= 0)
            sqrt(v$variance) else NA_real_,
          lo = ci$ci[1], hi = ci$ci[2], method = v$method %||% "analytic",
          note = v$note, edge = ci$edge,
@@ -357,8 +370,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
   out <- data.frame(stats::setNames(lapply(by, function(b) {
     parts$sample[[b]][first]
   }), by), check.names = FALSE)
-  out$n <- as.numeric(lengths(dom$idx))
+  out$n <- lengths(dom$idx)
   out[[what]] <- est$est
+  out$variance <- vapply(rows, `[[`, numeric(1), "variance")
   out$se <- vapply(rows, `[[`, numeric(1), "se")
   out$ci_lower <- vapply(rows, `[[`, numeric(1), "lo")
   out$ci_upper <- vapply(rows, `[[`, numeric(1), "hi")
@@ -378,12 +392,19 @@ estimate_by <- function(parts, by, variance, level, df, what,
     notes <- c(notes, constant_note(NA, TRUE,
                                     domains = labels[levels_in[constant]]))
   }
-  structure(out, class = c("drawn_by", "data.frame"),
-            what = what, estimator = if (what == "mean") estimator,
-            level = level, alternative = alternative, df = df_use,
-            design = design_type(parts$design),
-            ci_scale = if (proportion) ci_method else "linear",
-            notes = notes, unreachable = parts$unreachable)
+  out <- structure(out, class = c("drawn_by", "data.frame"),
+                   what = what, estimator = if (what == "mean") estimator,
+                   level = level, alternative = alternative, df = df_use,
+                   design = design_type(parts$design),
+                   ci_scale = if (proportion) ci_method else "linear",
+                   notes = notes, unreachable = parts$unreachable,
+                   variable = parts$y_name, by = by)
+  # The beta interval's sample size, kept by domain name rather than by
+  # position so that it still matches after rows are selected.
+  attr(out, "n_random") <- stats::setNames(
+    vapply(dom$idx, function(i) sum(!is_certain(pi_i[i])), integer(1)),
+    domain_names(out))
+  out
 }
 
 #' The domains of `by`, keyed in the sample and, where it can be, the frame
@@ -680,6 +701,12 @@ contrast_weights <- function(contrast, dom) {
 #' @export
 print.drawn_by <- function(x, ...) {
   what <- attr(x, "what")
+  if (is.null(what)) {
+    # Selecting columns with `[` or subset() keeps the class but drops the
+    # attributes the heading reads, and the columns it describes may be gone.
+    print(plain_frame(x), ...)
+    return(invisible(x))
+  }
   label <- if (what == "total") "Horvitz-Thompson total" else
     if (identical(attr(x, "estimator"), "ht")) "Horvitz-Thompson mean" else
       "Hajek mean"
@@ -687,9 +714,9 @@ print.drawn_by <- function(x, ...) {
       ci_label(attr(x, "level"), attr(x, "alternative")), ", ",
       scale_label(attr(x, "ci_scale")), df_label(attr(x, "df")), ")\n",
       sep = "")
-  y <- x
-  attributes(y) <- attributes(x)[c("names", "row.names")]
-  class(y) <- "data.frame"
+  # The standard error is shown; its square adds width and nothing else.
+  y <- plain_frame(x)
+  y$variance <- NULL
   print(y, digits = 4, row.names = FALSE)
   print_unreachable(attr(x, "unreachable"), "these estimates")
   notes <- attr(x, "notes")
@@ -710,12 +737,14 @@ print.drawn_contrast <- function(x, ...) {
   ))
 }
 
-#' A contrast's weights as a sum, such as "`a` - `b`"
+#' A contrast's weights as a sum, such as "`a` - `b`", or "a - b" without
+#' `quote`
 #' @noRd
-contrast_label <- function(w) {
+contrast_label <- function(w, quote = TRUE) {
+  tick <- if (quote) "`" else ""
   terms <- vapply(seq_along(w), function(i) {
     a <- abs(w[[i]])
-    paste0(if (a != 1) paste0(format(a), " "), "`", names(w)[i], "`")
+    paste0(if (a != 1) paste0(format(a), " "), tick, names(w)[i], tick)
   }, character(1))
   out <- paste0(ifelse(w < 0, "- ", "+ "), terms, collapse = " ")
   sub("^- ", "-", sub("^\\+ ", "", out))
@@ -778,14 +807,24 @@ print_unreachable <- function(n, what) {
 #' one value in every sampled row, where there is no spread for a simple
 #' random sample to be measured by.
 #'
-#' `survey` has a `deff()` of its own, and attaching `survey` after this
-#' package masks this one. Both work on an estimate from [ht_total()] or
-#' [ht_mean()], so the masking is harmless.
+#' A table of domain estimates from `by` carries no design effect, and
+#' `deff()` refuses it with a message saying so. A contrast's design effect
+#' is `NA`.
 #'
-#' @param x A result from [ht_total()] or [ht_mean()].
+#' `survey` has a `deff()` of its own, and whichever of the two packages is
+#' attached last masks the other's. Either one answers for both. This
+#' `deff()` is a generic that passes an object it has no method for, such as
+#' `survey::svymean(..., deff = TRUE)`, to `survey::deff()`, and `survey`'s
+#' generic finds the methods for the estimates made here.
+#'
+#' @param object A result from [ht_total()] or [ht_mean()], or an object from
+#'   `survey` that holds a design effect.
+#' @param ... Passed to `survey::deff()` for an object from `survey`, such as
+#'   its `quietly`. Not used for an estimate made here.
 #'
 #' @return A single number, or `NA` when the design has no variance estimate
-#'   or `y` is constant in the sample.
+#'   or `y` is constant in the sample. For an object from `survey`, what
+#'   `survey::deff()` returns.
 #'
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley.
@@ -812,23 +851,44 @@ print_unreachable <- function(n, what) {
 #' @seealso [ht_total()], [ht_mean()], [plan_size()], which takes a design
 #'   effect as an input.
 #' @export
-deff <- function(x) {
-  if (!inherits(x, c("drawn_ht", "drawn_mean"))) {
-    stop("`x` must come from ht_total() or ht_mean().", call. = FALSE)
-  }
-  x$deff
-}
+deff <- function(object, ...) UseMethod("deff")
 
-# `survey` exports a `deff()` generic too, and attaching `survey` after this
-# package masks ours. Registering methods for its generic means whichever
-# `deff()` is found first still answers for an estimate made here, instead of
-# failing with "non-numeric argument to mathematical function".
+# Each method is registered twice: for the generic above, and for `survey`'s,
+# so whichever `deff()` is found first answers for an estimate made here.
 
+#' @export
 #' @exportS3Method survey::deff
 deff.drawn_ht <- function(object, quietly = FALSE, ...) object$deff
 
+#' @export
 #' @exportS3Method survey::deff
 deff.drawn_mean <- function(object, quietly = FALSE, ...) object$deff
+
+#' @export
+#' @exportS3Method survey::deff
+deff.drawn_contrast <- function(object, quietly = FALSE, ...) object$deff
+
+#' @export
+#' @exportS3Method survey::deff
+deff.drawn_by <- function(object, quietly = FALSE, ...) {
+  stop("`object` is a table of domain estimates from `by`, which carries ",
+       "no design effect. Call deff() on ht_total() or ht_mean() without ",
+       "`by` for the design effect of the whole sample.", call. = FALSE)
+}
+
+#' @export
+deff.default <- function(object, ...) {
+  if (!requireNamespace("survey", quietly = TRUE)) {
+    stop("`object` has class `", class(object)[1], "`, and deff() reads ",
+         "the design effect of a result from ht_total() or ht_mean(). For an ",
+         "object from `survey`, install it with install.packages(\"survey\").",
+         call. = FALSE)
+  }
+  # survey::deff() dispatches from where it is called. Called here, it would
+  # find this method before its own default and call it again, without end;
+  # called from the base environment, it finds only its own methods.
+  do.call(survey::deff, c(list(object), list(...)), envir = baseenv())
+}
 
 #' Shared argument handling for the estimators
 #' @noRd
@@ -1029,17 +1089,19 @@ interval <- function(est, v, level, df, logit = FALSE,
 #' behind the estimate, the domain's for a domain; those below certainty are
 #' the beta interval's `n`, and with none of them the estimate is exact.
 #'
+#' `n` is that count, for a caller that holds it in place of `pi_i`.
+#'
 #' Returns the interval, its `scale`, `edge` (the beta interval was used for
 #' an estimate of 0 or 1) and `exact`.
 #'
 #' @noRd
 ci_for <- function(est, v, level, df, alternative = "two.sided",
-                   proportion = FALSE, ci_method = "logit", pi_i = NULL) {
+                   proportion = FALSE, ci_method = "logit", pi_i = NULL,
+                   n = sum(!is_certain(pi_i))) {
   if (!proportion) {
     return(list(ci = interval(est, v, level, df, alternative = alternative),
                 scale = "linear", edge = FALSE, exact = FALSE))
   }
-  n <- sum(!is_certain(pi_i))
   edge <- is.finite(v) && v >= 0 && (est == 0 || est == 1) && n >= 1
   scale <- if (edge) "beta" else ci_method
   # A Horvitz-Thompson mean can pass 1. Its interval is then symmetric.
@@ -1080,7 +1142,9 @@ edge_note <- function(est = NULL, n = NULL, domains = NULL,
 #' Assemble an estimate, its interval, and its design effect
 #'
 #' `divide_by` is what a mean divides its Horvitz-Thompson total by, for the
-#' design effect: see `deff_value()`.
+#' design effect: see `deff_value()`. `variable` is the name of `y`, `NULL`
+#' for a vector, and `n_random` the sampled rows below certainty, which
+#' `confint()` needs to form a beta interval at another level.
 #'
 #' @noRd
 finish_estimate <- function(est, var_out, parts, level, df, what, class,
@@ -1103,8 +1167,9 @@ finish_estimate <- function(est, var_out, parts, level, df, what, class,
   }
   n <- nrow(parts$sample)
 
-  out <- list(variance = v, se = se, ci = ci$ci, level = level,
-              alternative = alternative, df = df, n = n,
+  out <- list(variable = parts$y_name, variance = v, se = se, ci = ci$ci,
+              level = level, alternative = alternative, df = df, n = n,
+              n_random = sum(!is_certain(parts$pi)),
               ci_scale = ci$scale, design = design_type(parts$design),
               deff = if (is.null(y)) NA_real_ else
                 deff_value(v, y, parts$pi, parts$reach, n, what, divide_by),
@@ -1183,14 +1248,16 @@ df_label <- function(df) {
     paste0("t, ", format(signif(df, 4)), " df")
 }
 
+#' The variance method as printed: the value `method` holds, which a `by`
+#' table shows in its `method` column, and whether it is an approximation
 #' @noRd
 method_label <- function(m) {
-  switch(m %||% "analytic",
-    deville = "Deville approximation",
-    `successive difference` = "successive-difference approximation",
-    `local mean` = "local-mean approximation",
+  m <- m %||% "analytic"
+  if (m %in% c("deville", "successive difference", "local mean")) {
+    paste0(m, ", an approximation")
+  } else {
     m
-  )
+  }
 }
 
 #' Print a single estimate
@@ -1242,4 +1309,306 @@ print_estimate <- function(x, field, label, lines = NULL) {
 cat_note <- function(text) {
   cat("\n", paste0(strwrap(text, prefix = "  "), collapse = "\n"), "\n",
       sep = "")
+}
+
+#' A `by` table without its classes and attributes
+#' @noRd
+plain_frame <- function(x) {
+  attributes(x) <- attributes(x)[c("names", "row.names")]
+  class(x) <- "data.frame"
+  x
+}
+
+# ---- the estimate as numbers ----------------------------------------------
+#
+# coef(), vcov(), confint(), as.data.frame() and tidy() for the four kinds of
+# estimate. survey::SE() and survey::cv() call vcov() and coef(), so they work
+# through these.
+
+#' The field that holds a single estimate
+#' @noRd
+estimate_field <- function(x) {
+  if (inherits(x, "drawn_ht")) "total" else
+    if (inherits(x, "drawn_mean")) "mean" else "contrast"
+}
+
+#' What coef() names each estimate
+#'
+#' A total or mean is named after `y`, or "total" or "mean" when `y` was a
+#' vector; a contrast by its weights, as in "a - b"; and each domain of a
+#' `by` table as `contrast` names it.
+#'
+#' @noRd
+estimate_names <- function(x) {
+  if (inherits(x, "drawn_by")) return(domain_names(x))
+  if (inherits(x, "drawn_contrast")) {
+    return(contrast_label(x$weights, quote = FALSE))
+  }
+  x$variable %||% estimate_field(x)
+}
+
+#' Each row's domain, named as `contrast` names it, such as "a . east"
+#' @noRd
+domain_names <- function(x) {
+  key <- group_key(x, attr(x, "by"))
+  group_label(levels(key))[as.integer(key)]
+}
+
+#' Refuse a `by` table that lost the attributes the methods read
+#'
+#' Selecting columns with `[` or subset() keeps the class and drops them;
+#' selecting rows keeps them.
+#'
+#' @noRd
+check_by_table <- function(x) {
+  what <- attr(x, "what")
+  by <- attr(x, "by")
+  if (is.null(what) || is.null(by) || !all(c(by, what) %in% names(x))) {
+    stop("`object` does not carry the attributes of a `by` table, which ",
+         "selecting columns with `[` or subset() drops. Use the table ",
+         "ht_total() or ht_mean() returned, or select rows only.",
+         call. = FALSE)
+  }
+  invisible(x)
+}
+
+#' @noRd
+check_ci_level <- function(level, arg = "level") {
+  if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
+      level <= 0 || level >= 1) {
+    stop("`", arg, "` must be a single number strictly between 0 and 1, not ",
+         format_bad(level), ".", call. = FALSE)
+  }
+  level
+}
+
+#' Whether `level` is the level an interval was formed at
+#' @noRd
+same_level <- function(level, stored) {
+  !is.null(stored) && abs(level - stored) < 1e-12
+}
+
+#' Intervals as confint() returns them: a row per estimate, and columns named
+#' by the probability at each end
+#' @noRd
+ci_matrix <- function(lo, hi, names, level, alternative, parm = NULL) {
+  p <- switch(alternative %||% "two.sided",
+    less = c(0, level),
+    greater = c(1 - level, 1),
+    c((1 - level) / 2, 1 - (1 - level) / 2)
+  )
+  out <- matrix(c(lo, hi), ncol = 2L, dimnames = list(names, paste(
+    format(100 * p, trim = TRUE, scientific = FALSE, digits = 3), "%")))
+  if (is.null(parm)) return(out)
+  if (is.numeric(parm)) parm <- names[parm]
+  out[parm, , drop = FALSE]
+}
+
+#' The interval of a total, mean or contrast at `level`
+#'
+#' The stored one at its own level. At another, it is formed again by
+#' `interval()` on the estimate's scale, with the design's degrees of freedom
+#' and, for a beta interval, the sampled rows below certainty.
+#'
+#' @noRd
+single_ci <- function(x, level) {
+  if (same_level(level, x$level)) return(x$ci)
+  scale <- x$ci_scale %||% "linear"
+  if (scale == "beta" && is.null(x$n_random)) {
+    stop("`object` does not hold the sample size its beta interval needs at ",
+         "another level. Estimate again with `level = ", format(level), "`.",
+         call. = FALSE)
+  }
+  interval(x[[estimate_field(x)]], x$variance, level, x$df,
+           alternative = x$alternative %||% "two.sided", scale = scale,
+           n = x$n_random %||% NA_real_)
+}
+
+#' The intervals of a `by` table at `level`, a row per domain
+#' @noRd
+by_ci <- function(x, level) {
+  if (same_level(level, attr(x, "level"))) {
+    return(cbind(x$ci_lower, x$ci_upper))
+  }
+  est <- x[[attr(x, "what")]]
+  v <- if ("variance" %in% names(x)) x$variance else x$se^2
+  scale <- attr(x, "ci_scale") %||% "linear"
+  proportion <- scale %in% c("logit", "beta")
+  n <- if (proportion) unname(attr(x, "n_random")[domain_names(x)])
+  if (proportion && (is.null(n) || anyNA(n))) {
+    stop("`object` does not hold the sample sizes its intervals for a ",
+         "proportion need at another level. Estimate again with `level = ",
+         format(level), "`.", call. = FALSE)
+  }
+  out <- vapply(seq_along(est), function(i) {
+    ci_for(est[i], v[i], level, attr(x, "df"),
+           attr(x, "alternative") %||% "two.sided", proportion, scale,
+           n = n[i])$ci
+  }, numeric(2))
+  t(out)
+}
+
+#' @export
+coef.drawn_ht <- function(object, ...) {
+  stats::setNames(object[[estimate_field(object)]], estimate_names(object))
+}
+
+#' @export
+coef.drawn_mean <- function(object, ...) coef.drawn_ht(object)
+
+#' @export
+coef.drawn_contrast <- function(object, ...) coef.drawn_ht(object)
+
+#' @export
+coef.drawn_by <- function(object, ...) {
+  check_by_table(object)
+  stats::setNames(object[[attr(object, "what")]], domain_names(object))
+}
+
+#' @export
+vcov.drawn_ht <- function(object, ...) {
+  nm <- estimate_names(object)
+  matrix(object$variance %||% NA_real_, 1L, 1L, dimnames = list(nm, nm))
+}
+
+#' @export
+vcov.drawn_mean <- function(object, ...) vcov.drawn_ht(object)
+
+#' @export
+vcov.drawn_contrast <- function(object, ...) vcov.drawn_ht(object)
+
+# The covariances between domains are not estimated, so the off-diagonal
+# entries are 0. A difference of domains needs `contrast`.
+
+#' @export
+vcov.drawn_by <- function(object, ...) {
+  check_by_table(object)
+  nm <- domain_names(object)
+  v <- if ("variance" %in% names(object)) object$variance else object$se^2
+  out <- diag(v, nrow = length(v))
+  dimnames(out) <- list(nm, nm)
+  out
+}
+
+#' @export
+confint.drawn_ht <- function(object, parm, level = object$level, ...) {
+  check_ci_level(level)
+  ci <- single_ci(object, level)
+  ci_matrix(ci[1], ci[2], estimate_names(object), level, object$alternative,
+            if (!missing(parm)) parm)
+}
+
+#' @export
+confint.drawn_mean <- function(object, parm, level = object$level, ...) {
+  confint.drawn_ht(object, parm, level)
+}
+
+#' @export
+confint.drawn_contrast <- function(object, parm, level = object$level, ...) {
+  confint.drawn_ht(object, parm, level)
+}
+
+#' @export
+confint.drawn_by <- function(object, parm, level = attr(object, "level"),
+                             ...) {
+  check_by_table(object)
+  check_ci_level(level)
+  ci <- by_ci(object, level)
+  ci_matrix(ci[, 1], ci[, 2], domain_names(object), level,
+            attr(object, "alternative"), if (!missing(parm)) parm)
+}
+
+#' One row for a total, mean or contrast
+#' @noRd
+single_frame <- function(x, row.names = NULL) {
+  out <- data.frame(variable = x$variable %||% NA_character_,
+                    stringsAsFactors = FALSE)
+  if (inherits(x, "drawn_contrast")) {
+    out$domains <- contrast_label(x$weights, quote = FALSE)
+  }
+  out$n <- x$n
+  out[[estimate_field(x)]] <- x[[estimate_field(x)]]
+  out$variance <- x$variance
+  out$se <- x$se
+  out$ci_lower <- x$ci[1]
+  out$ci_upper <- x$ci[2]
+  out$level <- x$level
+  out$df <- x$df
+  out$deff <- x$deff
+  out$method <- x$method
+  if (!is.null(row.names)) row.names(out) <- row.names
+  out
+}
+
+#' @export
+as.data.frame.drawn_ht <- function(x, row.names = NULL, optional = FALSE,
+                                   ...) {
+  single_frame(x, row.names)
+}
+
+#' @export
+as.data.frame.drawn_mean <- function(x, row.names = NULL, optional = FALSE,
+                                     ...) {
+  single_frame(x, row.names)
+}
+
+#' @export
+as.data.frame.drawn_contrast <- function(x, row.names = NULL,
+                                         optional = FALSE, ...) {
+  single_frame(x, row.names)
+}
+
+#' @export
+as.data.frame.drawn_by <- function(x, row.names = NULL, optional = FALSE,
+                                   ...) {
+  out <- plain_frame(x)
+  if (!is.null(row.names)) row.names(out) <- row.names
+  out
+}
+
+#' The columns of tidy(): `term`, `estimate`, `std.error`, and the interval
+#' with `conf.int = TRUE`
+#' @noRd
+tidy_frame <- function(term, estimate, se, ci = NULL) {
+  out <- data.frame(term = term, estimate = estimate, std.error = se,
+                    stringsAsFactors = FALSE)
+  if (!is.null(ci)) {
+    out$conf.low <- ci[, 1]
+    out$conf.high <- ci[, 2]
+  }
+  out
+}
+
+#' @exportS3Method generics::tidy
+tidy.drawn_ht <- function(x, conf.int = FALSE, conf.level = x$level, ...) {
+  ci <- if (isTRUE(conf.int)) {
+    check_ci_level(conf.level, "conf.level")
+    matrix(single_ci(x, conf.level), 1L)
+  }
+  tidy_frame(estimate_names(x), x[[estimate_field(x)]], x$se, ci)
+}
+
+#' @exportS3Method generics::tidy
+tidy.drawn_mean <- function(x, conf.int = FALSE, conf.level = x$level, ...) {
+  tidy.drawn_ht(x, conf.int, conf.level)
+}
+
+#' @exportS3Method generics::tidy
+tidy.drawn_contrast <- function(x, conf.int = FALSE, conf.level = x$level,
+                                ...) {
+  tidy.drawn_ht(x, conf.int, conf.level)
+}
+
+#' @exportS3Method generics::tidy
+tidy.drawn_by <- function(x, conf.int = FALSE,
+                          conf.level = attr(x, "level"), ...) {
+  check_by_table(x)
+  what <- attr(x, "what")
+  ci <- if (isTRUE(conf.int)) {
+    check_ci_level(conf.level, "conf.level")
+    by_ci(x, conf.level)
+  }
+  out <- tidy_frame(rep(attr(x, "variable") %||% what, nrow(x)), x[[what]],
+                    x$se, ci)
+  cbind(plain_frame(x)[attr(x, "by")], out)
 }

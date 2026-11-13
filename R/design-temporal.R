@@ -404,13 +404,45 @@ temporal_pi <- function(design, bucket) {
 
 #' Which sampling interval each row falls in
 #'
-#' `NA` for a row outside the window, which the design can never select. Shared
-#' by the joint-probability and `survey` mappings so the three views of a
-#' temporal design cannot drift apart.
+#' A factor whose levels are every interval of the window in time order,
+#' named by its start (see `interval_labels()`), and `NA` for a row outside
+#' the window, which the design can never select. The variance, the
+#' jackknife, `survey`'s strata and `sample_summary()` all read the intervals
+#' from here, so they name them alike.
 #'
 #' @noRd
 temporal_bucket <- function(design, data) {
-  as.character(temporal_setup(design, data)$bucket)
+  tm <- temporal_setup(design, data)
+  structure(tm$bucket, levels = interval_labels(tm$breaks, tm$tz),
+            class = "factor")
+}
+
+#' Each interval's start, as a label
+#'
+#' "2024-01-03 00:00" in the design's zone, with seconds when a start has
+#' them, so the labels are unique and sort in time order. A clock time that
+#' a daylight-saving change repeats starts two intervals, and both get the
+#' zone's abbreviation, or failing that its UTC offset, to tell them apart.
+#'
+#' @noRd
+interval_labels <- function(breaks, tz) {
+  start <- breaks[-length(breaks)]
+  sec <- as.POSIXlt(start, tz = tz)$sec
+  fmt <- if (all(sec == 0)) {
+    "%Y-%m-%d %H:%M"
+  } else if (all(sec == floor(sec))) {
+    "%Y-%m-%d %H:%M:%S"
+  } else {
+    "%Y-%m-%d %H:%M:%OS3"
+  }
+  out <- format(start, fmt, tz = tz)
+  for (zone in c("%Z", "%z")) {
+    twice <- out %in% out[duplicated(out)]
+    if (!any(twice)) break
+    out[twice] <- paste(format(start[twice], fmt, tz = tz),
+                        format(start[twice], zone, tz = tz))
+  }
+  out
 }
 
 #' The window has to run forwards
