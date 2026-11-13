@@ -347,6 +347,46 @@ and the standard errors of totals usually agree within 0.3%, but those of
 means can differ by several percent when the sampling fraction is large.
 `?as_svydesign` has the full table.
 
+`survey::as.svrepdesign()` cannot build replicate weights from `survey`'s
+own PPS and Poisson designs, and for a systematic sample it builds a
+jackknife that ignores the order of the walk. `replicate_weights()` builds
+them from the sample instead: the jackknife above for most designs, and
+successive differences along the walk for a systematic sample, with no
+pair joining the two ends of the walk. The standard error of a total is
+then the one `ht_total()` gives:
+
+```{r replicates, eval = requireNamespace("survey", quietly = TRUE)}
+sys <- draw(frame, design_systematic(interval = 10, order_by = "size"),
+            seed = 3, weights = TRUE)
+rw <- replicate_weights(sys)
+rep_des <- survey::svrepdesign(
+  data = sys, repweights = rw, weights = ~.weight,
+  type = attr(rw, "type"), scale = attr(rw, "scale"),
+  rscales = attr(rw, "rscales"), combined.weights = TRUE
+)
+c(drawn = ht_total(sys, "y")$se,
+  survey = as.numeric(survey::SE(survey::svytotal(~y, rep_des))))
+```
+
+Calibration is left to `survey` too. `frame_totals()` gives the population
+totals `survey::calibrate()` takes, from the frame stored with the sample
+and over the rows the design could reach, so the totals need not be built
+by hand. Here `size` is known for every row of the frame and related to
+`y`, and calibrating a simple random sample to its total narrows the
+standard error:
+
+```{r calibrate, eval = requireNamespace("survey", quietly = TRUE)}
+srs <- draw(frame, design_simple(n = 40), seed = 3, weights = TRUE)
+totals <- frame_totals(srs, ~size)
+totals
+cal <- survey::calibrate(as_svydesign(srs), ~size, population = totals)
+c(horvitz_thompson = ht_total(srs, "y")$se,
+  calibrated = as.numeric(survey::SE(survey::svytotal(~y, cal))))
+```
+
+With `table = TRUE`, `frame_totals()` gives the counts in each cell of its
+variables instead, for `survey::postStratify()` and `survey::rake()`.
+
 ## References
 
 Deville, J.-C. (1999). Variance estimation for complex statistics and

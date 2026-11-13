@@ -167,6 +167,34 @@ with a column of one of them is refused rather than overwritten. Rename
 the column in the sample, which leaves the design as drawn.
 }
 
+\section{Replicate weights and calibration}{
+
+\code{survey::as.svrepdesign()} turns the design returned here into one with
+replicate weights. For samples from \code{\link[=design_simple]{design_simple()}},
+\code{\link[=design_stratified]{design_stratified()}} without \code{within}, \code{\link[=design_cluster]{design_cluster()}},
+\code{\link[=design_temporal]{design_temporal()}} and \code{\link[=design_spatial]{design_spatial()}}, its jackknife gives the
+standard errors of \code{ht_total(variance = "jackknife")}. It stops with an
+error on the designs handed over with Brewer's approximation or as
+Poisson sampling, those of \code{\link[=design_weighted]{design_weighted()}}, \code{\link[=design_spread]{design_spread()}} and
+\code{\link[=design_multistage]{design_multistage()}} with \code{size}, and \code{\link[=design_certainty]{design_certainty()}} over them,
+because \code{survey} builds no replicates for its own
+probability-proportional-to-size and Poisson designs. That is a
+limitation of \code{survey}. For a systematic sample, alone or within strata,
+it builds a jackknife that ignores the order of the walk.
+\code{\link[=replicate_weights]{replicate_weights()}} builds replicate weights from the sample itself,
+for \code{\link[survey:svrepdesign]{survey::svrepdesign()}}: the jackknife of
+\code{ht_total(variance = "jackknife")}, for the designs handed over with
+Brewer's approximation too, and successive differences along the walk
+for systematic samples. Poisson sampling, which the jackknife
+understates, has none, and \code{survey} estimates it from the design
+returned here.
+
+\code{\link[=frame_totals]{frame_totals()}} gives the population totals that \code{survey::calibrate()}
+and \code{survey::postStratify()} take, from the frame stored with the
+sample, over the rows the design could reach. Calibration is left to
+\code{survey}, on the design returned here.
+}
+
 \examples{
 \dontshow{if (requireNamespace("survey", quietly = TRUE)) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
 set.seed(1)
@@ -188,5 +216,6 @@ survey::svyquantile(~spend, des, quantiles = 0.5)
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}
+\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=replicate_weights]{replicate_weights()}},
+\code{\link[=frame_totals]{frame_totals()}}
 }

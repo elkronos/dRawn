@@ -93,7 +93,9 @@ frame.
 
 Going the other way, \code{\link[=plan_size]{plan_size()}} solves for the sample size a given margin
 of error requires — the step \emph{before} choosing a design. For analysis this
-package does not do, \code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package.
+package does not do, \code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package,
+\code{\link[=replicate_weights]{replicate_weights()}} builds replicate weights for it from the design, and
+\code{\link[=frame_totals]{frame_totals()}} gives the frame's totals to calibrate it to.
 
 Not every design has a closed form for these — see \code{\link[=inclusion_prob]{inclusion_prob()}} for
 which, why, and what to do instead. Those that do not say so rather than

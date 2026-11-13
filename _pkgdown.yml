@@ -50,6 +50,8 @@ reference:
   - plan_size
   - sample_summary
   - as_svydesign
+  - replicate_weights
+  - frame_totals
 
 - title: Equal-probability designs
   desc: Every unit equally likely, or equally likely within a group.

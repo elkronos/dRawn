@@ -83,7 +83,9 @@
 #'
 #' Going the other way, [plan_size()] solves for the sample size a given margin
 #' of error requires — the step *before* choosing a design. For analysis this
-#' package does not do, [as_svydesign()] hands a sample to the `survey` package.
+#' package does not do, [as_svydesign()] hands a sample to the `survey` package,
+#' [replicate_weights()] builds replicate weights for it from the design, and
+#' [frame_totals()] gives the frame's totals to calibrate it to.
 #'
 #' Not every design has a closed form for these — see [inclusion_prob()] for
 #' which, why, and what to do instead. Those that do not say so rather than

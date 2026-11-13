@@ -1609,15 +1609,13 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
   pos <- walk[rows]
   u <- (y / pi_i)[order(pos)]
   N <- sum(!is.na(walk))
-  if (is.null(design$n)) {
-    k <- design$interval
-    period <- "`interval`"
-    r <- N %% k
+  step <- walk_step(design, N)
+  k <- step$k
+  r <- step$r
+  period <- if (is.null(design$n)) {
+    "`interval`"
   } else {
-    # A step of N / n rows, which need not be whole, and a fixed size.
-    k <- N / design$n
-    period <- paste0("the step of ", format(k, digits = 4), " rows")
-    r <- 0
+    paste0("the step of ", format(k, digits = 4), " rows")
   }
   f <- 1 / k
   v <- (1 - f) * n / (2 * (n - 1)) * sum(diff(u)^2)
@@ -1637,6 +1635,22 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
                               " rows, and the variance includes a term for ",
                               "that.")
                      }))
+}
+
+#' The step of a systematic walk, and the rows left over
+#'
+#' `k` is `interval`, or `N / n` rows for a design given `n`, which need not
+#' be whole. `r` is the remainder of the `N` rows walked over `k`, which
+#' makes the sample size random; a design given `n` always draws `n`, so its
+#' `r` is 0.
+#'
+#' @noRd
+walk_step <- function(design, N) {
+  if (is.null(design$n)) {
+    list(k = design$interval, r = N %% design$interval)
+  } else {
+    list(k = N / design$n, r = 0)
+  }
 }
 
 #' Random group variance of a systematic sample with several starts
@@ -1702,114 +1716,136 @@ replicate_variance <- function(design, walk, rows, y, pi_i) {
 #' @noRd
 jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
                                ctx = NULL) {
-  refusal <- jackknife_refusal(design)
-  if (!is.null(refusal)) {
-    return(list(variance = NA_real_, method = "jackknife", note = refusal))
+  lay <- jackknife_layout(design, units, pop, pi_i, domain, ctx)
+  if (!is.null(lay$note)) {
+    return(list(variance = NA_real_, method = "jackknife", note = lay$note))
   }
-  if (inherits(design, "drawn_design_certainty")) {
-    return(jackknife_certainty(design, units, pop, y, pi_i, domain, ctx))
-  }
+  if (lay$certain) return(all_certain("jackknife"))
 
-  psu <- from_context(ctx, "psu", jackknife_groups(design, units, pop, ctx))
-  fixed <- !(psu %in% psu[!is_certain(pi_i)])
-  if (all(fixed)) return(all_certain("jackknife"))
-  n_fixed <- length(unique(psu[fixed]))
-
-  st <- jackknife_strata(design, units, pop, psu, fixed, domain, ctx)
   base <- y / pi_i
-  total <- sum(base)
-  free <- which(!fixed)
-  by_stratum <- split(free, factor(match(st$stratum[free], st$levels),
-                                   levels = seq_along(st$levels)))
-
   v <- 0
-  n_psu <- 0L
-  lonely <- integer(0)
-  for (k in seq_along(st$levels)) {
-    in_h <- by_stratum[[k]]
+  for (g in lay$groups) {
+    if (g$m < 2L) next
     # Each unit's total in the stratum. The replicates are symmetric in the
-    # units, so their order does not matter.
-    sums <- rowsum(base[in_h], psu[in_h], reorder = FALSE)[, 1L]
-    m <- length(sums)
-    f <- st$fpc[k]
-    n_psu <- n_psu + m
-    if (m < 2L) {
-      if (f > 0 && st$in_domain[k]) lonely <- c(lonely, k)
-      next
-    }
-    reps <- (total - sum(sums)) + (sum(sums) - sums) * m / (m - 1)
-    v <- v + f * (m - 1) / m * sum((reps - mean(reps))^2)
-  }
-
-  n_strata <- length(st$levels)
-  if (n_strata == 1L && n_psu < 2L) {
-    return(list(variance = NA_real_, method = "jackknife",
-                note = paste0("The jackknife needs at least two primary ",
-                              "sampling units; this sample has ", n_psu,
-                              if (n_fixed > 0L) {
-                                paste0(" besides the ", n_fixed, " taken ",
-                                       "with certainty")
-                              }, ". Draw more units below certainty.")))
-  }
-  if (length(lonely)) {
-    if (!is.null(st$between) && st$between %in% st$levels[lonely]) {
-      return(list(variance = NA_real_, method = "jackknife", note = paste0(
-        "The jackknife needs at least two clusters below certainty; this ",
-        "sample has one.")))
-    }
-    noun <- if (inherits(design, "drawn_design_temporal")) {
-      c("interval", "intervals")
-    } else if (!is.null(st$between)) {
-      c("cluster taken with certainty", "clusters taken with certainty")
-    } else {
-      c("stratum", "strata")
-    }
-    lonely <- lonely[order(st$levels[lonely])]
-    return(list(variance = NA_real_, method = "jackknife",
-                note = lonely_text(st$labels[lonely], noun,
-                                   lonely_fix(design), domain)))
+    # units, so their order does not matter. Deleting a unit moves only its
+    # stratum's total, so the rest of the sample adds the same amount to
+    # every replicate and is left out of the deviations.
+    sums <- rowsum(base[g$rows], g$psu, reorder = FALSE)[, 1L]
+    reps <- (sum(sums) - sums) * g$m / (g$m - 1)
+    v <- v + g$fpc * (g$m - 1) / g$m * sum((reps - mean(reps))^2)
   }
   if (!is.finite(v)) {
     return(list(variance = NA_real_, method = "jackknife",
                 note = overflow_note()))
   }
   list(variance = v, method = "jackknife",
-       note = paste0("Jackknife over ", n_psu, " primary sampling unit(s)",
-                     if (n_strata > 1L) paste0(" in ", n_strata, " strata")
+       note = paste0("Jackknife over ", lay$n_psu,
+                     " primary sampling unit(s)",
+                     if (lay$n_strata > 1L) {
+                       paste0(" in ", lay$n_strata, " strata")
+                     } else "",
+                     if (lay$corrected) ", with a finite population correction"
                      else "",
-                     if (any(st$fpc < 1)) ", with a finite population correction"
-                     else "",
-                     if (n_fixed > 0L) {
-                       paste0("; the ", n_fixed, " taken with certainty add ",
-                              "no variance and were held fixed")
+                     if (lay$n_fixed > 0L) {
+                       paste0("; the ", lay$n_fixed, " taken with certainty ",
+                              "add no variance and were held fixed")
                      }, "."))
 }
 
-#' The jackknife for a certainty design
+#' What the jackknife deletes, and from which strata
 #'
-#' Rows at or above the threshold are in every sample, so the whole problem is
-#' handed to `rest`, over the rows below the threshold. Those are found from
-#' the frame's copy of the sampled rows, which holds the `above` column. Rows
-#' that `rest` itself takes with certainty go along and are held fixed there,
-#' so its finite population correction counts them correctly.
+#' The units and strata of `jackknife_variance()`, shared with
+#' `replicate_weights()`, which turns them into replicate weights. Returns
+#' `note`, the reason the jackknife declines, or `certain = TRUE` when every
+#' sampled unit was taken with certainty. Otherwise `groups` has one element
+#' per stratum holding a unit that is not fixed: the positions in the sample
+#' of its free rows (`rows`), the unit of each (`psu`), the number of units
+#' (`m`) and the stratum's finite population correction (`fpc`). `n_psu`,
+#' `n_strata`, `n_fixed` and `corrected` are what the note on the result
+#' reports.
+#'
+#' For a certainty design the rows at or above the threshold are in every
+#' sample, so the layout is `rest`'s, over the rows below the threshold,
+#' with `rows` counted in the whole sample. Those rows are found from the
+#' frame's copy of the sampled rows, which holds the `above` column. Rows
+#' that `rest` itself takes with certainty go along and are held fixed
+#' there, so its finite population correction counts them correctly.
 #'
 #' @noRd
-jackknife_certainty <- function(design, units, pop, y, pi_i, domain = NULL,
-                                ctx = NULL) {
-  sp <- certainty_parts(design, pop, ctx)
-  v <- units[[design$above]]
-  below <- !is.na(v) & v < design$threshold
-  if (!any(below)) {
-    if (length(sp$rest)) {
-      out <- empty_rest(design, length(sp$rest))
-      out$method <- "jackknife"
-      return(out)
+jackknife_layout <- function(design, units, pop, pi_i, domain = NULL,
+                             ctx = NULL) {
+  refusal <- jackknife_refusal(design)
+  if (!is.null(refusal)) return(list(note = refusal))
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_parts(design, pop, ctx)
+    v <- units[[design$above]]
+    below <- !is.na(v) & v < design$threshold
+    if (!any(below)) {
+      if (length(sp$rest)) {
+        return(list(note = empty_rest(design, length(sp$rest))$note))
+      }
+      return(list(certain = TRUE))
     }
-    return(all_certain("jackknife"))
+    lay <- jackknife_layout(design$rest, units[below, , drop = FALSE],
+                            sp$rest_data, pi_i[below], rest_domain(domain, sp),
+                            sub_context(ctx, "rest"))
+    if (!is.null(lay$groups)) {
+      at <- which(below)
+      lay$groups <- lapply(lay$groups, function(g) {
+        g$rows <- at[g$rows]
+        g
+      })
+    }
+    return(lay)
   }
-  jackknife_variance(design$rest, units[below, , drop = FALSE], sp$rest_data,
-                     y[below], pi_i[below], rest_domain(domain, sp),
-                     sub_context(ctx, "rest"))
+
+  psu <- from_context(ctx, "psu", jackknife_groups(design, units, pop, ctx))
+  fixed <- !(psu %in% psu[!is_certain(pi_i)])
+  if (all(fixed)) return(list(certain = TRUE))
+  n_fixed <- length(unique(psu[fixed]))
+
+  st <- jackknife_strata(design, units, pop, psu, fixed, domain, ctx)
+  free <- which(!fixed)
+  by_stratum <- split(free, factor(match(st$stratum[free], st$levels),
+                                   levels = seq_along(st$levels)))
+  groups <- lapply(seq_along(st$levels), function(k) {
+    in_h <- by_stratum[[k]]
+    list(rows = in_h, psu = psu[in_h], m = length(unique(psu[in_h])),
+         fpc = st$fpc[k])
+  })
+  m <- vapply(groups, function(g) g$m, integer(1))
+  out <- list(certain = FALSE, groups = groups, n_psu = sum(m),
+              n_strata = length(st$levels), n_fixed = n_fixed,
+              corrected = any(st$fpc < 1))
+
+  if (out$n_strata == 1L && out$n_psu < 2L) {
+    out$note <- paste0("The jackknife needs at least two primary sampling ",
+                       "units; this sample has ", out$n_psu,
+                       if (n_fixed > 0L) {
+                         paste0(" besides the ", n_fixed, " taken with ",
+                                "certainty")
+                       }, ". Draw more units below certainty.")
+    return(out)
+  }
+  # A stratum with one unit cannot be deleted from, unless it was sampled
+  # whole or holds none of the domain.
+  lonely <- which(m < 2L & st$fpc > 0 & st$in_domain)
+  if (!length(lonely)) return(out)
+  if (!is.null(st$between) && st$between %in% st$levels[lonely]) {
+    out$note <- paste0("The jackknife needs at least two clusters below ",
+                       "certainty; this sample has one.")
+    return(out)
+  }
+  noun <- if (inherits(design, "drawn_design_temporal")) {
+    c("interval", "intervals")
+  } else if (!is.null(st$between)) {
+    c("cluster taken with certainty", "clusters taken with certainty")
+  } else {
+    c("stratum", "strata")
+  }
+  lonely <- lonely[order(st$levels[lonely])]
+  out$note <- lonely_text(st$labels[lonely], noun, lonely_fix(design), domain)
+  out
 }
 
 #' Designs the jackknife should decline rather than approximate
@@ -2040,6 +2076,271 @@ jackknife_groups <- function(design, units, pop = NULL, ctx = NULL) {
     return(cluster_codes(units[[design$clusters]]))
   }
   seq_len(nrow(units))
+}
+
+# ---- replicate weights ------------------------------------------------------
+
+#' Replicate factors for the rows of a sample
+#'
+#' Each column holds one replicate's factor for every sampled row, which
+#' `replicate_weights()` multiplies into the row's weight. The replicate
+#' totals `t_r` average the sample's total `t`, and
+#' `scale * sum(rscales * (t_r - t)^2)` is the variance [ht_total()] gives
+#' for `t`:
+#'
+#' * the jackknife of `jackknife_layout()`, one replicate per unit, which
+#'   sets the unit's rows to 0 and the other free rows of its stratum to
+#'   `m / (m - 1)`, with `rscales` each stratum's `fpc * (m - 1) / m`;
+#' * for a systematic sample with one start, and for strata walked in
+#'   order, which the jackknife declines, successive-difference replicates
+#'   in walk order (`successive_factors()`);
+#' * for a systematic sample with several starts, the jackknife over the
+#'   starts, whose variance is the random group variance of
+#'   `replicate_variance()`.
+#'
+#' Rows above a certainty design's threshold keep a factor of 1 in every
+#' replicate. A sample whose every row is certain gets one replicate equal
+#' to the sample, with a variance of 0. Returns `note` in place of
+#' `factors` when there are no replicates to give.
+#'
+#' @noRd
+replicate_factors <- function(design, units, pop, rows, pi_i, type,
+                              ctx = NULL) {
+  n <- length(rows)
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_parts(design, pop, ctx)
+    free <- !(rows %in% sp$keep[sp$take])
+    if (!any(free)) {
+      if (length(sp$rest)) {
+        return(list(note = empty_rest(design, length(sp$rest))$note))
+      }
+      return(census_factors(n, type))
+    }
+    rest <- replicate_factors(design$rest, units[free, , drop = FALSE],
+                              sp$rest_data,
+                              match(rows[free], sp$keep[sp$rest]),
+                              pi_i[free], type, sub_context(ctx, "rest"))
+    if (is.null(rest$factors)) return(rest)
+    f <- matrix(1, n, ncol(rest$factors))
+    f[free, ] <- rest$factors
+    rest$factors <- f
+    return(rest)
+  }
+  if (all(is_certain(pi_i))) return(census_factors(n, type))
+  if (inherits(design, "drawn_design_systematic")) {
+    refuse_fixed_start(design)
+    walk <- from_context(ctx, "walk", systematic_positions(design, pop))
+    if (replicated(design)) return(start_factors(design, walk, rows, type))
+    return(walk_factors(design, walk, rows))
+  }
+  if (walks_strata(design)) {
+    return(strata_walk_factors(design, pop, rows, ctx))
+  }
+  if (inherits(design, "drawn_design_weighted") && design$method == "poisson") {
+    return(list(note = paste0(
+      "Poisson sampling selects rows independently, so its sample size is ",
+      "random, and deleting rows from such a sample understates its ",
+      "variance. Estimate with ht_total() or ht_mean(), or hand the sample ",
+      "to `survey` with as_svydesign(), which models Poisson sampling.")))
+  }
+  lay <- jackknife_layout(design, units, pop, pi_i, ctx = ctx)
+  if (!is.null(lay$note)) return(list(note = lay$note))
+  if (lay$certain) return(census_factors(n, type))
+  jackknife_factors(lay, n, type)
+}
+
+#' One replicate equal to the sample, for a sample with no variance
+#' @noRd
+census_factors <- function(n, type) {
+  list(factors = matrix(1, n, 1L), scale = 1, rscales = 1, type = type)
+}
+
+#' Delete-a-unit replicates from a jackknife layout
+#'
+#' `"JK1"` deletes across the whole sample, so it is given only for a
+#' jackknife with one stratum, where it is the same replicates as `"JKn"`
+#' with the correction in `scale`.
+#'
+#' @noRd
+jackknife_factors <- function(lay, n, type) {
+  if (type == "JK1" && lay$n_strata > 1L) {
+    return(list(note = paste0(
+      "`type = \"JK1\"` deletes units across the whole sample, but this ",
+      "sample's jackknife has ", lay$n_strata, " strata, and deleting ",
+      "across them counts the differences between strata as sampling ",
+      "variance. Use `type = \"JKn\"`, which deletes within them.")))
+  }
+  groups <- Filter(function(g) g$m >= 2L, lay$groups)
+  R <- sum(vapply(groups, function(g) g$m, integer(1)))
+  # Every stratum with free units was sampled whole, so nothing varies.
+  if (R == 0L) return(census_factors(n, type))
+  check_replicate_size(n, R)
+  f <- matrix(1, n, R)
+  rscales <- numeric(R)
+  at <- 0L
+  for (g in groups) {
+    cols <- at + seq_len(g$m)
+    f[g$rows, cols] <- g$m / (g$m - 1)
+    f[cbind(g$rows, at + match(g$psu, unique(g$psu)))] <- 0
+    rscales[cols] <- g$fpc * (g$m - 1) / g$m
+    at <- at + g$m
+  }
+  jackknife_form(f, rscales, type)
+}
+
+#' Replicate factors with their `scale` and `rscales`, as JKn or JK1
+#'
+#' JKn keeps each replicate's correction in `rscales`; JK1, which has one
+#' correction for every replicate, keeps it in `scale`.
+#'
+#' @noRd
+jackknife_form <- function(f, rscales, type) {
+  if (type == "JK1") {
+    return(list(factors = f, scale = rscales[1L],
+                rscales = rep(1, length(rscales)), type = "JK1"))
+  }
+  list(factors = f, scale = 1, rscales = rscales, type = "JKn")
+}
+
+#' The jackknife over the starts of a replicated systematic sample
+#'
+#' Deleting start `r` sets its rows to 0 and the others to `m / (m - 1)`,
+#' and a start that drew no rows still has its replicate, which scales
+#' every row. With the correction `1 - 1 / interval`, the variance is
+#' `replicate_variance()`'s `(1 - 1 / interval) * var(t_r) / m`.
+#'
+#' @noRd
+start_factors <- function(design, walk, rows, type) {
+  m <- systematic_starts(design)
+  n <- length(rows)
+  check_replicate_size(n, m)
+  id <- systematic_replicates(design, walk, rows)
+  f <- matrix(m / (m - 1), n, m)
+  f[cbind(seq_len(n), match(id, unique(id)))] <- 0
+  jackknife_form(f, rep((1 - 1 / design$interval) * (m - 1) / m, m), type)
+}
+
+#' Successive-difference replicates for a systematic sample
+#'
+#' The variance is that of `ht_variance.drawn_design_systematic()`, the
+#' term for a random sample size included.
+#'
+#' @noRd
+walk_factors <- function(design, walk, rows) {
+  n <- length(rows)
+  if (n < 2L) {
+    return(list(note = "A variance needs at least two sampled rows."))
+  }
+  step <- walk_step(design, sum(!is.na(walk)))
+  k <- step$k
+  r <- step$r
+  successive_factors(list(list(at = order(walk[rows]),
+                               c = (1 - 1 / k) * n / (n - 1),
+                               e = (r / k) * (1 - r / k))), n)
+}
+
+#' Successive-difference replicates for strata walked in order
+#'
+#' The variance is that of `walk_strata_variance()`, each stratum's
+#' successive differences at its own sampling fraction, and a stratum with
+#' one sampled row of several is refused in the same words.
+#'
+#' @noRd
+strata_walk_factors <- function(design, data, rows, ctx = NULL) {
+  g <- srs_groups(design, data, ctx)
+  group <- structure(g$code, levels = g$labels, class = "factor")
+  note <- lonely_note(group, rows, c("stratum", "strata"), lonely_fix(design))
+  if (!is.null(note)) return(list(note = note))
+  k <- length(g$N_g)
+  pos <- from_context(ctx, "walk", walk_positions(design, data, g$code, k))
+  h <- g$code[rows]
+  o <- order(h, pos[rows])
+  f <- as.numeric(g$n_g) / as.numeric(g$N_g)
+  walks <- lapply(seq_len(k), function(s) {
+    at <- o[which(h[o] == s)]
+    m <- length(at)
+    list(at = at, c = if (m >= 2L) (1 - f[s]) * m / (m - 1) else 0, e = 0)
+  })
+  successive_factors(walks, length(rows))
+}
+
+#' Successive-difference replicate factors over one or more walks
+#'
+#' Each element of `walks` holds the positions in the sample of a walk's
+#' rows, in walk order (`at`), the coefficient `c` of half the sum of its
+#' squared successive differences of `u = y / pi`, and the coefficient `e`
+#' of `mean(u)^2`, the term for a random sample size. The variance of the
+#' replicates is the sum over walks of
+#' `c / 2 * sum(diff(u)^2) + e * mean(u)^2`.
+#'
+#' Each pair of neighbours in a walk gets its own row `a` of a Sylvester
+#' Hadamard matrix of order `R`, and the `i`-th row of a walk of `m` gets
+#' `1 + b * (a_i - a_(i - 1))`, with `a_0` and `a_m` zero and
+#' `b = sqrt(c / 8)`. A replicate total then moves by
+#' `b * sum(a_i * (u_i - u_(i + 1)))`, and since the rows of the matrix
+#' are orthogonal and, past the first, sum to 0, `4 / R` times the sum of
+#' squared moves over the `R` replicates is `c / 2 * sum(diff(u)^2)`, and
+#' the replicates average the sample's total. The first and last rows of a
+#' walk are not paired with each other. The circular form, which pairs
+#' them, adds their squared difference, which is large on a frame sorted on
+#' something related to `y`. One more row of the matrix moves every row of
+#' a walk by `sqrt(e) / (2 * m)` for the random size. Every factor stays
+#' above 0, because `c` is below 2 and `e` at most `1 / 4`.
+#'
+#' @noRd
+successive_factors <- function(walks, n) {
+  pairs <- vapply(walks, function(w) {
+    if (length(w$at) >= 2L && w$c > 0) length(w$at) - 1L else 0L
+  }, integer(1))
+  sized <- vapply(walks, function(w) w$e > 0, logical(1))
+  R <- 2^ceiling(log2(sum(pairs) + sum(sized) + 1))
+  check_replicate_size(n, R)
+  f <- matrix(1, n, R)
+  used <- 1L
+  for (i in seq_along(walks)) {
+    w <- walks[[i]]
+    if (pairs[i] > 0L) {
+      a <- hadamard_rows(used + seq_len(pairs[i]), R)
+      used <- used + pairs[i]
+      f[w$at, ] <- f[w$at, ] + sqrt(w$c / 8) * (rbind(a, 0) - rbind(0, a))
+    }
+    if (sized[i]) {
+      used <- used + 1L
+      m <- length(w$at)
+      f[w$at, ] <- f[w$at, ] + outer(rep(sqrt(w$e) / (2 * m), m),
+                                     hadamard_rows(used, R)[1L, ])
+    }
+  }
+  list(factors = f, scale = 4 / R, rscales = rep(1, R), type = "other")
+}
+
+#' Rows of a Sylvester Hadamard matrix
+#'
+#' The entry in row `i` and column `j` of the matrix of order `R`, a power
+#' of 2, is `-1` to the number of bits set in both `i - 1` and `j - 1`.
+#' Only the rows asked for are built.
+#'
+#' @noRd
+hadamard_rows <- function(k, R) {
+  x <- as.vector(outer(as.integer(k) - 1L, seq_len(R) - 1L, bitwAnd))
+  odd <- integer(length(x))
+  while (any(x > 0L)) {
+    odd <- bitwXor(odd, bitwAnd(x, 1L))
+    x <- bitwShiftR(x, 1L)
+  }
+  matrix(1 - 2 * odd, nrow = length(k))
+}
+
+#' Refuse replicate weights too large to hold in memory
+#' @noRd
+check_replicate_size <- function(n, R) {
+  bytes <- 8 * as.numeric(n) * R
+  if (bytes <= pair_limit()) return(invisible(NULL))
+  stop("replicate_weights() would build ", format(R, big.mark = ","),
+       " replicates of the ", format(n, big.mark = ","), " sampled rows, ",
+       "which needs about ", format_gb(bytes), " of memory. Estimate with ",
+       "ht_total() or ht_mean(), or hand the sample to `survey` with ",
+       "as_svydesign().", call. = FALSE)
 }
 
 #' @export

@@ -810,3 +810,275 @@ test_that("spread and systematic samples go to survey as their simple designs", 
   expect_equal(se, srs_se(s, "~trend"))
   expect_gt(se, 2 * ht_total(s, "trend")$se)
 })
+
+# survey::svrepdesign() over replicate_weights(), with the attributes passed
+# as they come.
+rep_design <- function(s, rw = replicate_weights(s)) {
+  survey::svrepdesign(data = as.data.frame(s), repweights = rw,
+                      weights = ~.weight, type = attr(rw, "type"),
+                      scale = attr(rw, "scale"),
+                      rscales = attr(rw, "rscales"), combined.weights = TRUE)
+}
+
+rep_se <- function(s, y = "spend", rw = replicate_weights(s)) {
+  as.numeric(survey::SE(survey::svytotal(stats::as.formula(paste0("~", y)),
+                                         rep_design(s, rw))))
+}
+
+test_that("replicate weights give the jackknife's standard error", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  designs <- list(
+    simple = design_simple(n = 60),
+    stratified = design_stratified("site", n = 60),
+    cluster = design_cluster("cl", n_clusters = 8),
+    pps = design_weighted("size", n = 40, method = "systematic"),
+    certainty = design_certainty("size", 900, design_simple(n = 30))
+  )
+  for (nm in names(designs)) {
+    s <- draw(d, designs[[nm]], seed = 6, weights = TRUE)
+    rw <- replicate_weights(s)
+    jk <- ht_total(s, "spend", variance = "jackknife")
+    sv <- rep_design(s, rw)
+    expect_equal(nrow(rw), nrow(s), info = nm)
+    expect_equal(attr(rw, "type"), "JKn", info = nm)
+    expect_equal(as.numeric(coef(survey::svytotal(~spend, sv))), jk$total,
+                 info = nm)
+    expect_equal(rep_se(s, rw = rw), jk$se, tolerance = 1e-8, info = nm)
+    expect_equal(survey::degf(sv), jk$df, info = nm)
+  }
+
+  # One replicate per cluster, and each stratum's correction in `rscales`.
+  s <- draw(d, design_cluster("cl", n_clusters = 8), seed = 6, weights = TRUE)
+  expect_equal(ncol(replicate_weights(s)), 8L)
+  s <- draw(d, design_stratified("site", n = 60), seed = 6, weights = TRUE)
+  rw <- replicate_weights(s)
+  n_h <- as.numeric(table(s$site))
+  N_h <- as.numeric(table(d$site))
+  expect_equal(sort(unique(round(attr(rw, "rscales"), 12))),
+               sort(unique(round((1 - n_h / N_h) * (n_h - 1) / n_h, 12))))
+})
+
+test_that("rows above a certainty threshold keep their weight in every replicate", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_certainty("size", 900, design_simple(n = 30)), seed = 2,
+            weights = TRUE)
+  rw <- replicate_weights(s)
+  above <- s$size >= 900
+  expect_true(any(above))
+  expect_equal(rw[above, , drop = FALSE],
+               matrix(s$.weight[above], sum(above), ncol(rw)))
+  expect_equal(ncol(rw), sum(!above))
+})
+
+test_that("JK1 is the same jackknife where it has one stratum, and refused with more", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_simple(n = 50), seed = 3, weights = TRUE)
+  rw <- replicate_weights(s, type = "JK1")
+  expect_equal(attr(rw, "type"), "JK1")
+  expect_equal(attr(rw, "rscales"), rep(1, 50))
+  expect_equal(attr(rw, "scale"), (1 - 50 / 400) * 49 / 50)
+  expect_equal(rep_se(s, rw = rw), rep_se(s), tolerance = 1e-10)
+
+  st <- draw(d, design_stratified("site", n = 60), seed = 3, weights = TRUE)
+  expect_error(replicate_weights(st, type = "JK1"),
+               "jackknife has 4 strata", fixed = TRUE)
+  expect_error(replicate_weights(st, type = "JK2"),
+               "`type` must be one of \"JKn\" or \"JK1\"", fixed = TRUE)
+})
+
+test_that("systematic samples get successive differences along the walk", {
+  skip_if_not_installed("survey")
+  i <- 1:203
+  d <- data.frame(id = i, x = (i * 0.618034) %% 1)
+  d$spend <- 100 + 400 * d$x + (i * 37) %% 23
+  d$site <- rep(c("a", "b", "c"), times = c(100, 63, 40))
+  designs <- list(
+    sorted = design_systematic(interval = 10, order_by = "x"),
+    fixed_n = design_systematic(n = 25, order_by = "x"),
+    within = design_stratified("site", n = 30,
+                               within = design_systematic(order_by = "x"))
+  )
+  for (nm in names(designs)) {
+    s <- draw(d, designs[[nm]], seed = 5, weights = TRUE)
+    rw <- replicate_weights(s)
+    expect_equal(attr(rw, "type"), "other", info = nm)
+    expect_equal(rep_se(s, rw = rw), ht_total(s, "spend")$se,
+                 tolerance = 1e-8, info = nm)
+    expect_true(all(rw > 0), info = nm)
+  }
+
+  # 203 rows at an interval of 10 give 20 or 21 rows, so the variance has a
+  # term for the random size. By hand, with no pair joining the two ends of
+  # the walk:
+  s <- draw(d, designs$sorted, seed = 5, weights = TRUE)
+  u <- (s$spend / s$.prob)[order(s$x)]
+  n <- length(u)
+  by_hand <- 0.9 * n / (2 * (n - 1)) * sum(diff(u)^2) +
+    mean(u)^2 * 0.3 * 0.7
+  expect_equal(rep_se(s)^2, by_hand, tolerance = 1e-8)
+})
+
+test_that("several systematic starts get one replicate each, empty ones too", {
+  skip_if_not_installed("survey")
+  i <- 1:203
+  d <- data.frame(id = i, spend = 20 + (i * 7) %% 11 + i / 10)
+  s <- draw(d, design_systematic(interval = 10, n_starts = 4), seed = 2,
+            weights = TRUE)
+  rw <- replicate_weights(s)
+  expect_equal(ncol(rw), 4L)
+  expect_equal(rep_se(s, rw = rw), ht_total(s, "spend")$se, tolerance = 1e-8)
+  expect_equal(rep_se(s, rw = rw),
+               as.numeric(survey::SE(survey::svytotal(~spend,
+                                                      as_svydesign(s)))),
+               tolerance = 1e-8)
+
+  # On 25 rows, starts 26 to 30 of 1:30 fall past the last row and draw
+  # nothing. as_svydesign() refuses such a sample; its replicates count the
+  # empty start as a total of 0, as ht_total() does.
+  small <- d[1:25, ]
+  empty <- 0L
+  for (seed in 1:20) {
+    s <- draw(small, design_systematic(interval = 10, n_starts = 3),
+              seed = seed, weights = TRUE)
+    rw <- replicate_weights(s)
+    expect_equal(ncol(rw), 3L)
+    expect_equal(rep_se(s, rw = rw), ht_total(s, "spend")$se,
+                 tolerance = 1e-8)
+    if (nrow(s) < 3L) {
+      empty <- empty + 1L
+      expect_error(as_svydesign(s), "empty replicate")
+    }
+  }
+  expect_gt(empty, 0L)
+})
+
+test_that("replicate weights are refused where no replicates describe the design", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_weighted("size", n = 40, method = "poisson"), seed = 1,
+            weights = TRUE)
+  expect_error(replicate_weights(s), "Poisson sampling selects rows")
+  s <- draw(d, design_certainty("size", 900,
+                                design_weighted("size", n = 40,
+                                                method = "poisson")),
+            seed = 1, weights = TRUE)
+  expect_error(replicate_weights(s), "Poisson sampling selects rows")
+
+  s <- draw(d, design_stratified("site", n = 8, allocation = c(
+    a = 3, b = 3, c = 1, d = 1)), seed = 1, weights = TRUE)
+  expect_error(replicate_weights(s),
+               "`sample` has no replicate weights. 2 strata `c`, `d`",
+               fixed = TRUE)
+
+  edited <- draw(d, design_simple(n = 10), seed = 1, weights = TRUE)
+  edited$.weight[2] <- NA
+  expect_error(replicate_weights(edited),
+               "missing or not finite in 1 row(s): 2.", fixed = TRUE)
+  # A start past the last of 30 rows draws none.
+  empty <- suppressWarnings(draw(d[1:30, ], design_systematic(interval = 50),
+                                 seed = 7, weights = TRUE))
+  expect_equal(nrow(empty), 0L)
+  expect_error(replicate_weights(empty), "has no rows")
+})
+
+test_that("a census gets one replicate and a variance of 0", {
+  skip_if_not_installed("survey")
+  d <- svy_pop(40)
+  s <- draw(d, design_simple(n = 40), seed = 1, weights = TRUE)
+  rw <- replicate_weights(s)
+  expect_equal(ncol(rw), 1L)
+  expect_equal(rep_se(s, rw = rw), 0)
+})
+
+test_that("frame_totals() totals the rows the design could reach", {
+  d <- data.frame(id = 1:120, w = 1 + (1:120 * 7) %% 13,
+                  site = rep(c("a", "b", "c"), each = 40))
+  d$ts <- as.POSIXct("2024-03-01", tz = "UTC") + 3600 * (0:119)
+  # A temporal window of two days out of five
+  s <- draw(d, design_temporal("ts", from = "2024-03-02", to = "2024-03-04",
+                               interval = 1, unit = "days", per_interval = 4),
+            seed = 1, weights = TRUE)
+  inside <- d$ts >= as.POSIXct("2024-03-02", tz = "UTC") &
+    d$ts < as.POSIXct("2024-03-04", tz = "UTC")
+  expect_equal(frame_totals(s, ~ w + site),
+               colSums(stats::model.matrix(~ w + site, d[inside, ])))
+  expect_equal(unname(frame_totals(s, ~w)[1]), 48)
+
+  # A reservoir reads its first `max_items` rows only
+  s <- suppressWarnings(draw(d, design_reservoir(n = 10, max_items = 50),
+                             seed = 1, weights = TRUE))
+  expect_equal(frame_totals(s, ~w), c(`(Intercept)` = 50, w = sum(d$w[1:50])))
+
+  # Rows `na_rm` leaves out are not in the population
+  d$w[c(3, 7)] <- NA
+  s <- draw(d, design_weighted("w", n = 20, method = "systematic",
+                               na_rm = TRUE), seed = 1, weights = TRUE)
+  counts <- frame_totals(s, ~site, table = TRUE)
+  expect_s3_class(counts, "table")
+  expect_equal(c(counts), c(a = 38L, b = 40L, c = 40L))
+
+  # A sample saved by drawn 0.2.0 records no probabilities, so the design
+  # gives them again.
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  expect_equal(frame_totals(old, ~ site), frame_totals(s, ~ site))
+})
+
+test_that("frame_totals() counts a region's rows only", {
+  skip_if_not_installed("sf")
+  g <- expand.grid(lon = seq(-14.5, 14.5, by = 1),
+                   lat = seq(-14.5, 14.5, by = 1))
+  d <- data.frame(lon = g$lon, lat = g$lat, w = 1 + seq_len(nrow(g)) %% 5)
+  s <- draw(d, design_spatial(c("lon", "lat"), flat_box(c(-10, 0), c(-10, 10)),
+                              n = 20), seed = 1, weights = TRUE)
+  inside <- d$lon > -10 & d$lon < 0 & abs(d$lat) < 10
+  expect_equal(sum(inside), 200L)
+  expect_equal(frame_totals(s, ~w),
+               c(`(Intercept)` = 200, w = sum(d$w[inside])))
+})
+
+test_that("frame_totals() counts the clusters a conditional sample left out", {
+  sizes <- rep(c(5, 9, 14, 7, 11), 4)
+  d <- data.frame(id = seq_len(sum(sizes)),
+                  cl = rep(sprintf("k%02d", 1:20), times = sizes))
+  s <- draw(d, design_cluster("cl", n_clusters = 5, balanced = TRUE),
+            seed = 4, weights = TRUE)
+  expect_true(anyNA(attr(s, "drawn_pi")))
+  expect_equal(frame_totals(s, ~id), c(`(Intercept)` = sum(sizes),
+                                       id = sum(d$id)))
+})
+
+test_that("frame_totals() feeds survey's calibration and post-stratification", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_simple(n = 60), seed = 2, weights = TRUE)
+  des <- as_svydesign(s)
+  cal <- survey::calibrate(des, ~ size + site,
+                           population = frame_totals(s, ~ size + site))
+  expect_equal(as.numeric(coef(survey::svytotal(~size, cal))), sum(d$size))
+  post <- survey::postStratify(des, ~site,
+                               frame_totals(s, ~site, table = TRUE))
+  expect_equal(as.numeric(coef(survey::svytotal(~site, post))),
+               as.numeric(table(d$site)))
+})
+
+test_that("frame_totals() refuses what it cannot total", {
+  d <- data.frame(id = 1:30, w = c(NA, 2:30), z = c(1:29, NA))
+  s <- draw(d, design_simple(n = 5), seed = 1, weights = TRUE)
+  expect_error(frame_totals(s, ~ w + z + id),
+               "`w` and `z` are missing in 2 of the 30 frame rows",
+               fixed = TRUE)
+  expect_error(frame_totals(s, ~ nope), "`formula` uses `nope`, which is not")
+  expect_error(frame_totals(s, id ~ w), "not `id ~ w`, which has a left-hand",
+               fixed = TRUE)
+  expect_error(frame_totals(s, "w"), "not a character.", fixed = TRUE)
+  expect_error(frame_totals(s, ~id, table = NA),
+               "`table` must be TRUE or FALSE")
+  expect_error(frame_totals(s, ~1, table = TRUE), "names no column")
+  expect_equal(frame_totals(s, ~1), c(`(Intercept)` = 30))
+  expect_error(frame_totals(d, ~id), "does not carry its design")
+})
