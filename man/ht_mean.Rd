@@ -11,7 +11,10 @@ ht_mean(
   variance = c("auto", "analytic", "jackknife", "none"),
   level = 0.95,
   by = NULL,
-  df = NULL
+  df = NULL,
+  proportion = NULL,
+  ci_method = c("logit", "beta"),
+  alternative = c("two.sided", "less", "greater")
 )
 }
 \arguments{
@@ -24,14 +27,25 @@ as \code{sample}.}
 
 \item{estimator}{\code{"hajek"} or \code{"ht"}. See above.}
 
-\item{variance, level, by, df}{As for \code{\link[=ht_total]{ht_total()}}.}
+\item{variance, level, by, df, alternative}{As for \code{\link[=ht_total]{ht_total()}}.}
+
+\item{proportion}{Whether \code{y} is a proportion, which decides the shape of
+the interval. \code{NULL} decides from \code{y}: a logical \code{y}, or a column of the
+frame whose values are all 0 or 1, is a proportion. \code{TRUE} treats \code{y} as
+one, and needs it to be 0 or 1 in every sampled row; \code{FALSE} gives the
+symmetric interval. See "Proportions".}
+
+\item{ci_method}{The interval for a proportion: \code{"logit"}, or \code{"beta"} for
+Korn and Graubard's. A proportion of exactly 0 or 1 gets \code{"beta"} either
+way. See "Proportions".}
 }
 \value{
 A list with a \code{print()} method, holding \code{mean}, \code{estimator},
-\code{variance}, \code{se}, \code{ci}, \code{level}, \code{df}, \code{n}, \code{design}, \code{deff}, \code{method} and
-\code{note}. See \code{\link[=ht_total]{ht_total()}} for what \code{method}, \code{df} and \code{note} say, and
-\code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data frame with one row per
-domain.
+\code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}, \code{n}, \code{design},
+\code{deff}, \code{method}, \code{note}, \code{ci_scale} (\code{"linear"}, \code{"logit"} or \code{"beta"})
+and \code{unreachable}. See \code{\link[=ht_total]{ht_total()}} for what \code{method}, \code{df}, \code{note} and
+\code{unreachable} say, and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data
+frame with one row per domain.
 }
 \description{
 The Hajek estimator, \code{sum(y / pi) / sum(1 / pi)}, is the default. It divides
@@ -40,13 +54,42 @@ that happens to over-represent heavy-weight rows inflates numerator and
 denominator together and they partly cancel. \code{estimator = "ht"} divides by
 the true \code{N} instead.
 }
-\details{
+\section{Proportions}{
+
 For a 0/1 or logical variable either one estimates a proportion, and the
 confidence interval is then formed on the logit scale and transformed back
 (Korn and Graubard 1999, section 5.3). A symmetric interval around a small
 proportion runs below zero; this one cannot, and matches
 \code{survey::svyciprop(method = "xlogit")}.
+
+Whether \code{y} is a proportion is read from what \code{y} is, not from the values
+the sample happened to draw. A logical \code{y} is one, and so is a column of
+the frame whose values are all 0 or 1. A count that came out 0 or 1 in
+every sampled row is not: a logit interval cannot pass 1, so it would never
+cover a mean of 1.2. A numeric vector, or a column added to the sample after
+the draw, such as a 0/1 result recorded in fieldwork, gets the symmetric
+interval unless \code{proportion = TRUE} says it is a proportion.
+\code{proportion = FALSE} asks for the symmetric interval whatever \code{y} is.
+
+\code{ci_method = "beta"} gives the Korn and Graubard (1998) interval instead,
+a Clopper-Pearson interval at an effective sample size of \code{p(1 - p) / v},
+with \code{p} the estimate and \code{v} its variance, capped at \code{n} and then scaled
+by \code{(qt(a, n - 1) / qt(a, df))^2} for the design's degrees of freedom.
+Here \code{n} is the number of sampled rows below certainty behind the estimate
+and \code{a} the tail probability of the interval. With no rows taken with
+certainty it matches \code{survey::svyciprop(method = "beta")} whenever the cap
+does not bind. It ignores the finite population correction, so it errs
+wide when the sample is a large share of the frame.
+
+An estimate of exactly 0 or 1, such as no deviations found in 60 sampled
+invoices, has a variance of 0, and a logit interval around it has no
+width. It gets the beta interval whatever \code{ci_method} says, with the
+effective sample size set to \code{n}, and \code{note} says so. For 0 of 60 from a
+simple random sample, the 95\% upper bound (\code{alternative = "less"}) is
+4.87\%. When every sampled row behind the estimate was taken with
+certainty, the estimate is exact and the interval has no width.
 }
+
 \section{When the two differ, and which to use}{
 
 They coincide \strong{exactly} whenever the design weights of the rows you drew
@@ -92,6 +135,11 @@ The residuals sum to zero inside a primary sampling unit that holds every
 sampled row of the domain, so a Hajek mean over one unit, such as a domain
 with one sampled row or a Poisson sample of one row, gets no standard
 error. The "Domains" section of \code{\link[=ht_total]{ht_total()}} says more.
+
+When \code{y} has the same value in every sampled row, the residuals are 0 and
+the Hajek mean's variance is set to exactly 0, with a note, rather than
+left to rounding error, which gave standard errors near \code{1e-16} and design
+effects that changed from seed to seed. The design effect is then \code{NA}.
 }
 
 \examples{
@@ -123,6 +171,10 @@ c(hajek = ht_mean(p, "spend", variance = "none")$mean,
 
 }
 \references{
+Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
+proportions with small expected number of positive counts estimated from
+survey data. \emph{Survey Methodology}, 24, 193–201.
+
 Korn, E. L. and Graubard, B. I. (1999). \emph{Analysis of Health Surveys}.
 Wiley.
 

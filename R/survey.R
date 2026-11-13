@@ -22,7 +22,7 @@
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab close for totals, less so for means \cr
 #'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size` \tab **`survey`'s is larger** \cr
-#'   [design_systematic()] \tab `ids = ~1` with `fpc` the frame size \tab **differ** \cr
+#'   [design_systematic()] \tab `ids = ~1` with `fpc` the rows the walk can reach \tab **differ** \cr
 #' }
 #'
 #' "Identical" means to floating point, and is checked by this package's tests
@@ -264,6 +264,12 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       # the stream reached, not the whole frame.
       list(stratum = NULL, fpc = rep(reservoir_reach(design, nrow(pop)),
                                      nrow(dat)), ids = one)
+    },
+    systematic = {
+      # Rows `na_rm` drops from the walk can never be drawn, so the
+      # population is the rows with a sort key, not the whole frame.
+      list(stratum = NULL, fpc = rep(reachable_rows(design, pop), nrow(dat)),
+           ids = one)
     },
     spread = {
       # Neither package has the pivotal method's joint probabilities. Handed

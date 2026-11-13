@@ -166,6 +166,29 @@
   an interval that never covered the truth. `ht_total()`, domain totals and
   `ht_mean(estimator = "ht")` now add a term for the random size, and the
   note says so. The default Hajek mean was not affected.
+* **`deff()` measured a design against a simple random sample of the whole
+  frame, rows it could never reach included.** A total estimates over the
+  rows with a probability above 0, so an equal-probability sample of 20 from
+  the first 100 of 400 rows, `design_reservoir(max_items = 100)`, reported a
+  design effect of 0.05, "better than simple random sampling", and a
+  temporal window or a spatial region over part of the frame read low the
+  same way. The simple random sample is now drawn from the rows the design
+  can reach, as `survey` measures it, and that sample gets 1. A
+  Horvitz-Thompson mean gets its total's design effect. `?deff` says so.
+* **A constant `y` got a design effect and a Hajek standard error made of
+  rounding error.** With unequal weights, a total's design effect came out
+  as `1.36e+32`, "worse than simple random sampling", and the Hajek mean's
+  standard error as about `1e-16`, with a design effect that changed from
+  seed to seed. A Hajek mean of a `y` that takes one value in every sampled
+  row, overall or in a `by` domain, now has a variance of exactly 0, with a
+  note, and the design effect of a constant `y` is `NA`.
+* **Rows a design drops were counted in its finite population correction.**
+  `as_svydesign()` gave `survey` the frame's row count as the `fpc` of
+  `design_systematic(na_rm = TRUE)`, and the jackknife counted every row of
+  the frame for `design_spread()` and `design_weighted()` with
+  `na_rm = TRUE`. Both now count the rows the design can reach, and agree
+  with the same draw from the frame without the dropped rows. The standard
+  errors moved by under 1% in the examples checked.
 
 ## Refusals and clearer errors
 
@@ -292,6 +315,46 @@
   `variance = "auto"` then uses the jackknife, which gives the same figure
   for simple random and stratified samples. At 8,000 rows it needed about
   6 GB.
+* `ht_mean()` decides whether `y` is a proportion, and so whether its
+  interval is formed on the logit scale, from what `y` is rather than from
+  the values the sample drew: a logical `y`, or a column of the frame whose
+  values are all 0 or 1. A count that came out 0 or 1 in every sampled row
+  got a logit interval, which cannot pass 1 and so never covered a mean of 1
+  or more; it now gets the symmetric interval. A 0/1 column added to the
+  sample after the draw, or a numeric vector, gets the symmetric interval
+  unless `proportion = TRUE` says it is a proportion. `by` estimates follow
+  the same rule.
+* A proportion estimated at exactly 0 or 1, such as no deviations in 60
+  sampled invoices, gets Korn and Graubard's beta interval, with the sampled
+  rows below certainty as its effective sample size, and a note saying so.
+  It got a zero-width interval of 0 to 0. For 0 in 60 from a simple random
+  sample the 95% upper bound is now 4.87%. A census, or a domain of rows
+  taken with certainty, is still exact.
+* Estimates from `ht_total()` and `ht_mean()` hold `unreachable`, the number
+  of frame rows with inclusion probability 0, and print it on a line of its
+  own when there are any, whether or not there is a standard error. `by`
+  tables carry it as an attribute and print it too. `draw()` warns about
+  such rows, but a sample saved and read back, or drawn with the warning
+  muffled, gave a total over part of the frame with no sign of the rest.
+* The printout of `ht_total()` and `ht_mean()` shows the note whenever the
+  standard error is 0, such as the one saying every sampled row was taken
+  with certainty.
+* `sample_summary()` gains `N_reachable`, the rows the design gives a
+  probability above 0, and prints the sampling fraction over them. `N` is
+  still every row of the frame.
+
+## New
+
+* `ht_total()` and `ht_mean()` take `alternative = "less"` for a one-sided
+  upper bound and `"greater"` for a lower bound, labelled as such when
+  printed. The open end of `ci` is `-Inf` or `Inf`, or 0 or 1 for a
+  proportion. A one-sided bound is the end of a two-sided interval at
+  `1 - 2 * (1 - level)`, which is how it had to be asked for before.
+* `ht_mean()` takes `proportion`, to say whether `y` is a proportion rather
+  than leave it to the rule above, and `ci_method = "beta"` for Korn and
+  Graubard's interval, the one `survey::svyciprop(method = "beta")` gives,
+  with its effective sample size capped at the number of sampled rows below
+  certainty.
 
 ## Speed and memory
 

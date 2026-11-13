@@ -473,3 +473,82 @@ test_that("strata from several columns reach survey without carriage returns", {
                                                       as_svydesign(s2)))),
                ht_total(s2, "spend")$se, tolerance = 1e-6)
 })
+
+test_that("ci_method = \"beta\" is survey's beta interval", {
+  skip_if_not_installed("survey")
+  # Clusters that differ in their share of flagged rows, so the effective
+  # sample size, p(1 - p) / v, is well below the 60 rows and is not capped.
+  d <- data.frame(id = 1:200, cl = rep(1:20, each = 10))
+  d$flag <- (d$id %% 10) < rep(c(1, 9, 2, 8, 0, 10, 3, 7, 5, 4), 2)[d$cl]
+  s <- draw(d, design_cluster("cl", n_clusters = 6), seed = 3, weights = TRUE)
+  sv <- as_svydesign(s)
+  for (level in c(0.95, 0.90)) {
+    ours <- ht_mean(s, "flag", ci_method = "beta", level = level)
+    expect_true(ours$mean * (1 - ours$mean) / ours$variance < ours$n)
+    theirs <- survey::svyciprop(~flag, sv, method = "beta", level = level)
+    expect_equal(ours$ci, unname(as.vector(attr(theirs, "ci"))),
+                 tolerance = 1e-10)
+  }
+  expect_equal(ht_mean(s, "flag", ci_method = "beta")$ci_scale, "beta")
+})
+
+test_that("deff agrees with survey's where the design reaches part of the frame", {
+  skip_if_not_installed("survey")
+  check <- function(s, label) {
+    sv <- as_svydesign(s)
+    tot <- ht_total(s, "y")
+    m <- ht_mean(s, "y")
+    expect_equal(tot$deff,
+                 unname(survey::deff(survey::svytotal(~y, sv, deff = TRUE))),
+                 tolerance = 1e-8, label = label)
+    expect_equal(m$deff,
+                 unname(survey::deff(survey::svymean(~y, sv, deff = TRUE))),
+                 tolerance = 1e-8, label = label)
+    expect_true(abs(tot$deff - 1) < 0.35, label = label)
+  }
+
+  # The first 100 of 400 rows
+  d <- data.frame(y = 50 + (1:400 * 37) %% 23)
+  expect_warning(
+    s <- draw(d, design_reservoir(n = 20, max_items = 100), seed = 1,
+              weights = TRUE), "max_items")
+  check(s, "reservoir")
+
+  # Two days of a four-day frame
+  dt <- data.frame(ts = seq(as.POSIXct("2020-01-01", tz = "UTC"), by = "hour",
+                            length.out = 96),
+                   y = 50 + (1:96 * 37) %% 23)
+  st <- draw(dt, design_temporal("ts", "2020-01-02", "2020-01-04",
+                                 interval = 12, per_interval = 4),
+             seed = 2, weights = TRUE)
+  check(st, "temporal")
+
+  # Points in half the frame's extent
+  skip_if_not_installed("sf")
+  sp <- data.frame(lon = -10 + (1:80 * 7) %% 20, lat = -10 + (1:80 * 3) %% 20,
+                   y = 50 + (1:80 * 37) %% 23)
+  region <- sf::st_sfc(
+    sf::st_polygon(list(cbind(c(-10.5, 0, 0, -10.5, -10.5),
+                              c(-10.5, -10.5, 10, 10, -10.5)))), crs = 4326)
+  ss <- draw(sp, design_spatial(c("lon", "lat"), region, n = 12), seed = 1,
+             weights = TRUE)
+  expect_true(sum(attr(ss, "drawn_pi") == 0) > 0)
+  check(ss, "spatial")
+})
+
+test_that("a systematic design's fpc counts the rows its walk can reach", {
+  skip_if_not_installed("survey")
+  # Rows `na_rm` drops from the walk can never be drawn. The same draw from
+  # the frame without them gets the same design.
+  d <- data.frame(id = 1:60, a = (1:60 %% 7) / 7, y = 10 + (1:60 * 13) %% 17)
+  d$a[5:8] <- NA
+  s1 <- draw(d, design_systematic(interval = 5, order_by = "a", na_rm = TRUE),
+             seed = 4, weights = TRUE)
+  s2 <- draw(d[!is.na(d$a), ], design_systematic(interval = 5, order_by = "a"),
+             seed = 4, weights = TRUE)
+  expect_equal(s1$id, s2$id)
+  sv1 <- as_svydesign(s1)
+  expect_equal(unique(sv1$fpc$popsize[, 1]), 56)
+  expect_equal(survey::SE(survey::svytotal(~y, sv1)),
+               survey::SE(survey::svytotal(~y, as_svydesign(s2))))
+})

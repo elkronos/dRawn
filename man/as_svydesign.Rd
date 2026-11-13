@@ -42,7 +42,7 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as \code{rest} \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab close for totals, less so for means \cr
 \code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size} \tab \strong{\code{survey}'s is larger} \cr
-\code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the frame size \tab \strong{differ} \cr
+\code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the rows the walk can reach \tab \strong{differ} \cr
 }
 
 "Identical" means to floating point, and is checked by this package's tests

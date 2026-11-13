@@ -119,7 +119,26 @@
 #' An estimate whose variance is 0 is exact and gets a zero-width interval
 #' whatever `df` is. Otherwise a design that leaves 0 degrees of freedom, such
 #' as Poisson sampling that drew one row, gives a standard error but no
-#' interval, and `note` says why. `df` set by hand must be at least 1.
+#' interval, and `note` says why. `df` set by hand must be at least 1. A
+#' proportion of 0 or 1 is the exception to the first rule; see
+#' "Proportions" in [ht_mean()].
+#'
+#' `alternative = "less"` gives a one-sided upper bound, the figure an auditor
+#' signs off against, and `"greater"` a lower bound. The other end of `ci` is
+#' then `-Inf` or `Inf`, or 0 or 1 for a proportion, and the printout labels
+#' the bound. A one-sided bound at `level` is the end of a two-sided interval
+#' at `1 - 2 * (1 - level)`, so the 95% upper bound is the upper end of the
+#' 90% interval, which `level = 0.90` also gives.
+#'
+#' @section Rows the design cannot reach:
+#' Rows with inclusion probability 0, such as rows past `max_items`, outside
+#' a region or time window, dropped by `na_rm` or in a stratum allocated no
+#' rows, can never be drawn, so a total covers the other rows only.
+#' [draw()] warns about some of them by name. The estimate keeps their
+#' number in `unreachable` and prints it on a line of its own, since a sample
+#' saved and read back, or drawn with the warning muffled, would otherwise
+#' give no sign of them. The design effect is measured against a simple
+#' random sample of the rows the design can reach; see [deff()].
 #'
 #' @section An empty sample:
 #' A design of random size, such as Poisson sampling or a systematic sample
@@ -200,23 +219,34 @@
 #' @param df Degrees of freedom for the interval. `NULL` uses the design's
 #'   (see "Confidence intervals"); `Inf` gives a normal interval; otherwise a
 #'   single number of 1 or more.
+#' @param alternative `"two.sided"` for a confidence interval, `"less"` for a
+#'   one-sided upper bound or `"greater"` for a lower bound, each at `level`.
+#'   See "Confidence intervals".
 #'
 #' @return A list with a `print()` method, holding:
 #'   \describe{
 #'     \item{`total`}{The Horvitz-Thompson total, `sum(y / pi)`.}
-#'     \item{`variance`, `se`, `ci`, `level`, `df`}{Its estimated variance,
-#'       standard error, confidence interval, and the degrees of freedom the
-#'       interval used. `NA` where the design supports no variance.}
+#'     \item{`variance`, `se`, `ci`, `level`, `alternative`, `df`}{Its
+#'       estimated variance, standard error, confidence interval or one-sided
+#'       bound, and the degrees of freedom the interval used. `NA` where the
+#'       design supports no variance.}
+#'     \item{`ci_scale`}{The scale the interval was formed on: `"linear"`
+#'       for a total, and `"logit"` or `"beta"` for a proportion from
+#'       [ht_mean()].}
 #'     \item{`n`, `design`}{Rows used, and the design's type.}
 #'     \item{`deff`}{The design effect — see [deff()].}
 #'     \item{`method`}{Which estimator produced the variance. See "Variance".}
 #'     \item{`note`}{Why a variance is missing, what approximation was used,
 #'       or which fallback was taken. `NULL` when an exact estimator applied
 #'       cleanly.}
+#'     \item{`unreachable`}{Rows of the frame with inclusion probability 0,
+#'       which the estimate does not cover; `NA` for a sample saved by drawn
+#'       0.2.0. See "Rows the design cannot reach".}
 #'   }
 #'   With `by`, a data frame of class `drawn_by` instead: one row per domain,
 #'   with the domain columns, `n`, `total`, `se`, `ci_lower`, `ci_upper` and
-#'   `method`.
+#'   `method`, and the level, alternative, scale, notes and unreachable count
+#'   as attributes.
 #'
 #' @references
 #' Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
@@ -273,20 +303,24 @@
 #' @export
 ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
                                             "none"), level = 0.95,
-                     by = NULL, df = NULL) {
+                     by = NULL, df = NULL,
+                     alternative = c("two.sided", "less", "greater")) {
   variance <- check_choice(variance,
                            c("auto", "analytic", "jackknife", "none"),
                            "variance")
+  alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
+                              "alternative")
   parts <- ht_prepare(sample, y, level, df)
   if (!is.null(by)) {
-    return(estimate_by(parts, by, variance, level, df, what = "total"))
+    return(estimate_by(parts, by, variance, level, df, what = "total",
+                       alternative = alternative))
   }
   warn_grouped(sample, "ht_total")
   yv <- parts$y
   pi_i <- parts$pi
   total <- sum(yv / pi_i)
   estimate_one(parts, total, z = yv, variance, level, df, what = "total",
-               class = "drawn_ht", deff_y = yv)
+               class = "drawn_ht", deff_y = yv, alternative = alternative)
 }
 
 #' Variance, interval and design effect for one estimate
@@ -294,12 +328,14 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
 #' `z` is the variable whose Horvitz-Thompson total has the estimate's
 #' variance: `y` itself for a total, the linearised residual for a ratio.
 #' `var_out`, when given, is a variance already settled, such as the decline
-#' from `ratio_decline()`, and no estimator is run.
+#' from `ratio_decline()`, and no estimator is run. `divide_by` is what a mean
+#' divides its total by, for the design effect.
 #'
 #' @noRd
 estimate_one <- function(parts, est, z, variance, level, df, what, class,
-                         deff_y = NULL, extra = list(), logit = FALSE,
-                         var_out = NULL) {
+                         deff_y = NULL, extra = list(), proportion = FALSE,
+                         ci_method = "logit", alternative = "two.sided",
+                         var_out = NULL, divide_by = parts$reach) {
   var_out <- var_out %||% if (nrow(parts$sample)) {
     ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
                          parts$pi, variance)
@@ -308,9 +344,10 @@ estimate_one <- function(parts, est, z, variance, level, df, what, class,
   }
   df <- df %||% design_df(parts$design, parts$units, parts$pop, parts$rows,
                           parts$pi)
-  out <- finish_estimate(est, var_out, level, df, nrow(parts$sample),
-                         parts$design, deff_y, parts$pi, nrow(parts$pop),
-                         what = what, class = class, logit = logit)
+  out <- finish_estimate(est, var_out, parts, level, df, what = what,
+                         class = class, y = deff_y, proportion = proportion,
+                         ci_method = ci_method, alternative = alternative,
+                         divide_by = divide_by)
   for (nm in names(extra)) out[[nm]] <- extra[[nm]]
   out
 }
@@ -1125,17 +1162,50 @@ jackknife_fpc <- function(design, pop, m, n_fixed = 0L) {
   if (inherits(design, "drawn_design_multistage")) return(1)
   total <- if (inherits(design, "drawn_design_cluster")) {
     count_clusters(design, pop)$total
-  } else if (inherits(design, "drawn_design_reservoir")) {
-    reservoir_reach(design, nrow(pop))
-  } else if (inherits(design, "drawn_design_spatial")) {
-    sum(spatial_inside(design, pop))
   } else {
-    nrow(pop)
+    reachable_rows(design, pop)
   }
   if (!is.finite(total)) return(1)
   free <- total - n_fixed
   if (free <= m) return(0)
   1 - m / free
+}
+
+#' Rows of the frame a design can select
+#'
+#' The population a finite population correction counts. Rows a design drops,
+#' through `na_rm`, past `max_items` or outside its region or window, have
+#' probability 0 and are not part of it; counting them put the correction
+#' for a systematic or PPS design with `na_rm` too close to 1. The count is
+#' read from the design's own columns, so it needs no inclusion probabilities
+#' and is defined for a design without a closed form, such as
+#' `design_weighted(method = "successive")`. A stratum allocated no rows is
+#' not seen here; `sum(pi > 0)` over the draw-time probabilities counts those
+#' out too, where a sample stores them.
+#'
+#' @noRd
+reachable_rows <- function(design, pop) {
+  n <- nrow(pop)
+  keyed <- function(cols) {
+    sum(!Reduce(`|`, lapply(cols, function(col) is.na(pop[[col]]))))
+  }
+  switch(design_type(design),
+    reservoir = reservoir_reach(design, n),
+    spatial = sum(spatial_inside(design, pop)),
+    temporal = sum(!is.na(temporal_bucket(design, pop))),
+    systematic = sum(!is.na(systematic_positions(design, pop))),
+    weighted = keyed(design$weights),
+    spread = keyed(c(design$across, design$size)),
+    stratified = keyed(design$strata),
+    cluster = ,
+    multistage = keyed(design$clusters),
+    certainty = {
+      sp <- certainty_split(design, pop)
+      length(sp$take) +
+        reachable_rows(design$rest, sp$data[sp$rest, , drop = FALSE])
+    },
+    n
+  )
 }
 
 #' Primary sampling units for the jackknife

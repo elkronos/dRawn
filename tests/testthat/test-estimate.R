@@ -414,3 +414,158 @@ test_that("dplyr groups are reported, not silently ignored", {
   expect_warning(ht_total(g, "y"), class = "drawn_grouped_df")
   expect_no_warning(ht_total(g, "y", by = "site"))
 })
+
+# ---- proportions, one-sided bounds, design effects and reachable rows -------
+
+test_that("whether y is a proportion is read from the frame, not the sample", {
+  # The frame's column holds 3s as well, so this is the mean of a count. A
+  # logit interval, which cannot pass 1, would never cover a mean above 1.
+  pop <- data.frame(id = 1:100, kids = c(rep(0, 60), rep(1, 36), rep(3, 4)))
+  pop$any <- as.numeric(pop$kids > 0)
+  s <- draw(pop, design_simple(n = 10), seed = 1, weights = TRUE)
+  expect_true(all(s$kids %in% 0:1))
+  expect_equal(ht_mean(s, "kids")$ci_scale, "linear")
+  expect_equal(ht_mean(s, "kids", proportion = TRUE)$ci_scale, "logit")
+
+  # A frame column of 0s and 1s, and a logical vector, are proportions
+  expect_equal(ht_mean(s, "any")$ci_scale, "logit")
+  expect_equal(ht_mean(s, s$kids > 0)$ci_scale, "logit")
+  expect_equal(ht_mean(s, "any", proportion = FALSE)$ci_scale, "linear")
+
+  # A 0/1 column added after the draw, or a numeric vector, is not one
+  # unless `proportion = TRUE` says so
+  s$found <- as.numeric(s$kids > 0)
+  expect_equal(ht_mean(s, "found")$ci_scale, "linear")
+  expect_equal(ht_mean(s, s$found)$ci_scale, "linear")
+  expect_equal(ht_mean(s, "found", proportion = TRUE)$ci,
+               ht_mean(s, "any")$ci)
+
+  expect_error(ht_mean(s, "kids", proportion = NA),
+               "`proportion` must be NULL, TRUE or FALSE, not NA.",
+               fixed = TRUE)
+  s$kids[1] <- 3
+  expect_error(ht_mean(s, "kids", proportion = TRUE),
+               "needs `y` to be 0 or 1 in every sampled row")
+  expect_error(ht_mean(s, "kids", ci_method = "beta"),
+               "Pass `proportion = TRUE`")
+  expect_error(ht_mean(s, "any", ci_method = "exact"),
+               "`ci_method` must be one of \"logit\" or \"beta\"")
+})
+
+test_that("a proportion of 0 or 1 gets a beta interval and a note", {
+  # No deviations in 60 sampled invoices: the variance is 0, and a logit
+  # interval would be [0, 0]. Clopper-Pearson over 60 rows gives the bounds.
+  pop <- data.frame(id = 1:240, deviation = FALSE)
+  s <- draw(pop, design_simple(n = 60), seed = 1, weights = TRUE)
+  r <- ht_mean(s, "deviation")
+  expect_equal(r$mean, 0)
+  expect_equal(r$ci_scale, "beta")
+  expect_equal(r$ci, c(0, 1 - 0.025^(1 / 60)))
+  expect_match(r$note, "beta interval, with the 60 sampled rows")
+  expect_output(print(r), "beta, t, 59 df")
+  expect_output(print(r), "would have no width")
+
+  up <- ht_mean(s, "deviation", alternative = "less")
+  expect_equal(up$ci, c(0, 1 - 0.05^(1 / 60)))
+  expect_equal(round(up$ci[2], 4), 0.0487)
+  expect_output(print(up), "95% upper bound  0.0487")
+
+  s$deviation <- TRUE
+  expect_equal(ht_mean(s, "deviation")$ci, c(0.025^(1 / 60), 1))
+
+  # Rows taken with certainty carry no sampling error and are not counted
+  pop$w <- c(rep(1000, 10), rep(1, 230))
+  cs <- draw(pop, design_certainty("w", 1000, design_simple(n = 20)),
+             seed = 1, weights = TRUE)
+  rc <- ht_mean(cs, "deviation")
+  expect_equal(rc$ci, c(0, 1 - 0.025^(1 / 20)))
+  expect_match(rc$note, "20 sampled rows below certainty")
+
+  # A census of zeros is exact
+  cen <- draw(pop[1:20, ], design_simple(n = 20), seed = 1, weights = TRUE)
+  expect_equal(ht_mean(cen, "deviation")$ci, c(0, 0))
+})
+
+test_that("one-sided bounds are the ends of a two-sided interval", {
+  pop <- data.frame(id = 1:200, site = rep(c("a", "b"), each = 100),
+                    y = 20 + (1:200 * 37) %% 101)
+  pop$flag <- pop$y > 60
+  s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  two <- ht_total(s, "y", level = 0.90)
+  up <- ht_total(s, "y", alternative = "less")
+  lo <- ht_total(s, "y", alternative = "greater")
+  expect_equal(up$ci, c(-Inf, two$ci[2]))
+  expect_equal(lo$ci, c(two$ci[1], Inf))
+  expect_equal(up$alternative, "less")
+  expect_output(print(up), "95% upper bound  ")
+  expect_output(print(lo), "95% lower bound  ")
+
+  # A proportion's bound has 0 or 1 at its open end, on either scale
+  m2 <- ht_mean(s, "flag", level = 0.90)
+  expect_equal(ht_mean(s, "flag", alternative = "less")$ci, c(0, m2$ci[2]))
+  b2 <- ht_mean(s, "flag", level = 0.90, ci_method = "beta")
+  expect_equal(ht_mean(s, "flag", alternative = "greater",
+                       ci_method = "beta")$ci, c(b2$ci[1], 1))
+
+  expect_error(ht_total(s, "y", alternative = "up"),
+               "`alternative` must be one of")
+  expect_error(ht_mean(s, "y", alternative = 1),
+               "`alternative` must be one of")
+})
+
+test_that("a constant y has a variance of exactly 0 and no design effect", {
+  # Unequal weights left the residuals a rounding error from 0, which gave a
+  # standard error near 1e-16 and design effects from noise.
+  pop <- data.frame(id = 1:240, w = 1 + (1:240 * 7) %% 19)
+  s <- draw(pop, design_weighted("w", n = 30, method = "poisson"), seed = 4,
+            weights = TRUE)
+  s$k <- 5
+  m <- ht_mean(s, "k")
+  expect_identical(m$mean, 5)
+  expect_identical(m$variance, 0)
+  expect_equal(m$ci, c(5, 5))
+  expect_true(is.na(m$deff))
+  expect_match(m$note, "`y` is 5 in every sampled row")
+  expect_output(print(m), "5 in every sampled row")
+  tot <- ht_total(s, "k")
+  expect_true(tot$se > 0)
+  expect_true(is.na(tot$deff))
+
+  # Data with a large offset is not constant, and keeps its design effect
+  s$big <- 1e6 + (seq_len(nrow(s)) %% 3) / 2
+  expect_true(is.finite(ht_mean(s, "big")$deff))
+  expect_true(is.finite(ht_total(s, "big")$deff))
+})
+
+test_that("deff is measured against the rows the design can reach", {
+  # An equal-probability sample of 20 from the first 100 of 400 rows. Against
+  # all 400 rows the total's design effect came out 0.05.
+  pop <- data.frame(y = 50 + (1:400 * 37) %% 23)
+  expect_warning(
+    s <- draw(pop, design_reservoir(n = 20, max_items = 100), seed = 1,
+              weights = TRUE),
+    "max_items")
+  expect_equal(deff(ht_total(s, "y")), 1)
+  expect_equal(deff(ht_mean(s, "y")), 1)
+  # The Horvitz-Thompson mean is the total over all 400 rows
+  expect_equal(deff(ht_mean(s, "y", estimator = "ht")),
+               deff(ht_total(s, "y")))
+})
+
+test_that("an estimate says how many frame rows it cannot cover", {
+  skew <- data.frame(id = 1:1000, g = rep(c("big", "rare"), c(990, 10)),
+                     y = rep(c(1, 1000), c(990, 10)))
+  expect_warning(
+    s <- draw(skew, design_stratified("g", n = 20), seed = 1, weights = TRUE),
+    class = "drawn_empty_stratum")
+  r <- ht_total(s, "y")
+  expect_equal(r$unreachable, 10)
+  expect_output(print(r), "unreachable  10 frame rows at probability 0")
+  expect_output(print(ht_total(s, "y", variance = "none")), "unreachable  10")
+  expect_equal(ht_mean(s, "y")$unreachable, 10)
+
+  all_rows <- draw(skew, design_simple(n = 20), seed = 1, weights = TRUE)
+  expect_equal(ht_total(all_rows, "y")$unreachable, 0)
+  out <- capture.output(print(ht_total(all_rows, "y")))
+  expect_false(any(grepl("unreachable", out)))
+})

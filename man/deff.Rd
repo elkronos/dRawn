@@ -10,18 +10,37 @@ deff(x)
 \item{x}{A result from \code{\link[=ht_total]{ht_total()}} or \code{\link[=ht_mean]{ht_mean()}}.}
 }
 \value{
-A single number, or \code{NA} when the design has no variance estimate.
+A single number, or \code{NA} when the design has no variance estimate
+or \code{y} is constant in the sample.
 }
 \description{
 How much precision the design costs against simple random sampling of the
 same size (Kish 1965). \code{deff = 1} means the design is doing as well as a
-coin flip over the frame; above 1 it is doing worse, which is the usual price
-of clustering; below 1 it is doing better, which is what stratification and
-probability-proportional-to-size buy you.
+simple random sample from the rows it can reach; above 1 it is doing worse,
+which is the usual price of clustering; below 1 it is doing better, which is
+what stratification and probability-proportional-to-size buy you.
 }
 \details{
 Read it as an exchange rate on sample size: at \code{deff = 2}, a sample of 400
 carries about as much information as 200 drawn at random.
+
+The simple random sample it is measured against is drawn from the rows the
+design gives a probability above 0, \code{sum(inclusion_prob(design, frame) > 0)}
+of them, because those are the rows a total or a Hajek mean estimates
+over. Rows past \code{max_items}, outside a region or time window, dropped by
+\code{na_rm} or in a stratum allocated no rows are left out. Counting them set
+an equal-probability sample of 20 from the first 100 rows of a 400-row
+frame at a design effect of 0.05 for a total, "better than simple random
+sampling", where the right figure is 1.
+\code{survey} measures against the sum of the weights, which is that count for
+an equal-probability design, and gives the same design effect there. A
+Horvitz-Thompson mean
+(\code{estimator = "ht"}) divides the total by the frame's row count, so its
+design effect is the total's.
+
+The design effect is \code{NA} when there is no variance, and when \code{y} takes
+one value in every sampled row, where there is no spread for a simple
+random sample to be measured by.
 
 \code{survey} has a \code{deff()} of its own, and attaching \code{survey} after this
 package masks this one. Both work on an estimate from \code{\link[=ht_total]{ht_total()}} or

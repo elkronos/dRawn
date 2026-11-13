@@ -248,3 +248,63 @@ test_that("a domain of intervals taken whole is exact at 0 df", {
   m <- ht_mean(s, "y", by = "early")
   expect_equal(m$ci_lower[m$early], mean(p$y[p$early]))
 })
+
+test_that("domain means decide a proportion from the frame, as ht_mean() does", {
+  pop <- data.frame(id = 1:100, site = rep(c("a", "b"), 50),
+                    kids = c(rep(0, 60), rep(1, 36), rep(3, 4)))
+  s <- draw(pop, design_simple(n = 10), seed = 1, weights = TRUE)
+  expect_true(all(s$kids %in% 0:1))
+  expect_equal(attr(ht_mean(s, "kids", by = "site"), "ci_scale"), "linear")
+  r <- ht_mean(s, "kids", by = "site", proportion = TRUE)
+  expect_equal(attr(r, "ci_scale"), "logit")
+  expect_output(print(r), "95% CI, logit, ")
+})
+
+test_that("a domain proportion of 0 gets a beta interval and a note", {
+  pop <- data.frame(id = 1:300, site = rep(c("a", "b", "c"), each = 100))
+  pop$late <- pop$site == "c" & pop$id %% 4 == 0
+  s <- draw(pop, design_stratified("site", n = 60), seed = 1, weights = TRUE)
+  r <- ht_mean(s, "late", by = "site")
+  # Twenty sampled rows in each domain, against the design's 57 degrees of
+  # freedom.
+  n_eff <- 20 * (stats::qt(0.025, 19) / stats::qt(0.025, 57))^2
+  expect_equal(r$ci_lower[1:2], c(0, 0))
+  expect_equal(r$ci_upper[1:2], rep(stats::qbeta(0.975, 1, n_eff), 2))
+  expect_true(r$ci_lower[3] > 0 && r$ci_upper[3] < 1)
+  expect_match(attr(r, "notes"), "The domains `a`, `b` have a proportion of 0",
+               all = FALSE)
+  expect_output(print(r), "The domains `a`, `b` have a proportion of 0")
+})
+
+test_that("a y constant over a domain gives its mean a variance of exactly 0", {
+  pop <- data.frame(id = 1:200, site = rep(c("a", "b"), 100),
+                    w = 1 + (1:200 * 7) %% 13)
+  pop$y <- ifelse(pop$site == "a", 0.3, (1:200 * 11) %% 17)
+  s <- draw(pop, design_weighted("w", n = 40, method = "poisson"), seed = 2,
+            weights = TRUE)
+  r <- ht_mean(s, "y", by = "site")
+  expect_identical(r$mean[1], 0.3)
+  expect_identical(r$se[1], 0)
+  expect_true(r$se[2] > 0)
+  expect_match(attr(r, "notes"), "every sampled row of the domain `a`",
+               all = FALSE)
+})
+
+test_that("domain tables carry one-sided bounds and the unreachable count", {
+  skew <- data.frame(id = 1:1000, g = rep(c("big", "rare"), c(990, 10)),
+                     region = rep(c("east", "west"), 500),
+                     y = 1 + (1:1000 * 7) %% 31)
+  expect_warning(
+    s <- draw(skew, design_stratified("g", n = 40), seed = 1, weights = TRUE),
+    class = "drawn_empty_stratum")
+  r <- ht_total(s, "y", by = "region", alternative = "less")
+  two <- ht_total(s, "y", by = "region", level = 0.90)
+  expect_equal(r$ci_upper, two$ci_upper)
+  expect_equal(r$ci_lower, c(-Inf, -Inf))
+  expect_equal(attr(r, "alternative"), "less")
+  expect_equal(attr(r, "unreachable"), 10)
+  expect_output(print(r), "95% upper bound, t, 39 df")
+  expect_output(print(r), "unreachable  10 frame rows at probability 0")
+  g <- ht_mean(s, "y", by = "region", alternative = "greater")
+  expect_equal(g$ci_upper, c(Inf, Inf))
+})

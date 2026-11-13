@@ -123,11 +123,11 @@ table(certain = s$.prob == 1)
 
 ## Estimate
 
-Total misstatement, with a one-sided 95% upper bound — which is the upper end
-of a two-sided 90% interval:
+Total misstatement, with a one-sided 95% upper bound. It is the upper end of
+a two-sided 90% interval, so `level = 0.90` gives the same figure:
 
 ```{r total}
-m <- ht_total(s, "misstatement", level = 0.90)
+m <- ht_total(s, "misstatement", alternative = "less")
 m
 c(upper_bound_95 = m$ci[2], truth = sum(ledger$misstatement))
 ```
@@ -169,7 +169,7 @@ often the upper bound actually sits above the true total:
 truth <- sum(ledger$misstatement)
 covered <- vapply(1:300, function(i) {
   r <- ht_total(draw(ledger, audit_design, seed = 1000 + i, weights = TRUE),
-                "misstatement", level = 0.90)
+                "misstatement", alternative = "less")
   r$ci[2] >= truth
 }, logical(1))
 mean(covered)

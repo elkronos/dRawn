@@ -300,6 +300,30 @@ test_that("the jackknife's finite population correction is 0 at a census", {
     design_multistage("cl", n_clusters = 6, n = 12), pop, 6), 1)
 })
 
+test_that("the jackknife's correction counts only rows the design can reach", {
+  # Rows `na_rm` drops can never be drawn. The same draw from the frame
+  # without them has the same jackknife.
+  d <- data.frame(id = 1:60, w = c(NA, NA, 1 + (1:58 %% 9)),
+                  a = (1:60 %% 7) / 7, y = 10 + (1:60 * 13) %% 17)
+  d$a[5:8] <- NA
+  pps <- function(...) design_weighted("w", n = 12, method = "systematic", ...)
+  s1 <- draw(d, pps(na_rm = TRUE), seed = 4, weights = TRUE)
+  s2 <- draw(d[!is.na(d$w), ], pps(), seed = 4, weights = TRUE)
+  expect_equal(s1$id, s2$id)
+  expect_equal(ht_total(s1, "y", variance = "jackknife")$se,
+               ht_total(s2, "y", variance = "jackknife")$se)
+
+  p1 <- draw(d, design_spread("a", n = 10, na_rm = TRUE), seed = 4,
+             weights = TRUE)
+  p2 <- draw(d[!is.na(d$a), ], design_spread("a", n = 10), seed = 4,
+             weights = TRUE)
+  expect_equal(p1$id, p2$id)
+  expect_equal(ht_total(p1, "y", variance = "jackknife")$se,
+               ht_total(p2, "y", variance = "jackknife")$se)
+  expect_equal(drawn:::reachable_rows(design_spread("a", n = 10, na_rm = TRUE),
+                                      d), 56)
+})
+
 test_that("units systematic PPS takes with certainty are held fixed", {
   pop <- dominant_pop()
   d <- design_weighted("w", n = 15, method = "systematic")

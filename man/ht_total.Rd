@@ -10,7 +10,8 @@ ht_total(
   variance = c("auto", "analytic", "jackknife", "none"),
   level = 0.95,
   by = NULL,
-  df = NULL
+  df = NULL,
+  alternative = c("two.sided", "less", "greater")
 )
 }
 \arguments{
@@ -35,24 +36,36 @@ the result is one row per domain. See "Domains".}
 \item{df}{Degrees of freedom for the interval. \code{NULL} uses the design's
 (see "Confidence intervals"); \code{Inf} gives a normal interval; otherwise a
 single number of 1 or more.}
+
+\item{alternative}{\code{"two.sided"} for a confidence interval, \code{"less"} for a
+one-sided upper bound or \code{"greater"} for a lower bound, each at \code{level}.
+See "Confidence intervals".}
 }
 \value{
 A list with a \code{print()} method, holding:
 \describe{
 \item{\code{total}}{The Horvitz-Thompson total, \code{sum(y / pi)}.}
-\item{\code{variance}, \code{se}, \code{ci}, \code{level}, \code{df}}{Its estimated variance,
-standard error, confidence interval, and the degrees of freedom the
-interval used. \code{NA} where the design supports no variance.}
+\item{\code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}}{Its
+estimated variance, standard error, confidence interval or one-sided
+bound, and the degrees of freedom the interval used. \code{NA} where the
+design supports no variance.}
+\item{\code{ci_scale}}{The scale the interval was formed on: \code{"linear"}
+for a total, and \code{"logit"} or \code{"beta"} for a proportion from
+\code{\link[=ht_mean]{ht_mean()}}.}
 \item{\code{n}, \code{design}}{Rows used, and the design's type.}
 \item{\code{deff}}{The design effect — see \code{\link[=deff]{deff()}}.}
 \item{\code{method}}{Which estimator produced the variance. See "Variance".}
 \item{\code{note}}{Why a variance is missing, what approximation was used,
 or which fallback was taken. \code{NULL} when an exact estimator applied
 cleanly.}
+\item{\code{unreachable}}{Rows of the frame with inclusion probability 0,
+which the estimate does not cover; \code{NA} for a sample saved by drawn
+0.2.0. See "Rows the design cannot reach".}
 }
 With \code{by}, a data frame of class \code{drawn_by} instead: one row per domain,
 with the domain columns, \code{n}, \code{total}, \code{se}, \code{ci_lower}, \code{ci_upper} and
-\code{method}.
+\code{method}, and the level, alternative, scale, notes and unreachable count
+as attributes.
 }
 \description{
 Forms the Horvitz-Thompson total \code{sum(y / pi)} with a standard error, a
@@ -176,7 +189,28 @@ gives \code{n - 1}.
 An estimate whose variance is 0 is exact and gets a zero-width interval
 whatever \code{df} is. Otherwise a design that leaves 0 degrees of freedom, such
 as Poisson sampling that drew one row, gives a standard error but no
-interval, and \code{note} says why. \code{df} set by hand must be at least 1.
+interval, and \code{note} says why. \code{df} set by hand must be at least 1. A
+proportion of 0 or 1 is the exception to the first rule; see
+"Proportions" in \code{\link[=ht_mean]{ht_mean()}}.
+
+\code{alternative = "less"} gives a one-sided upper bound, the figure an auditor
+signs off against, and \code{"greater"} a lower bound. The other end of \code{ci} is
+then \code{-Inf} or \code{Inf}, or 0 or 1 for a proportion, and the printout labels
+the bound. A one-sided bound at \code{level} is the end of a two-sided interval
+at \code{1 - 2 * (1 - level)}, so the 95\% upper bound is the upper end of the
+90\% interval, which \code{level = 0.90} also gives.
+}
+
+\section{Rows the design cannot reach}{
+
+Rows with inclusion probability 0, such as rows past \code{max_items}, outside
+a region or time window, dropped by \code{na_rm} or in a stratum allocated no
+rows, can never be drawn, so a total covers the other rows only.
+\code{\link[=draw]{draw()}} warns about some of them by name. The estimate keeps their
+number in \code{unreachable} and prints it on a line of its own, since a sample
+saved and read back, or drawn with the warning muffled, would otherwise
+give no sign of them. The design effect is measured against a simple
+random sample of the rows the design can reach; see \code{\link[=deff]{deff()}}.
 }
 
 \section{An empty sample}{

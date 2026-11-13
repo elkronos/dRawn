@@ -210,6 +210,10 @@ print.drawn_plan <- function(x, ...) {
 #'   \describe{
 #'     \item{`design`}{The design's type, as a string.}
 #'     \item{`n`, `N`}{Rows drawn, and rows in the frame.}
+#'     \item{`N_reachable`}{Rows of the frame the design gives a probability
+#'       above 0, the population it samples. The printed sampling fraction is
+#'       `n / N_reachable`. `NA` if the design has no closed-form inclusion
+#'       probability, and the fraction is then `n / N`.}
 #'     \item{`weight_range`}{The smallest and largest design weight.}
 #'     \item{`weight_cv`}{Their coefficient of variation. Large values mean a
 #'       few rows carry most of the estimate.}
@@ -271,6 +275,7 @@ sample_summary <- function(sample) {
     design = design_type(design),
     n = nrow(sample),
     N = nrow(pop),
+    N_reachable = if (is.null(pi_all)) NA_integer_ else sum(pi_all > 0),
     weight_range = if (length(w)) range(w, na.rm = TRUE) else c(NA, NA),
     weight_cv = if (length(w) > 1L && mean(w, na.rm = TRUE) > 0) {
       stats::sd(w, na.rm = TRUE) / mean(w, na.rm = TRUE)
@@ -285,7 +290,15 @@ sample_summary <- function(sample) {
 print.drawn_summary <- function(x, ...) {
   cat("Sample of ", fmt_n(x$n), " from ", fmt_n(x$N), "  (", x$design,
       " design)\n", sep = "")
-  cat("  sampling fraction  ", signif(x$n / x$N, 3), "\n", sep = "")
+  # The fraction of the rows the design could draw: rows at probability 0
+  # are listed below as unreachable, and counting them in would understate
+  # it.
+  reach <- x$N_reachable
+  partial <- isTRUE(reach < x$N)
+  cat("  sampling fraction  ",
+      signif(x$n / if (partial) reach else x$N, 3),
+      if (partial) paste0("  (of the ", fmt_n(reach), " reachable rows)"),
+      "\n", sep = "")
   if (all(is.finite(x$weight_range))) {
     cat("  design weights     ", signif(x$weight_range[1], 4), " to ",
         signif(x$weight_range[2], 4), sep = "")

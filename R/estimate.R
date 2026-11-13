@@ -6,11 +6,39 @@
 #' denominator together and they partly cancel. `estimator = "ht"` divides by
 #' the true `N` instead.
 #'
+#' @section Proportions:
 #' For a 0/1 or logical variable either one estimates a proportion, and the
 #' confidence interval is then formed on the logit scale and transformed back
 #' (Korn and Graubard 1999, section 5.3). A symmetric interval around a small
 #' proportion runs below zero; this one cannot, and matches
 #' `survey::svyciprop(method = "xlogit")`.
+#'
+#' Whether `y` is a proportion is read from what `y` is, not from the values
+#' the sample happened to draw. A logical `y` is one, and so is a column of
+#' the frame whose values are all 0 or 1. A count that came out 0 or 1 in
+#' every sampled row is not: a logit interval cannot pass 1, so it would never
+#' cover a mean of 1.2. A numeric vector, or a column added to the sample after
+#' the draw, such as a 0/1 result recorded in fieldwork, gets the symmetric
+#' interval unless `proportion = TRUE` says it is a proportion.
+#' `proportion = FALSE` asks for the symmetric interval whatever `y` is.
+#'
+#' `ci_method = "beta"` gives the Korn and Graubard (1998) interval instead,
+#' a Clopper-Pearson interval at an effective sample size of `p(1 - p) / v`,
+#' with `p` the estimate and `v` its variance, capped at `n` and then scaled
+#' by `(qt(a, n - 1) / qt(a, df))^2` for the design's degrees of freedom.
+#' Here `n` is the number of sampled rows below certainty behind the estimate
+#' and `a` the tail probability of the interval. With no rows taken with
+#' certainty it matches `survey::svyciprop(method = "beta")` whenever the cap
+#' does not bind. It ignores the finite population correction, so it errs
+#' wide when the sample is a large share of the frame.
+#'
+#' An estimate of exactly 0 or 1, such as no deviations found in 60 sampled
+#' invoices, has a variance of 0, and a logit interval around it has no
+#' width. It gets the beta interval whatever `ci_method` says, with the
+#' effective sample size set to `n`, and `note` says so. For 0 of 60 from a
+#' simple random sample, the 95% upper bound (`alternative = "less"`) is
+#' 4.87%. When every sampled row behind the estimate was taken with
+#' certainty, the estimate is exact and the interval has no width.
 #'
 #' @section When the two differ, and which to use:
 #' They coincide **exactly** whenever the design weights of the rows you drew
@@ -54,21 +82,39 @@
 #' with one sampled row or a Poisson sample of one row, gets no standard
 #' error. The "Domains" section of [ht_total()] says more.
 #'
+#' When `y` has the same value in every sampled row, the residuals are 0 and
+#' the Hajek mean's variance is set to exactly 0, with a note, rather than
+#' left to rounding error, which gave standard errors near `1e-16` and design
+#' effects that changed from seed to seed. The design effect is then `NA`.
+#'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. It is
 #'   read as [ht_total()] reads it: `.prob` for the probabilities, and the
 #'   stored frame for the design's columns. See "Which columns are read" there.
 #' @param y The variable to average: a column name, or a numeric vector as long
 #'   as `sample`.
 #' @param estimator `"hajek"` or `"ht"`. See above.
-#' @param variance,level,by,df As for [ht_total()].
+#' @param variance,level,by,df,alternative As for [ht_total()].
+#' @param proportion Whether `y` is a proportion, which decides the shape of
+#'   the interval. `NULL` decides from `y`: a logical `y`, or a column of the
+#'   frame whose values are all 0 or 1, is a proportion. `TRUE` treats `y` as
+#'   one, and needs it to be 0 or 1 in every sampled row; `FALSE` gives the
+#'   symmetric interval. See "Proportions".
+#' @param ci_method The interval for a proportion: `"logit"`, or `"beta"` for
+#'   Korn and Graubard's. A proportion of exactly 0 or 1 gets `"beta"` either
+#'   way. See "Proportions".
 #'
 #' @return A list with a `print()` method, holding `mean`, `estimator`,
-#'   `variance`, `se`, `ci`, `level`, `df`, `n`, `design`, `deff`, `method` and
-#'   `note`. See [ht_total()] for what `method`, `df` and `note` say, and
-#'   [deff()] for the design effect. With `by`, a data frame with one row per
-#'   domain.
+#'   `variance`, `se`, `ci`, `level`, `alternative`, `df`, `n`, `design`,
+#'   `deff`, `method`, `note`, `ci_scale` (`"linear"`, `"logit"` or `"beta"`)
+#'   and `unreachable`. See [ht_total()] for what `method`, `df`, `note` and
+#'   `unreachable` say, and [deff()] for the design effect. With `by`, a data
+#'   frame with one row per domain.
 #'
 #' @references
+#' Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
+#' proportions with small expected number of positive counts estimated from
+#' survey data. *Survey Methodology*, 24, 193–201.
+#'
 #' Korn, E. L. and Graubard, B. I. (1999). *Analysis of Health Surveys*.
 #' Wiley.
 #'
@@ -114,15 +160,27 @@
 #' @export
 ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                     variance = c("auto", "analytic", "jackknife", "none"),
-                    level = 0.95, by = NULL, df = NULL) {
+                    level = 0.95, by = NULL, df = NULL, proportion = NULL,
+                    ci_method = c("logit", "beta"),
+                    alternative = c("two.sided", "less", "greater")) {
   estimator <- check_choice(estimator, c("hajek", "ht"), "estimator")
   variance <- check_choice(variance,
                            c("auto", "analytic", "jackknife", "none"),
                            "variance")
+  ci_method <- check_choice(ci_method, c("logit", "beta"), "ci_method")
+  alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
+                              "alternative")
   parts <- ht_prepare(sample, y, level, df)
+  parts$proportion <- mean_is_proportion(parts, proportion)
+  if (ci_method == "beta" && !parts$proportion) {
+    stop("`ci_method = \"beta\"` gives an interval for a proportion, and ",
+         "this mean is not one. Pass `proportion = TRUE` if `y` is a 0/1 ",
+         "indicator; see \"Proportions\" in ?ht_mean.", call. = FALSE)
+  }
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "mean",
-                       estimator = estimator))
+                       estimator = estimator, ci_method = ci_method,
+                       alternative = alternative))
   }
   warn_grouped(sample, "ht_mean")
   if (!nrow(parts$sample) && estimator == "hajek") {
@@ -142,14 +200,101 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
   # Linearise: the variance of a ratio is the variance of a total of residuals.
   # For the HT mean there is no denominator to vary, so the residual is just y.
   z <- if (estimator == "hajek") (yv - est) / denom else yv / N
+  # A constant `y` has residuals of exactly 0. Computed, they come out a
+  # rounding error away from it, and so did the standard error.
+  constant <- estimator == "hajek" && length(yv) > 0L && all(yv == yv[1])
+  if (constant) {
+    est <- yv[1]
+    z <- numeric(length(yv))
+  }
   declined <- if (estimator == "hajek" && variance != "none") {
     ratio_decline(parts, rep(TRUE, length(yv)))
   }
 
-  estimate_one(parts, est, z, variance, level, df, what = "mean",
-               class = "drawn_mean", deff_y = yv,
-               extra = list(estimator = estimator), logit = parts$binary,
-               var_out = declined)
+  out <- estimate_one(parts, est, z, variance, level, df, what = "mean",
+                      class = "drawn_mean", deff_y = yv,
+                      extra = list(estimator = estimator),
+                      proportion = parts$proportion, ci_method = ci_method,
+                      alternative = alternative, var_out = declined,
+                      divide_by = denom_rows(parts, estimator))
+  if (constant && identical(out$variance, 0) &&
+      !identical(out$ci_scale, "beta") && any(!is_certain(pi_i))) {
+    out$note <- paste(c(out$note, constant_note(yv[1], parts$proportion)),
+                      collapse = " ")
+  }
+  out
+}
+
+#' What the mean divides its Horvitz-Thompson total by, for the design effect
+#'
+#' The Hajek mean estimates the mean over the rows the design can reach. The
+#' Horvitz-Thompson mean divides by every row of the frame.
+#'
+#' @noRd
+denom_rows <- function(parts, estimator) {
+  if (estimator == "ht") nrow(parts$pop) else parts$reach
+}
+
+#' Why a Hajek mean of a constant `y` has a variance of 0
+#' @noRd
+constant_note <- function(value, proportion, domains = NULL) {
+  hint <- if (!proportion && value %in% c(0, 1)) {
+    paste0(" If `y` is a 0/1 indicator, `proportion = TRUE` gives a ",
+           "proportion's interval, which allows for rows with the other value.")
+  }
+  if (is.null(domains)) {
+    return(paste0(
+      "`y` is ", format(value), " in every sampled row, so the Hajek mean's ",
+      "residuals are 0 and its estimated variance is 0. The interval has no ",
+      "width, though rows the sample did not draw may differ.", hint))
+  }
+  paste0("`y` takes one value in every sampled row of the domain",
+         if (length(domains) > 1L) "s", " ",
+         paste0("`", domains, "`", collapse = ", "), ", so ",
+         if (length(domains) > 1L) "their Hajek means have" else
+           "its Hajek mean has",
+         " an estimated variance of 0 and an interval with no width, though ",
+         "rows the sample did not draw may differ.")
+}
+
+#' Whether a mean is a proportion, for the shape of its interval
+#'
+#' Read from what `y` is rather than from the values the sample happened to
+#' draw: a logical `y`, or a column of the frame whose values are all 0 or 1
+#' (a logical column of the frame counts too). A count that came out 0 or 1
+#' in every sampled row is not one, since a logit interval cannot pass 1 and
+#' would never cover a mean above it. A numeric vector, and a column added to
+#' the sample after the draw, are proportions only when `proportion` says so.
+#'
+#' @noRd
+mean_is_proportion <- function(parts, proportion) {
+  y <- parts$y
+  binary <- all(y == 0 | y == 1)
+  if (!is.null(proportion)) {
+    if (!is.logical(proportion) || length(proportion) != 1L ||
+        is.na(proportion)) {
+      stop("`proportion` must be NULL, TRUE or FALSE, not ",
+           format_bad(proportion), ".", call. = FALSE)
+    }
+    if (proportion && !binary) {
+      bad <- unique(y[!(y == 0 | y == 1)])
+      stop("`proportion = TRUE` needs `y` to be 0 or 1 in every sampled row, ",
+           "and it takes ", length(bad), " other value",
+           if (length(bad) > 1L) "s", ", such as ", format(bad[1]), ". Leave ",
+           "`proportion` at NULL for the mean of a count or a measurement.",
+           call. = FALSE)
+    }
+    return(proportion)
+  }
+  if (!binary) return(FALSE)
+  if (parts$y_logical) return(TRUE)
+  col <- parts$y_name
+  if (is.null(col) || !col %in% names(parts$pop)) return(FALSE)
+  x <- parts$pop[[col]]
+  if (is.logical(x)) return(TRUE)
+  if (!is.numeric(x)) return(FALSE)
+  x <- x[!is.na(x)]
+  length(x) > 0L && all(x == 0 | x == 1)
 }
 
 #' Estimates for each domain, from the whole sample
@@ -161,7 +306,8 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
 #'
 #' @noRd
 estimate_by <- function(parts, by, variance, level, df, what,
-                        estimator = "hajek") {
+                        estimator = "hajek", ci_method = "logit",
+                        alternative = "two.sided") {
   if (!is.character(by) || !length(by) || anyNA(by)) {
     stop("`by` must name one or more columns of `sample`.", call. = FALSE)
   }
@@ -199,10 +345,13 @@ estimate_by <- function(parts, by, variance, level, df, what,
   aligned <- !is.null(pop_key) && identical(pop_key[parts$rows], key)
   ratio <- what == "mean" && estimator == "hajek" && variance != "none"
   psu <- if (ratio) sample_units(parts$design, parts$units)
+  proportion <- what == "mean" && isTRUE(parts$proportion)
 
   rows <- lapply(levels_in, function(d) {
-    ind <- as.numeric(key == d)
+    member <- key == d
+    ind <- as.numeric(member)
     domain <- if (aligned) !is.na(pop_key) & pop_key == d else NA
+    constant <- FALSE
     if (what == "total") {
       est <- sum(ind * yv / pi_i)
       z <- ind * yv
@@ -218,17 +367,27 @@ estimate_by <- function(parts, by, variance, level, df, what,
       }
       est <- sum(ind * yv / pi_i) / denom
       z <- if (estimator == "hajek") ind * (yv - est) / denom else ind * yv / denom
+      # A `y` constant over the domain has residuals of exactly 0, not the
+      # rounding error the subtraction leaves.
+      in_d <- yv[member]
+      constant <- estimator == "hajek" && all(in_d == in_d[1])
+      if (constant) {
+        est <- in_d[1]
+        z <- numeric(length(yv))
+      }
     }
-    v <- if (ratio) ratio_decline(parts, ind == 1, domain, labels[d], psu)
+    v <- if (ratio) ratio_decline(parts, member, domain, labels[d], psu)
     v <- v %||% ht_variance_dispatch(parts$design, parts$units, parts$pop,
                                      parts$rows, z, pi_i, variance, domain)
-    ci <- interval(est, v$variance, level, df_use,
-                   logit = what == "mean" && parts$binary)
+    ci <- ci_for(est, v$variance, level, df_use, alternative, proportion,
+                 ci_method, pi_i[member])
     list(n = sum(ind), est = est, se = if (is.finite(v$variance) &&
                                              v$variance >= 0)
            sqrt(v$variance) else NA_real_,
-         lo = ci[1], hi = ci[2], method = v$method %||% "analytic",
-         note = v$note)
+         lo = ci$ci[1], hi = ci$ci[2], method = v$method %||% "analytic",
+         note = v$note, edge = ci$edge,
+         constant = constant && identical(v$variance, 0) &&
+           !ci$edge && !ci$exact)
   })
 
   first <- match(levels_in, key)
@@ -242,14 +401,26 @@ estimate_by <- function(parts, by, variance, level, df, what,
   out$ci_upper <- vapply(rows, `[[`, numeric(1), "hi")
   out$method <- vapply(rows, `[[`, character(1), "method")
   notes <- unique(unlist(lapply(rows, `[[`, "note")))
-  if (any(is.finite(out$se) & !is.finite(out$ci_lower))) {
+  if (any(is.finite(out$se) & (is.na(out$ci_lower) | is.na(out$ci_upper)))) {
     notes <- c(notes, df_note(df_use))
+  }
+  edge <- vapply(rows, `[[`, logical(1), "edge")
+  if (any(edge)) {
+    notes <- c(notes, edge_note(domains = labels[levels_in[edge]],
+                                ci_method = ci_method,
+                                certain = any(is_certain(pi_i))))
+  }
+  constant <- vapply(rows, `[[`, logical(1), "constant")
+  if (any(constant)) {
+    notes <- c(notes, constant_note(NA, TRUE,
+                                    domains = labels[levels_in[constant]]))
   }
   structure(out, class = c("drawn_by", "data.frame"),
             what = what, estimator = if (what == "mean") estimator,
-            level = level, df = df_use, design = design_type(parts$design),
-            ci_scale = if (what == "mean" && parts$binary) "logit" else "linear",
-            notes = notes)
+            level = level, alternative = alternative, df = df_use,
+            design = design_type(parts$design),
+            ci_scale = if (proportion) ci_method else "linear",
+            notes = notes, unreachable = parts$unreachable)
 }
 
 #' @export
@@ -259,29 +430,76 @@ print.drawn_by <- function(x, ...) {
     if (identical(attr(x, "estimator"), "ht")) "Horvitz-Thompson mean" else
       "Hajek mean"
   cat(label, " by domain  (", attr(x, "design"), " design, ",
-      format(100 * attr(x, "level")), "% CI, ",
-      if (identical(attr(x, "ci_scale"), "logit")) "logit, ",
-      df_label(attr(x, "df")), ")\n", sep = "")
+      ci_label(attr(x, "level"), attr(x, "alternative")), ", ",
+      scale_label(attr(x, "ci_scale")), df_label(attr(x, "df")), ")\n",
+      sep = "")
   y <- x
   attributes(y) <- attributes(x)[c("names", "row.names")]
   class(y) <- "data.frame"
   print(y, digits = 4, row.names = FALSE)
+  print_unreachable(attr(x, "unreachable"), "these estimates")
   notes <- attr(x, "notes")
   notes <- notes[nzchar(notes) & !grepl("^Variance not requested", notes)]
   if (length(notes)) cat_note(notes)
   invisible(x)
 }
 
+#' "95% CI", or "95% upper bound" for a one-sided interval
+#' @noRd
+ci_label <- function(level, alternative) {
+  paste0(format(100 * level), "% ", switch(alternative %||% "two.sided",
+    less = "upper bound",
+    greater = "lower bound",
+    "CI"
+  ))
+}
+
+#' The interval's scale, as it leads the bracket after an interval
+#' @noRd
+scale_label <- function(scale) {
+  switch(scale %||% "linear", logit = "logit, ", beta = "beta, ", "")
+}
+
+#' A line for frame rows the design could never select
+#'
+#' `draw()` warns about them by name; this keeps them in view on the
+#' estimate, which says nothing about them.
+#'
+#' @noRd
+print_unreachable <- function(n, what) {
+  if (!isTRUE(n > 0)) return(invisible(NULL))
+  cat("  unreachable  ", fmt_n(n), " frame row", if (n > 1) "s",
+      " at probability 0, not covered by ", what, "\n", sep = "")
+}
+
 #' Design effect
 #'
 #' How much precision the design costs against simple random sampling of the
 #' same size (Kish 1965). `deff = 1` means the design is doing as well as a
-#' coin flip over the frame; above 1 it is doing worse, which is the usual price
-#' of clustering; below 1 it is doing better, which is what stratification and
-#' probability-proportional-to-size buy you.
+#' simple random sample from the rows it can reach; above 1 it is doing worse,
+#' which is the usual price of clustering; below 1 it is doing better, which is
+#' what stratification and probability-proportional-to-size buy you.
 #'
 #' Read it as an exchange rate on sample size: at `deff = 2`, a sample of 400
 #' carries about as much information as 200 drawn at random.
+#'
+#' The simple random sample it is measured against is drawn from the rows the
+#' design gives a probability above 0, `sum(inclusion_prob(design, frame) > 0)`
+#' of them, because those are the rows a total or a Hajek mean estimates
+#' over. Rows past `max_items`, outside a region or time window, dropped by
+#' `na_rm` or in a stratum allocated no rows are left out. Counting them set
+#' an equal-probability sample of 20 from the first 100 rows of a 400-row
+#' frame at a design effect of 0.05 for a total, "better than simple random
+#' sampling", where the right figure is 1.
+#' `survey` measures against the sum of the weights, which is that count for
+#' an equal-probability design, and gives the same design effect there. A
+#' Horvitz-Thompson mean
+#' (`estimator = "ht"`) divides the total by the frame's row count, so its
+#' design effect is the total's.
+#'
+#' The design effect is `NA` when there is no variance, and when `y` takes
+#' one value in every sampled row, where there is no spread for a simple
+#' random sample to be measured by.
 #'
 #' `survey` has a `deff()` of its own, and attaching `survey` after this
 #' package masks this one. Both work on an estimate from [ht_total()] or
@@ -289,7 +507,8 @@ print.drawn_by <- function(x, ...) {
 #'
 #' @param x A result from [ht_total()] or [ht_mean()].
 #'
-#' @return A single number, or `NA` when the design has no variance estimate.
+#' @return A single number, or `NA` when the design has no variance estimate
+#'   or `y` is constant in the sample.
 #'
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley.
@@ -373,7 +592,8 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   } else {
     y
   }
-  if (is.logical(yv)) yv <- as.numeric(yv)
+  y_logical <- is.logical(yv)
+  if (y_logical) yv <- as.numeric(yv)
   if (!is.numeric(yv) || length(yv) != nrow(sample)) {
     stop("`y` must be a numeric column name or a numeric vector as long as ",
          "`sample`.", call. = FALSE)
@@ -393,9 +613,21 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   # to compare `.prob` with, so only its type and range are checked.
   if (is.null(state$pi_all)) check_prob(sample)
   warn_weight_edited(sample)
+  # The rows the design can reach: those with a probability above 0 at draw
+  # time. A sample saved by drawn 0.2.0 has no such record, so its count is
+  # read from the design's columns and the unreachable rows are unknown.
+  pi_all <- state$pi_all
   list(design = state$design, rows = state$rows, pop = state$pop,
-       units = state$units, pi_all = state$pi_all, y = yv, pi = sample$.prob,
-       sample = sample, binary = all(yv == 0 | yv == 1))
+       units = state$units, pi_all = pi_all, y = yv, pi = sample$.prob,
+       sample = sample,
+       y_name = if (is.character(y) && length(y) == 1L) y,
+       y_logical = y_logical,
+       reach = if (is.null(pi_all)) {
+         reachable_rows(state$design, state$pop)
+       } else {
+         sum(pi_all > 0)
+       },
+       unreachable = if (is.null(pi_all)) NA_integer_ else sum(pi_all == 0))
 }
 
 #' Warn when `.weight` is no longer `1 / .prob`
@@ -444,46 +676,157 @@ warn_grouped <- function(sample, fun) {
 }
 
 #' A confidence interval from an estimate, a variance and degrees of freedom
+#'
+#' `scale` is `"linear"`, `"logit"` or `"beta"`; `logit = TRUE` is short for
+#' the second. `alternative` gives a two-sided interval or a one-sided bound,
+#' `"less"` an upper bound and `"greater"` a lower one, as in
+#' [stats::t.test()]. The open end of a bound is `-Inf` or `Inf`, or 0 or 1
+#' for a proportion. A one-sided bound at `level` is the end of a two-sided
+#' interval at `1 - 2 * (1 - level)`.
+#'
+#' The beta interval (Korn and Graubard 1998) is Clopper-Pearson's at an
+#' effective sample size of `p(1 - p) / v`, capped at `n` and scaled by
+#' `(qt(a, n - 1) / qt(a, df))^2`, the design's degrees of freedom against
+#' those of a simple random sample of `n`. With `a` the tail probability this
+#' is `survey::svyciprop(method = "beta")` when the cap does not bind. At an
+#' estimate of 0 or 1 the variance is 0 and says nothing, and the effective
+#' sample size is `n`. `n` counts the sampled rows below certainty behind the
+#' estimate; with none, the estimate is exact.
+#'
 #' @noRd
-interval <- function(est, v, level, df, logit = FALSE) {
+interval <- function(est, v, level, df, logit = FALSE,
+                     alternative = "two.sided",
+                     scale = if (logit) "logit" else "linear", n = NA_real_) {
   if (!is.finite(v) || v < 0) return(c(NA_real_, NA_real_))
-  # A variance of 0 is an exact estimate, whatever the degrees of freedom.
-  if (v == 0) return(c(est, est))
-  q <- if (is.finite(df)) {
-    if (df < 1) return(c(NA_real_, NA_real_))
-    stats::qt(1 - (1 - level) / 2, df)
-  } else {
-    stats::qnorm(1 - (1 - level) / 2)
+  proportion <- scale %in% c("logit", "beta")
+  open <- if (proportion) c(0, 1) else c(-Inf, Inf)
+  bound <- function(lo, hi) {
+    switch(alternative, less = c(open[1], hi), greater = c(lo, open[2]),
+           c(lo, hi))
   }
-  if (logit && est > 0 && est < 1) {
+  edge <- est <= 0 || est >= 1
+  # A variance of 0 is an exact estimate, whatever the degrees of freedom,
+  # except for a proportion of 0 or 1, whose variance is 0 because no row of
+  # the other kind was drawn.
+  exact <- v == 0 && !(scale == "beta" && edge && isTRUE(n >= 1))
+  if (exact) return(bound(est, est))
+  if (is.finite(df) && df < 1) return(c(NA_real_, NA_real_))
+  # The tail probability on each side that has one.
+  a <- if (alternative == "two.sided") (1 - level) / 2 else 1 - level
+  quantile <- function(p, df) {
+    if (is.finite(df)) stats::qt(p, df) else stats::qnorm(p)
+  }
+  q <- quantile(1 - a, df)
+  if (scale == "beta" && est >= 0 && est <= 1) {
+    n_eff <- if (edge) n else min(n, est * (1 - est) / v)
+    if (n >= 2) n_eff <- n_eff * (stats::qt(a, n - 1) / quantile(a, df))^2
+    x <- n_eff * est
+    lo <- if (x <= 0) 0 else stats::qbeta(a, x, n_eff - x + 1)
+    hi <- if (x >= n_eff) 1 else stats::qbeta(1 - a, x + 1, n_eff - x)
+    return(bound(lo, hi))
+  }
+  if (proportion && !edge) {
     # A proportion's interval on the logit scale, by the delta method, then
     # back: it cannot leave [0, 1], and near 0 or 1 it is asymmetric the way
     # the sampling distribution is. This is survey::svyciprop()'s "xlogit".
     se_logit <- sqrt(v) / (est * (1 - est))
-    return(stats::plogis(stats::qlogis(est) + c(-1, 1) * q * se_logit))
+    ends <- stats::plogis(stats::qlogis(est) + c(-1, 1) * q * se_logit)
+    return(bound(ends[1], ends[2]))
   }
-  est + c(-1, 1) * q * sqrt(v)
+  if (proportion) open <- c(-Inf, Inf)
+  bound(est - q * sqrt(v), est + q * sqrt(v))
+}
+
+#' The interval for a total or mean, and the scale it was formed on
+#'
+#' A mean that is not a proportion gets the symmetric interval. A proportion
+#' gets `ci_method`'s, except that an estimate of exactly 0 or 1 gets the beta
+#' interval whatever `ci_method` says: its variance is 0, and a logit interval
+#' around it has no width. `pi_i` holds the probabilities of the sampled rows
+#' behind the estimate, the domain's for a domain; those below certainty are
+#' the beta interval's `n`, and with none of them the estimate is exact.
+#'
+#' Returns the interval, its `scale`, `edge` (the beta interval was used for
+#' an estimate of 0 or 1) and `exact`.
+#'
+#' @noRd
+ci_for <- function(est, v, level, df, alternative = "two.sided",
+                   proportion = FALSE, ci_method = "logit", pi_i = NULL) {
+  if (!proportion) {
+    return(list(ci = interval(est, v, level, df, alternative = alternative),
+                scale = "linear", edge = FALSE, exact = FALSE))
+  }
+  n <- sum(!is_certain(pi_i))
+  edge <- is.finite(v) && v >= 0 && (est == 0 || est == 1) && n >= 1
+  scale <- if (edge) "beta" else ci_method
+  # A Horvitz-Thompson mean can pass 1. Its interval is then symmetric.
+  if (est < 0 || est > 1) scale <- "linear"
+  list(ci = interval(est, v, level, df, alternative = alternative,
+                     scale = scale, n = n),
+       scale = scale, edge = edge, exact = n == 0)
+}
+
+#' Why a proportion of 0 or 1 has a beta interval
+#' @noRd
+edge_note <- function(est = NULL, n = NULL, domains = NULL,
+                      ci_method = "logit", certain = FALSE) {
+  why <- if (ci_method == "logit") {
+    ", and a logit interval around it would have no width"
+  } else {
+    ""
+  }
+  below <- if (certain) " below certainty" else ""
+  if (is.null(domains)) {
+    return(paste0(
+      "The estimate is ", format(est), ", with an estimated variance of 0",
+      why, ". The interval is Korn and Graubard's beta interval, with the ",
+      fmt_n(n), " sampled row", if (n > 1) "s", below, " as its effective ",
+      "sample size."))
+  }
+  several <- length(domains) > 1L
+  paste0("The domain", if (several) "s", " ",
+         paste0("`", domains, "`", collapse = ", "),
+         if (several) " have" else " has",
+         " a proportion of 0 or 1, with an estimated variance of 0. ",
+         if (several) "Their intervals are" else "Its interval is",
+         " Korn and Graubard's beta interval", if (several) "s",
+         ", with the domain's sampled rows", below, " as the effective ",
+         "sample size.")
 }
 
 #' Assemble an estimate, its interval, and its design effect
+#'
+#' `divide_by` is what a mean divides its Horvitz-Thompson total by, for the
+#' design effect: see `deff_value()`.
+#'
 #' @noRd
-finish_estimate <- function(est, var_out, level, df, n, design, y, pi_i, N,
-                            what, class, logit = FALSE) {
+finish_estimate <- function(est, var_out, parts, level, df, what, class,
+                            y = NULL, proportion = FALSE, ci_method = "logit",
+                            alternative = "two.sided",
+                            divide_by = parts$reach) {
   v <- var_out$variance
   se <- if (is.na(v) || v < 0) NA_real_ else sqrt(v)
-  logit <- isTRUE(logit && est > 0 && est < 1)
-  ci <- interval(est, v, level, df, logit)
+  ci <- ci_for(est, v, level, df, alternative, proportion, ci_method,
+               parts$pi)
   note <- var_out$note
-  if (!is.na(se) && !all(is.finite(ci))) {
+  if (!is.na(se) && anyNA(ci$ci)) {
     note <- paste(c(note, df_note(df)), collapse = " ")
   }
+  if (ci$edge) {
+    certain <- is_certain(parts$pi)
+    note <- paste(c(note, edge_note(est, sum(!certain), ci_method = ci_method,
+                                    certain = any(certain))),
+                  collapse = " ")
+  }
+  n <- nrow(parts$sample)
 
-  out <- list(variance = v, se = se, ci = ci, level = level, df = df, n = n,
-              ci_scale = if (logit) "logit" else "linear",
-              design = design_type(design),
+  out <- list(variance = v, se = se, ci = ci$ci, level = level,
+              alternative = alternative, df = df, n = n,
+              ci_scale = ci$scale, design = design_type(parts$design),
               deff = if (is.null(y)) NA_real_ else
-                deff_value(v, y, pi_i, N, n, what),
-              method = var_out$method %||% "analytic", note = note)
+                deff_value(v, y, parts$pi, parts$reach, n, what, divide_by),
+              method = var_out$method %||% "analytic", note = note,
+              unreachable = parts$unreachable)
   out[[what]] <- est
   structure(out, class = class)
 }
@@ -514,17 +857,33 @@ df_note <- function(df) {
 #' put a plain simple random sample of 10 at a design effect of 1.11, printed as
 #' "worse than simple random sampling". This form is exactly unbiased there.
 #'
+#' `N` is the number of rows the design can reach, those with a probability
+#' above 0. The simple random sample is drawn from them, since they are the
+#' population a total or a Hajek mean estimates over; `survey` uses the sum of
+#' the weights, which is the same count for an equal-probability design.
+#' `divide_by` is what a mean divides its Horvitz-Thompson total by: `N` for
+#' the Hajek mean, and the frame's row count for the Horvitz-Thompson mean,
+#' whose design effect is then the total's.
+#'
+#' A constant `y` gives `NA`. Its spread is 0, and computed it came out as a
+#' rounding error, which put a total's design effect at `1e32`.
+#'
 #' @noRd
-deff_value <- function(v, y, pi_i, N, n, what) {
+deff_value <- function(v, y, pi_i, N, n, what, divide_by = N) {
   if (!is.finite(v) || v <= 0 || n < 2L || !is.finite(N) || N < 2L) {
     return(NA_real_)
   }
+  if (all(y == y[1])) return(NA_real_)
   w <- 1 / pi_i
   mu <- sum(w * y) / sum(w)
   s2 <- sum(w * (y - mu)^2) * n / (sum(w) * (n - 1))
   if (!is.finite(s2) || s2 <= 0) return(NA_real_)
   fpc <- max(0, 1 - n / N)
-  v_srs <- if (what == "mean") s2 / n * fpc else N^2 * s2 / n * fpc
+  v_srs <- if (what == "mean") {
+    (N / divide_by)^2 * s2 / n * fpc
+  } else {
+    N^2 * s2 / n * fpc
+  }
   if (!is.finite(v_srs) || v_srs <= 0) return(NA_real_)
   v / v_srs
 }
@@ -560,12 +919,15 @@ print_estimate <- function(x, field, label) {
   } else {
     cat("  se       ", format(x$se, big.mark = ","), "  (",
         method_label(x$method), ")\n", sep = "")
-    if (all(is.finite(x$ci))) {
-      cat("  ", format(100 * x$level), "% CI  ",
-          format(x$ci[1], big.mark = ","), " to ",
-          format(x$ci[2], big.mark = ","), "  (",
-          if (identical(x$ci_scale, "logit")) "logit, ", df_label(x$df),
-          ")\n", sep = "")
+    if (!anyNA(x$ci)) {
+      alt <- x$alternative %||% "two.sided"
+      cat("  ", ci_label(x$level, alt), "  ",
+          switch(alt,
+            less = format(x$ci[2], big.mark = ","),
+            greater = format(x$ci[1], big.mark = ","),
+            paste0(format(x$ci[1], big.mark = ","), " to ",
+                   format(x$ci[2], big.mark = ","))
+          ), "  (", scale_label(x$ci_scale), df_label(x$df), ")\n", sep = "")
     }
     if (is.finite(x$deff)) {
       cat("  deff     ", signif(x$deff, 3), "  (",
@@ -573,8 +935,12 @@ print_estimate <- function(x, field, label) {
           else "about the same as", " simple random sampling)\n", sep = "")
     }
   }
-  if (!is.null(x$note) && (is.na(x$se) || !identical(x$method, "analytic") ||
-                            !all(is.finite(x$ci)))) {
+  print_unreachable(x$unreachable, "this estimate")
+  # A standard error of 0 always has a reason worth stating: rows taken with
+  # certainty, a constant `y`, or a proportion of 0 or 1.
+  if (!is.null(x$note) && (is.na(x$se) || x$se == 0 ||
+                            !identical(x$method, "analytic") ||
+                            anyNA(x$ci))) {
     cat_note(x$note)
   }
   invisible(x)

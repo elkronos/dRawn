@@ -146,6 +146,21 @@ test_that("rows the design can never reach are counted", {
   expect_output(print(sample_summary(s)), "unreachable rows")
 })
 
+test_that("the sampling fraction is over the rows the design can reach", {
+  pop <- data.frame(
+    id = 1:200,
+    ts = seq(as.POSIXct("2024-01-01", tz = "UTC"), by = "hour",
+             length.out = 200)
+  )
+  des <- design_temporal("ts", from = "2024-01-01", to = "2024-01-07",
+                         interval = 1, per_interval = 2, unit = "days")
+  x <- sample_summary(draw(pop, des, seed = 1, weights = TRUE))
+  expect_equal(x$N, 200)
+  expect_equal(x$N_reachable, 144)
+  expect_output(print(x), "sampling fraction  0.0833  (of the 144 reachable",
+                fixed = TRUE)
+})
+
 test_that("a design with no grouping reports no group table", {
   pop <- data.frame(id = 1:100)
   s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)

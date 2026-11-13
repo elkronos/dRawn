@@ -14,6 +14,10 @@ A list with a \code{print()} method, holding:
 \describe{
 \item{\code{design}}{The design's type, as a string.}
 \item{\code{n}, \code{N}}{Rows drawn, and rows in the frame.}
+\item{\code{N_reachable}}{Rows of the frame the design gives a probability
+above 0, the population it samples. The printed sampling fraction is
+\code{n / N_reachable}. \code{NA} if the design has no closed-form inclusion
+probability, and the fraction is then \code{n / N}.}
 \item{\code{weight_range}}{The smallest and largest design weight.}
 \item{\code{weight_cv}}{Their coefficient of variation. Large values mean a
 few rows carry most of the estimate.}
