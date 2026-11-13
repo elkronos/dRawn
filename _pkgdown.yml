@@ -61,6 +61,7 @@ reference:
   desc: How many rows to draw, what you actually got, and where to go next.
   contents:
   - plan_size
+  - deff_cluster
   - sample_summary
   - as_svydesign
   - replicate_weights

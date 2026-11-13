@@ -7,8 +7,8 @@
 design_reservoir(n, max_items = Inf, batches = FALSE)
 }
 \arguments{
-\item{n}{Reservoir size. Fewer items come back if the stream is shorter; the
-result is never padded.}
+\item{n}{Reservoir size, or a plan from \code{\link[=plan_size]{plan_size()}}. Fewer items come
+back if the stream is shorter; the result is never padded.}
 
 \item{max_items}{Stop after this many items, or rows with
 \code{batches = TRUE}. Items past the cap are never sampled, so

@@ -14,7 +14,8 @@ name of one POINT geometry column. See "Coordinate order".}
 features, or a list of them. A row inside any of them is inside the
 region. Each is reprojected to the coordinates' CRS when its own differs.}
 
-\item{n}{Number of rows to draw from inside the region.}
+\item{n}{Number of rows to draw from inside the region, or a plan from
+\code{\link[=plan_size]{plan_size()}}.}
 
 \item{crs}{Coordinate reference system of the coordinate columns. Defaults to
 EPSG:4326. A geometry column named in \code{coords} keeps its own CRS when it

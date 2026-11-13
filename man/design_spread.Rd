@@ -21,7 +21,8 @@ a map, or any numeric auxiliary variables. At least one. A Date or
 date-time column, and a POINT geometry column, are read as numbers; see
 "Spreading over more than space".}
 
-\item{n}{Number of rows to draw, the total across \code{strata} when given.
+\item{n}{Number of rows to draw, the total across \code{strata} when given, or
+a plan from \code{\link[=plan_size]{plan_size()}}.
 Fixed, not expected. With counts in \code{allocation} it can be left out and
 is their sum; when given, it must equal that sum.}
 

@@ -40,7 +40,8 @@ Arguments mean the same thing everywhere they appear:
 \item \code{n} is always the \strong{total} number of rows drawn, never a per-group figure.
 \code{\link[=design_temporal]{design_temporal()}} uses \code{per_interval} precisely because that one \emph{is} per
 group, and \code{\link[=design_cluster]{design_cluster()}} has no \code{n} at all because the row count
-follows from which clusters were selected.
+follows from which clusters were selected. A plan from \code{\link[=plan_size]{plan_size()}} can
+be given as \code{n}, and its \code{n} is used.
 \item \code{allocation} always says how a total is split across groups:
 \code{"proportional"}, \code{"equal"} or, in \code{\link[=design_stratified]{design_stratified()}} only,
 \code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}}, \code{\link[=design_spread]{design_spread()}} and
@@ -103,8 +104,10 @@ frame. \code{\link[=add_fieldwork]{add_fieldwork()}} joins fieldwork results to 
 it is saved or shared.
 
 Going the other way, \code{\link[=plan_size]{plan_size()}} solves for the sample size a given margin
-of error requires — the step \emph{before} choosing a design. For analysis this
-package does not do, \code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package,
+of error requires — the step \emph{before} choosing a design. It plans a sample
+overall or split over strata, and \code{\link[=deff_cluster]{deff_cluster()}} gives the design effect
+of a cluster sample to plan with. For analysis this package does not do,
+\code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package,
 \code{\link[=replicate_weights]{replicate_weights()}} builds replicate weights for it from the design, and
 \code{\link[=frame_totals]{frame_totals()}} gives the frame's totals to calibrate it to.
 

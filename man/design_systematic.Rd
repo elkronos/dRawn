@@ -41,7 +41,8 @@ walked, each row covers a stretch of length \code{n / N} on a line from 0 to
 \code{n}, a start \code{u} is drawn uniformly from (0, 1), and the rows under \code{u},
 \code{u + 1}, ..., \code{u + n - 1} are taken. The step is \code{N / n} rows, every row
 has probability \code{n / N}, and the sample always holds \code{n} rows. When \code{n}
-divides \code{N} the probabilities are those of \code{interval = N / n}.}
+divides \code{N} the probabilities are those of \code{interval = N / n}. A plan
+from \code{\link[=plan_size]{plan_size()}} gives its \code{n}.}
 
 \item{n_starts}{Number of random starts, 1 by default. With
 \code{n_starts = m} and \code{interval = k}, \code{m} different starts are drawn from

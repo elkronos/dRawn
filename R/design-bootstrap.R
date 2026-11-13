@@ -24,7 +24,7 @@
 #'   frame then has no rows but keeps its `.replicate` column, so `split()`
 #'   returns no replicates at all, while
 #'   `split(out, factor(out$.replicate, seq_len(n_replicates)))` returns
-#'   `n_replicates` empty ones.
+#'   `n_replicates` empty ones. A plan from [plan_size()] gives its `n`.
 #' @param method `"simple"`, `"block"` or `"circular"`.
 #' @param block_length Run length for `method = "block"` and `"circular"`, and
 #'   an error for `method = "simple"`, where it would have no effect. `NULL`
@@ -107,7 +107,7 @@ design_bootstrap <- function(n_replicates = 1000L, n = NULL,
   }
   new_design("bootstrap", list(
     n_replicates = check_count(n_replicates, "n_replicates", allow_zero = FALSE),
-    n = if (is.null(n)) NULL else check_count(n, "n"),
+    n = if (is.null(n)) NULL else check_count(plan_n(n), "n"),
     method = method,
     block_length = if (is.null(block_length)) NULL else
       check_count(block_length, "block_length", allow_zero = FALSE),

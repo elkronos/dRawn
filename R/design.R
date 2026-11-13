@@ -33,7 +33,8 @@
 #' * `n` is always the **total** number of rows drawn, never a per-group figure.
 #'   [design_temporal()] uses `per_interval` precisely because that one *is* per
 #'   group, and [design_cluster()] has no `n` at all because the row count
-#'   follows from which clusters were selected.
+#'   follows from which clusters were selected. A plan from [plan_size()] can
+#'   be given as `n`, and its `n` is used.
 #' * `allocation` always says how a total is split across groups:
 #'   `"proportional"`, `"equal"` or, in [design_stratified()] only,
 #'   `"neyman"`. [design_stratified()], [design_spread()] and
@@ -93,8 +94,10 @@
 #' it is saved or shared.
 #'
 #' Going the other way, [plan_size()] solves for the sample size a given margin
-#' of error requires — the step *before* choosing a design. For analysis this
-#' package does not do, [as_svydesign()] hands a sample to the `survey` package,
+#' of error requires — the step *before* choosing a design. It plans a sample
+#' overall or split over strata, and [deff_cluster()] gives the design effect
+#' of a cluster sample to plan with. For analysis this package does not do,
+#' [as_svydesign()] hands a sample to the `survey` package,
 #' [replicate_weights()] builds replicate weights for it from the design, and
 #' [frame_totals()] gives the frame's totals to calibrate it to.
 #'

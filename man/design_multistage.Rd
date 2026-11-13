@@ -21,12 +21,12 @@ design_multistage(
 \item{n_clusters}{Number of clusters to select at stage one.}
 
 \item{n}{Total rows to draw across the selected clusters, at least
-\code{n_clusters}. A multiple of \code{n_clusters}, no larger than \code{n_clusters}
-times the smallest cluster, gives every selected cluster the same take
-and every row a closed-form inclusion probability. Otherwise the take
-depends on which clusters were selected, and \code{draw(weights = TRUE)}
-weights the sample conditional on them. See "When the take depends on
-the clusters selected".}
+\code{n_clusters}, or a plan from \code{\link[=plan_size]{plan_size()}}. A multiple of \code{n_clusters},
+no larger than \code{n_clusters} times the smallest cluster, gives every
+selected cluster the same take and every row a closed-form inclusion
+probability. Otherwise the take depends on which clusters were
+selected, and \code{draw(weights = TRUE)} weights the sample conditional on
+them. See "When the take depends on the clusters selected".}
 
 \item{allocation}{\code{"equal"} splits \code{n} evenly across the selected clusters;
 \code{"proportional"} splits it in proportion to their size, and its weights

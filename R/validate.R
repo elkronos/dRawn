@@ -28,6 +28,17 @@ check_count <- function(x, arg, allow_zero = TRUE) {
   as.integer(x)
 }
 
+#' `n` given as a plan from `plan_size()`
+#'
+#' A design's `n` can be the plan itself, whose `n` is the number of rows to
+#' draw. Only `n` arguments take a plan, since `check_count()` also checks
+#' counts such as `n_clusters` and `reserve`, where a plan means nothing.
+#'
+#' @noRd
+plan_n <- function(n) {
+  if (inherits(n, "drawn_plan")) n[["n"]] else n
+}
+
 #' Validate a character vector of column names given at design time
 #' @noRd
 check_columns <- function(x, arg, max_len = Inf) {

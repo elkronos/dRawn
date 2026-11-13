@@ -107,7 +107,8 @@
 #' @param region An `sf` or `sfc` geometry of POLYGON or MULTIPOLYGON
 #'   features, or a list of them. A row inside any of them is inside the
 #'   region. Each is reprojected to the coordinates' CRS when its own differs.
-#' @param n Number of rows to draw from inside the region.
+#' @param n Number of rows to draw from inside the region, or a plan from
+#'   [plan_size()].
 #' @param crs Coordinate reference system of the coordinate columns. Defaults to
 #'   EPSG:4326. A geometry column named in `coords` keeps its own CRS when it
 #'   has one.
@@ -139,7 +140,7 @@ design_spatial <- function(coords, region, n, crs = 4326, na_rm = FALSE) {
   new_design("spatial", list(
     coords = coords,
     region = region,
-    n = check_count(n, "n"),
+    n = check_count(plan_n(n), "n"),
     crs = crs,
     na_rm = check_flag(na_rm, "na_rm")
   ))

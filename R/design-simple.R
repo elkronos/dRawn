@@ -29,7 +29,8 @@
 #' `n / N`, and [ht_total()], [ht_mean()], [as_svydesign()] and
 #' [sample_summary()] refuse the list.
 #'
-#' @param n Number of rows to draw. A single non-negative whole number.
+#' @param n Number of rows to draw. A single non-negative whole number, or a
+#'   plan from [plan_size()].
 #' @param replace Sample with replacement? Note that `draw(weights = TRUE)`
 #'   declines a with-replacement design: `.prob` would be the chance of
 #'   appearing at least once, which does not weight a sample holding
@@ -53,7 +54,7 @@
 #' @seealso [draw()], [use_reserves()]
 #' @export
 design_simple <- function(n, replace = FALSE, reserve = 0) {
-  n <- check_count(n, "n")
+  n <- check_count(plan_n(n), "n")
   replace <- check_flag(replace, "replace")
   reserve <- check_count(reserve, "reserve")
   if (replace && reserve > 0L) {

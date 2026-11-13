@@ -20,7 +20,8 @@ is refused under every method, not given a probability of 0; drop such
 rows from the frame first, since a design that selects in proportion to
 size could never select them.}
 
-\item{n}{Number of rows to draw, the total across \code{strata} when given.
+\item{n}{Number of rows to draw, the total across \code{strata} when given, or
+a plan from \code{\link[=plan_size]{plan_size()}}.
 Under \code{method = "poisson"} this is the expected number, not a guarantee.
 With counts in \code{allocation} it can be left out and is their sum; when
 given, it must equal that sum.}

@@ -6,9 +6,9 @@
 #'
 #' @param strata One or more column names defining the strata. Several columns
 #'   are cross-classified.
-#' @param n Total rows to draw across all strata, under any allocation. With
-#'   counts in `allocation` it can be left out and is their sum; when given,
-#'   it must equal that sum.
+#' @param n Total rows to draw across all strata, under any allocation, or a
+#'   plan from [plan_size()]. With counts in `allocation` it can be left out
+#'   and is their sum; when given, it must equal that sum.
 #' @param allocation How `n` is split across strata: a rule, or the count for
 #'   each stratum. Of the rules, `"proportional"` gives each stratum a share
 #'   of `n` in proportion to its size; `"equal"` splits `n` evenly;
@@ -176,6 +176,7 @@ design_stratified <- function(strata, n,
                               allocation_by = NULL,
                               min_per_stratum = 0L, replace = FALSE,
                               na_rm = FALSE, cost = NULL, within = NULL) {
+  if (!missing(n)) n <- plan_n(n)
   if (is.numeric(allocation) || is.data.frame(allocation)) {
     strata <- check_columns(strata, "strata")
     allocation <- check_stratum_counts(allocation, strata)

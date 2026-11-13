@@ -135,7 +135,8 @@
 #'   a map, or any numeric auxiliary variables. At least one. A Date or
 #'   date-time column, and a POINT geometry column, are read as numbers; see
 #'   "Spreading over more than space".
-#' @param n Number of rows to draw, the total across `strata` when given.
+#' @param n Number of rows to draw, the total across `strata` when given, or
+#'   a plan from [plan_size()].
 #'   Fixed, not expected. With counts in `allocation` it can be left out and
 #'   is their sum; when given, it must equal that sum.
 #' @param size Optional column of positive size measures. When given, rows are
@@ -222,6 +223,7 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
                           na_rm = FALSE, strata = NULL,
                           allocation = c("proportional", "equal"),
                           reserve = 0) {
+  if (!missing(n)) n <- plan_n(n)
   across <- check_columns(across, "across")
   if (is.null(strata)) {
     if (!missing(allocation)) {

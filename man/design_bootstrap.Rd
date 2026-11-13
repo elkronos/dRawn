@@ -20,7 +20,7 @@ nonparametric bootstrap. \code{n = 0} gives replicates with no rows. The
 frame then has no rows but keeps its \code{.replicate} column, so \code{split()}
 returns no replicates at all, while
 \code{split(out, factor(out$.replicate, seq_len(n_replicates)))} returns
-\code{n_replicates} empty ones.}
+\code{n_replicates} empty ones. A plan from \code{\link[=plan_size]{plan_size()}} gives its \code{n}.}
 
 \item{method}{\code{"simple"}, \code{"block"} or \code{"circular"}.}
 

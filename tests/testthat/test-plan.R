@@ -353,6 +353,295 @@ test_that("plan_size meets a margin on a total", {
   expect_lt(mean(hit), 0.99)
 })
 
+# ---- stratified plans, cluster design effects, several plans --------------
+
+test_that("a stratified Neyman plan matches the closed form", {
+  st <- data.frame(site = c("a", "b"), N = c(120, 120), sd = c(30, 40))
+  p <- plan_size(margin = 5, strata = st, allocation = "neyman")
+  z <- stats::qnorm(0.975)
+  W <- st$N / sum(st$N)
+  # Cochran (1977), 5.25 with the finite population correction.
+  closed <- ceiling(sum(W * st$sd)^2 /
+                      ((5 / z)^2 + sum(W * st$sd^2) / sum(st$N)))
+  expect_equal(closed, 105)
+  expect_equal(p$n, 105)
+  # Neyman shares of 30 : 40 split 105 into 45 and 60 exactly.
+  expect_equal(p$allocation, data.frame(site = c("a", "b"), n = c(45L, 60L)))
+  v <- function(n_h) sum(W^2 * (1 / n_h - 1 / st$N) * st$sd^2)
+  expect_lte(v(c(45, 60)), (5 / z)^2)
+  # Neither split of 104 rows meets the margin.
+  expect_gt(v(c(45, 59)), (5 / z)^2)
+  expect_gt(v(c(44, 60)), (5 / z)^2)
+  expect_equal(p$rule, "neyman")
+  expect_equal(p$min_per_stratum, 2L)
+  expect_false(p$raised)
+  expect_true(is.na(p$spread))
+  expect_equal(p$N, 240)
+})
+
+test_that("a stratified plan takes the smallest n whose split meets the margin", {
+  # Largest-remainder splits of n over strata of 15, 5 and 18 rows:
+  #   26 -> 10.26, 3.42, 12.32 -> 10, 4, 12
+  #   27 -> 10.66, 3.55, 12.79 -> 11, 3, 13
+  # One more row takes a row from the stratum that varies most, so 26 rows
+  # meet a margin of 1.3 and 27 do not.
+  st <- data.frame(g = c("a", "b", "c"), N = c(15, 5, 18), sd = c(6, 9, 5))
+  z <- stats::qnorm(0.975)
+  W <- st$N / 38
+  v <- function(n_h) sum(W^2 * (1 / n_h - 1 / st$N) * st$sd^2)
+  expect_lte(v(c(10, 4, 12)), (1.3 / z)^2)
+  expect_gt(v(c(11, 3, 13)), (1.3 / z)^2)
+  p <- plan_size(margin = 1.3, strata = st)
+  expect_equal(p$n, 26)
+  expect_equal(p$allocation$n, c(10L, 4L, 12L))
+  # No smaller total meets it.
+  smaller <- vapply(6:25, function(n) {
+    v(drawn:::allocate(n, st$N, "proportional", 2L))
+  }, numeric(1))
+  expect_true(all(smaller > (1.3 / z)^2))
+})
+
+test_that("a plan with one stratum is the plan without strata", {
+  for (N in c(7, 25, 60, 240)) {
+    one <- function(...) data.frame(g = "all", N = N, ...)
+    for (m in c(5, 8.4, 12.5, 20, 40)) {
+      expect_equal(plan_size(margin = m, strata = one(sd = 40))$n,
+                   plan_size(margin = m, sd = 40, N = N)$n,
+                   info = paste("mean", N, m))
+      expect_equal(plan_size(margin = m * N, strata = one(sd = 40),
+                             deff = 2, response = 0.7, target = "total")$n,
+                   plan_size(margin = m * N, sd = 40, N = N, deff = 2,
+                             response = 0.7, target = "total")$n,
+                   info = paste("total", N, m))
+    }
+    for (m in c(0.05, 0.1, 0.2)) {
+      expect_equal(plan_size(margin = m, strata = one(p = 0.3),
+                             target = "proportion")$n,
+                   plan_size(margin = m, p = 0.3, N = N,
+                             target = "proportion")$n,
+                   info = paste("proportion", N, m))
+    }
+  }
+})
+
+test_that("a stratified plan draws as planned", {
+  bands <- data.frame(band = c("small", "medium", "large"),
+                      N = c(120, 60, 20), sd = c(5, 12, 40))
+  p <- plan_size(margin = 2, strata = bands, allocation = "neyman",
+                 response = 0.8)
+  expect_equal(p$n, ceiling(p$n_needed / 0.8 - 1e-9))
+  expect_equal(sum(p$allocation$n), p$n)
+  frame <- data.frame(id = 1:200, band = rep(bands$band, times = bands$N))
+  s <- draw(frame, design_stratified("band", allocation = p$allocation),
+            seed = 1, weights = TRUE)
+  expect_equal(nrow(s), p$n)
+  expect_equal(as.vector(table(factor(s$band, bands$band))), p$allocation$n)
+
+  # The design splits the plan's n the same way under the same rule.
+  again <- design_stratified("band", n = p, allocation = "neyman",
+                             allocation_by = c(small = 5, medium = 12,
+                                               large = 40),
+                             min_per_stratum = 2)
+  tab <- allocation_table(frame, again)
+  expect_equal(tab$n[match(bands$band, tab$band)], p$allocation$n)
+})
+
+test_that("a stratified plan prints its strata", {
+  st <- data.frame(site = c("a", "b"), N = c(120, 120), sd = c(30, 40))
+  p <- plan_size(margin = 5, strata = st, allocation = "neyman", deff = 1.5)
+  out <- utils::capture.output(print(p))
+  expect_equal(out[1], "Sample size for a mean, over 2 strata")
+  expect_true(any(grepl(paste0("assuming       Neyman allocation, at least ",
+                               "2 rows per stratum, deff 1.5, N 240"),
+                        out, fixed = TRUE)))
+  expect_true(any(grepl("site   N sd  n", out, fixed = TRUE)))
+  many <- data.frame(g = sprintf("g%02d", 1:12), N = 50, sd = 10)
+  expect_output(print(plan_size(margin = 1, strata = many)),
+                "and 2 more strata, all in `$allocation`", fixed = TRUE)
+})
+
+test_that("plan_size checks the strata it is given", {
+  st <- data.frame(site = c("a", "b"), N = c(120, 120), sd = c(30, 40))
+  expect_error(plan_size(margin = 5, strata = list(1)),
+               "`strata` must be a data frame")
+  expect_error(plan_size(margin = 5, strata = st[c("site", "N")]),
+               "`strata` needs a column `sd`")
+  expect_error(plan_size(margin = 0.05, strata = st, target = "proportion"),
+               "`strata` needs a column `p`")
+  expect_error(plan_size(margin = 5, strata = transform(st, n = 1)),
+               "`strata` has a column `n`")
+  expect_error(plan_size(margin = 5, strata = st[c("N", "sd")]),
+               "no column naming the strata")
+  expect_error(plan_size(margin = 5, strata = transform(st, N = c(0, 5))),
+               "stratum `a` has 0")
+  expect_error(plan_size(margin = 5, strata = transform(st, N = c(10.5, 5))),
+               "whole numbers of 1 or more")
+  expect_error(plan_size(margin = 5, strata = transform(st, sd = c(-1, 5))),
+               "standard deviations in `strata`")
+  expect_error(plan_size(margin = 0.05, target = "proportion",
+                         strata = data.frame(g = 1:2, N = 10, p = c(0.2, 2))),
+               "stratum `2` has 2")
+  expect_error(plan_size(margin = 5, strata = transform(st, cost = 1)),
+               "applies only to allocation = \"neyman\"")
+  expect_error(plan_size(margin = 5, strata = rbind(st, st)),
+               "more than once")
+  expect_error(plan_size(margin = 5, strata = st, allocation = "optimal"),
+               "`allocation` must be one of")
+  expect_error(plan_size(margin = 5, strata = st, min_per_stratum = -1),
+               "`min_per_stratum` must be non-negative")
+
+  expect_warning(plan_size(margin = 5, strata = st, sd = 40),
+                 "`sd` is not used with `strata`")
+  expect_warning(plan_size(margin = 5, strata = st, N = 240),
+                 class = "drawn_irrelevant_argument")
+  expect_warning(plan_size(margin = 5, strata = transform(st, p = 0.5)),
+                 "has a `p` column, which target = \"mean\" does not use")
+  expect_warning(plan_size(margin = 5, sd = 40, allocation = "neyman"),
+                 "`allocation` is not used without `strata`")
+
+  # Costs enter a Neyman split as N_h * S_h / sqrt(c_h): 3600 and 1200, so
+  # the first stratum gets three rows for each one the second gets.
+  costly <- plan_size(margin = 5, allocation = "neyman",
+                      strata = transform(st, cost = c(1, 16)))
+  expect_equal(costly$strata$cost, c(1, 16))
+  expect_lte(abs(costly$allocation$n[1] - 3 * costly$allocation$n[2]), 3)
+  expect_gt(costly$n, plan_size(margin = 5, allocation = "neyman",
+                                strata = st)$n)
+
+  # A spread too large to square takes its stratum whole.
+  huge <- plan_size(margin = 5, allocation = "neyman",
+                    strata = data.frame(g = 1:2, N = 10, sd = c(1e300, 1)))
+  expect_equal(huge$allocation$n, c(10L, 2L))
+  # With no floor, a split that leaves a stratum without rows does not
+  # count. The variance is 0 at any split, and proportional allocation
+  # gives the one-row stratum its row first at 6 rows: 6 / 11 = 0.55.
+  bare <- plan_size(margin = 5, min_per_stratum = 0,
+                    strata = data.frame(g = 1:2, N = c(1, 10), sd = c(3, 0)))
+  expect_equal(bare$allocation$n, c(1L, 5L))
+  expect_output(print(bare), "assuming       proportional allocation, N 11",
+                fixed = TRUE)
+})
+
+test_that("a frame in strata given as vectors points to `strata`", {
+  expect_error(plan_size(margin = 5, sd = c(a = 30, b = 40),
+                         N = c(a = 120, b = 120)),
+               "give each stratum's `N` and `sd` in `strata`")
+})
+
+test_that("deff_cluster gives Kish's design effect", {
+  expect_equal(deff_cluster(10, 0.05), 1.45)
+  expect_equal(deff_cluster(1, 0.9), 1)
+  expect_equal(deff_cluster(c(5, 10, 20), 0.05), c(1.2, 1.45, 1.95))
+  expect_equal(deff_cluster(11, -0.1), 0)
+  expect_equal(plan_size(margin = 5, sd = 40, N = 20000,
+                         deff = deff_cluster(10, 0.05)),
+               plan_size(margin = 5, sd = 40, N = 20000, deff = 1.45))
+  expect_error(deff_cluster(0.5, 0.1), "`m` must be the rows taken")
+  expect_error(deff_cluster(NA, 0.1), "`m` must be")
+  expect_error(deff_cluster(10, 1.5), "between -1 / \\(m - 1\\) and 1")
+  expect_error(deff_cluster(10, -0.2), "below -0.111")
+  expect_error(deff_cluster(10, "0.1"), "`icc` must be a finite number")
+  expect_error(deff_cluster(c(5, 10), c(0.1, 0.2, 0.3)),
+               "`m` has 2 values and `icc` has 3")
+})
+
+test_that("every design takes a plan as `n`", {
+  p <- plan_size(margin = 5, sd = 40, N = 240)
+  expect_equal(p$n, 122)
+  expect_equal(design_simple(n = p)$n, 122L)
+  expect_equal(design_simple(p)$n, 122L)
+  expect_equal(design_stratified("g", n = p)$n, 122L)
+  expect_equal(design_systematic(n = p)$n, 122L)
+  expect_equal(design_multistage("cl", n_clusters = 2, n = p)$n, 122L)
+  expect_equal(design_weighted("w", n = p)$n, 122L)
+  expect_equal(design_weighted("w", n = p, method = "systematic",
+                               strata = "g")$n, 122L)
+  expect_equal(design_spread("x", n = p)$n, 122L)
+  expect_equal(design_spread("x", n = p, strata = "g")$n, 122L)
+  expect_equal(design_reservoir(n = p)$n, 122L)
+  expect_equal(design_bootstrap(10, n = p)$n, 122L)
+  s <- draw(data.frame(id = 1:240), design_simple(n = p), seed = 1)
+  expect_equal(nrow(s), 122)
+  # Only `n` takes a plan.
+  expect_error(design_multistage("cl", n_clusters = p, n = 10),
+               "`n_clusters` must be a single whole number")
+  expect_error(design_simple(n = plan_size(margin = c(3, 5), sd = 40)),
+               "`n` must be a single whole number")
+})
+
+test_that("a design inside a region takes a plan as `n`", {
+  skip_if_not_installed("sf")
+  p <- plan_size(margin = 5, sd = 40, N = 240)
+  expect_equal(design_spatial(c("lon", "lat"), wide_poly(), n = p)$n, 122L)
+})
+
+test_that("plan_size plans several margins at once", {
+  out <- plan_size(margin = c(3, 5, 10), sd = 40, N = 240)
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 3)
+  each <- lapply(c(3, 5, 10), function(m) plan_size(margin = m, sd = 40,
+                                                   N = 240))
+  expect_equal(out$n, vapply(each, `[[`, numeric(1), "n"))
+  expect_equal(out, do.call(rbind, lapply(each, as.data.frame)))
+
+  # One value is used for every plan; several are paired by position.
+  two <- plan_size(margin = 5, sd = c(30, 40), deff = c(1, 2), N = 240)
+  expect_equal(two$n, c(plan_size(margin = 5, sd = 30, N = 240)$n,
+                        plan_size(margin = 5, sd = 40, N = 240, deff = 2)$n))
+  props <- plan_size(margin = 0.05, p = c(0.1, 0.5), response = c(1, 0.5),
+                     target = "proportion")
+  expect_equal(props$n,
+               c(plan_size(margin = 0.05, p = 0.1, target = "proportion")$n,
+                 plan_size(margin = 0.05, p = 0.5, response = 0.5,
+                           target = "proportion")$n))
+  expect_equal(props$p, c(0.1, 0.5))
+
+  expect_error(plan_size(margin = c(3, 5, 10), sd = c(30, 40), N = 240),
+               "`margin` has 3 values and `sd` has 2")
+  expect_error(plan_size(margin = c(3, -5), sd = 40),
+               "`margin` must be a positive number, or a vector of them")
+  expect_error(plan_size(margin = c(0.03, 3), target = "proportion"),
+               "`margin` is 3, and a proportion")
+  expect_error(plan_size(margin = 3, sd = 40, deff = c(1, NA)),
+               "`deff` holds an NA")
+
+  # An argument the target does not use is warned about once.
+  seen <- 0L
+  withCallingHandlers(
+    plan_size(margin = c(0.03, 0.05), sd = 1, target = "proportion"),
+    drawn_irrelevant_argument = function(w) {
+      seen <<- seen + 1L
+      invokeRestart("muffleWarning")
+    })
+  expect_equal(seen, 1L)
+
+  st <- data.frame(site = c("a", "b"), N = c(120, 120), sd = c(30, 40))
+  sp <- plan_size(margin = c(5, 10), strata = st)
+  expect_equal(sp$n, c(plan_size(margin = 5, strata = st)$n,
+                       plan_size(margin = 10, strata = st)$n))
+  expect_equal(sp$strata, c(2L, 2L))
+  expect_equal(sp$rule, c("proportional", "proportional"))
+})
+
+test_that("a plan turns into a data frame of one row", {
+  p <- plan_size(margin = 5, sd = 40, N = 240, response = 0.7)
+  df <- as.data.frame(p)
+  expect_equal(names(df), c("n", "n_effective", "margin", "level", "N",
+                            "deff", "response", "target", "spread", "p",
+                            "capped", "short", "raised", "n_needed"))
+  expect_equal(nrow(df), 1)
+  expect_equal(df$n, p$n)
+  expect_equal(df$target, "mean")
+  expect_equal(row.names(as.data.frame(p, row.names = "plan")), "plan")
+
+  st <- data.frame(site = c("a", "b"), N = c(120, 120), sd = c(30, 40))
+  sdf <- as.data.frame(plan_size(margin = 5, strata = st,
+                                 allocation = "neyman"))
+  expect_equal(sdf$strata, 2L)
+  expect_equal(sdf$rule, "neyman")
+  expect_equal(sdf$min_per_stratum, 2L)
+})
+
 # ---- sample_summary --------------------------------------------------------
 
 test_that("sample_summary counts what was drawn against what was there", {

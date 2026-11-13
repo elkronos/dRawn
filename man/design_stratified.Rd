@@ -20,9 +20,9 @@ design_stratified(
 \item{strata}{One or more column names defining the strata. Several columns
 are cross-classified.}
 
-\item{n}{Total rows to draw across all strata, under any allocation. With
-counts in \code{allocation} it can be left out and is their sum; when given,
-it must equal that sum.}
+\item{n}{Total rows to draw across all strata, under any allocation, or a
+plan from \code{\link[=plan_size]{plan_size()}}. With counts in \code{allocation} it can be left out
+and is their sum; when given, it must equal that sum.}
 
 \item{allocation}{How \code{n} is split across strata: a rule, or the count for
 each stratum. Of the rules, \code{"proportional"} gives each stratum a share

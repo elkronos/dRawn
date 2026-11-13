@@ -79,7 +79,8 @@
 #'   is refused under every method, not given a probability of 0; drop such
 #'   rows from the frame first, since a design that selects in proportion to
 #'   size could never select them.
-#' @param n Number of rows to draw, the total across `strata` when given.
+#' @param n Number of rows to draw, the total across `strata` when given, or
+#'   a plan from [plan_size()].
 #'   Under `method = "poisson"` this is the expected number, not a guarantee.
 #'   With counts in `allocation` it can be left out and is their sum; when
 #'   given, it must equal that sum.
@@ -149,6 +150,7 @@ design_weighted <- function(weights, n, replace = FALSE,
                             method = c("successive", "systematic", "poisson"),
                             na_rm = FALSE, strata = NULL,
                             allocation = c("proportional", "equal")) {
+  if (!missing(n)) n <- plan_n(n)
   method <- check_choice(method, c("successive", "systematic", "poisson"),
                          "method")
   replace <- check_flag(replace, "replace")

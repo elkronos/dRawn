@@ -33,7 +33,8 @@
 #'   `n`, a start `u` is drawn uniformly from (0, 1), and the rows under `u`,
 #'   `u + 1`, ..., `u + n - 1` are taken. The step is `N / n` rows, every row
 #'   has probability `n / N`, and the sample always holds `n` rows. When `n`
-#'   divides `N` the probabilities are those of `interval = N / n`.
+#'   divides `N` the probabilities are those of `interval = N / n`. A plan
+#'   from [plan_size()] gives its `n`.
 #' @param n_starts Number of random starts, 1 by default. With
 #'   `n_starts = m` and `interval = k`, `m` different starts are drawn from
 #'   `1:(m * k)` and each is walked at a step of `m * k` rows. Every row
@@ -103,6 +104,7 @@
 #' @export
 design_systematic <- function(interval = NULL, start = NULL, order_by = NULL,
                               na_rm = FALSE, n = NULL, n_starts = 1L) {
+  n <- plan_n(n)
   n_starts <- check_count(n_starts, "n_starts", allow_zero = FALSE)
   if (!is.null(interval) && !is.null(n)) {
     stop("`design_systematic()` takes `interval` or `n`, not both. ",

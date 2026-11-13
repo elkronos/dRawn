@@ -982,6 +982,23 @@
   `target = "total"` and a total for a mean or a proportion, since the two
   design effects differ for one sample, by a factor of 42 in one cluster
   sample.
+* `plan_size()` takes `strata`, a data frame with a row per stratum
+  holding its size `N` and the standard deviation `sd` within it, or the
+  expected proportion `p`, and plans a stratified sample: the smallest `n`
+  whose split by `allocation` (`"proportional"`, `"equal"` or `"neyman"`,
+  with an optional `cost` column for Neyman) meets the margin, with at
+  least `min_per_stratum` rows from each stratum, 2 by default. `n` is split
+  as `design_stratified()` splits it, rounding included, and the split is
+  returned as `allocation`, which `design_stratified(allocation =)` draws as
+  given. Stratification could enter a plan only through `deff` before.
+* `deff_cluster()` gives the design effect `1 + (m - 1) * icc` of taking
+  `m` rows from each cluster when rows of one cluster correlate at `icc`,
+  to pass to `plan_size(deff =)` before a pilot has measured one.
+* A plan from `plan_size()` can be passed as `n` to every design that
+  takes `n`, such as `design_simple(n = plan)`, where it was refused
+  before. `plan_size()` takes several values of `margin`, `sd`, `p`, `deff`
+  and `response`, one per plan, and returns a data frame with a row per
+  plan, and `as.data.frame()` turns a single plan into such a row.
 
 ## Speed and memory
 

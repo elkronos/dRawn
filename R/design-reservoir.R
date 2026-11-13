@@ -51,8 +51,8 @@
 #' called once past the cap and what it returns is dropped; with
 #' `batches = TRUE`, so are the rows of a batch that run past the cap.
 #'
-#' @param n Reservoir size. Fewer items come back if the stream is shorter; the
-#'   result is never padded.
+#' @param n Reservoir size, or a plan from [plan_size()]. Fewer items come
+#'   back if the stream is shorter; the result is never padded.
 #' @param max_items Stop after this many items, or rows with
 #'   `batches = TRUE`. Items past the cap are never sampled, so
 #'   [inclusion_prob()] gives rows past it `0` and gives the rows before it
@@ -120,7 +120,7 @@ design_reservoir <- function(n, max_items = Inf, batches = FALSE) {
          call. = FALSE)
   }
   new_design("reservoir", list(
-    n = check_count(n, "n"),
+    n = check_count(plan_n(n), "n"),
     max_items = max_items,
     batches = check_flag(batches, "batches")
   ))

@@ -7,7 +7,8 @@
 design_simple(n, replace = FALSE, reserve = 0)
 }
 \arguments{
-\item{n}{Number of rows to draw. A single non-negative whole number.}
+\item{n}{Number of rows to draw. A single non-negative whole number, or a
+plan from \code{\link[=plan_size]{plan_size()}}.}
 
 \item{replace}{Sample with replacement? Note that \code{draw(weights = TRUE)}
 declines a with-replacement design: \code{.prob} would be the chance of

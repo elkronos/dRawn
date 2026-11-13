@@ -18,6 +18,9 @@
 #' `sd` given for a proportion, or `p` for a mean or a total, is not used,
 #' and `plan_size()` warns that it is ignored.
 #'
+#' For a stratified sample, give the size and the spread of each stratum in
+#' `strata` instead (see "Planning a stratified sample").
+#'
 #' @section The corrections:
 #' `N` applies a finite population correction: sampling 400 from 500 is very
 #' different from 400 from 500,000, and past a certain point a bigger frame
@@ -25,7 +28,9 @@
 #' enough to end up with what you need.
 #'
 #' `deff` inflates for the design, since a clustered design of 400 may carry
-#' the information of 100. Measure it with [deff()] on a comparable past
+#' the information of 100. Before any pilot, [deff_cluster()] gives the
+#' design effect of taking `m` rows from each cluster from their intraclass
+#' correlation. Measure it with [deff()] on a comparable past
 #' sample, using the estimator you will report: [ht_mean()] for a mean or a
 #' proportion, and [ht_total()] for a total. The two design effects differ for
 #' the same sample, and can differ many times over. In one cluster sample
@@ -46,26 +51,47 @@
 #' @param margin Half-width of the confidence interval you want, the
 #'   half-width the plan expects (see "Where the formula comes from"). For a
 #'   proportion it is a proportion, and a `margin` of 1 or more is refused.
+#'   Several margins give several plans (see "Several plans at once").
 #' @param sd Standard deviation of the measure, for `target = "mean"` or
-#'   `"total"`, as [stats::sd()] computes it.
-#' @param p Expected proportion, for `target = "proportion"`.
+#'   `"total"`, as [stats::sd()] computes it. Not used with `strata`.
+#' @param p Expected proportion, for `target = "proportion"`. Not used with
+#'   `strata`.
 #' @param N Population size, at least 1. `Inf` for an effectively unbounded
 #'   frame. An estimated `N` need not be a whole number; `n` is at most
-#'   `floor(N)`.
+#'   `floor(N)`. Not used with `strata`, whose sizes add up to it.
 #' @param level Confidence level.
 #' @param deff Design effect to inflate by: a positive number, or the result
 #'   of [ht_mean()] for a mean or a proportion, or of [ht_total()] for a
 #'   total, on a pilot sample. `1` assumes simple random sampling. A number
-#'   should come from [deff()] on the estimator you will report, rounded up
-#'   (see "The corrections").
+#'   should come from [deff()] on the estimator you will report, rounded up,
+#'   or from [deff_cluster()] (see "The corrections"). With `strata` it
+#'   inflates the variance of the stratified sample, as for clusters sampled
+#'   within strata.
 #' @param response Expected response rate, between 0 and 1.
 #' @param target `"mean"`, `"proportion"` or `"total"`. For `"total"` the
 #'   margin is on the population total and `N` must be finite.
+#' @param strata `NULL`, or a data frame with a row per stratum, to plan a
+#'   stratified sample (see "Planning a stratified sample"). Its columns
+#'   are those that name the strata; `N`, the rows of the frame in each
+#'   stratum; `sd`, the standard deviation of the measure within each
+#'   stratum, or for a proportion `p`, the expected proportion within it;
+#'   and, with `allocation = "neyman"` only, an optional `cost`, the cost
+#'   of one row in each stratum.
+#' @param allocation How `n` is split over `strata`: `"proportional"`,
+#'   `"equal"` or `"neyman"`, as in [design_stratified()]. Neyman shares are
+#'   proportional to `N_h * S_h`, or `N_h * S_h / sqrt(cost_h)` with a
+#'   `cost` column.
+#' @param min_per_stratum The fewest rows a stratum is allocated, as in
+#'   [design_stratified()]. A stratum smaller than this is taken whole. The
+#'   default of 2 is the fewest that give each stratum a variance, which
+#'   [ht_total()] and [ht_mean()] need from every stratum not taken whole.
 #'
-#' @return A list with a `print()` method, holding:
+#' @return A plan, a list of class `drawn_plan` with a `print()` method,
+#'   or for several plans a data frame (see "Several plans at once"). A plan
+#'   holds:
 #'   \describe{
-#'     \item{`n`}{Draw this many. Never more than `N`, and at least two when
-#'       the frame has two rows or more.}
+#'     \item{`n`}{Draw this many. Never more than `N`, and without `strata`
+#'       at least two when the frame has two rows or more.}
 #'     \item{`n_effective`}{What you expect to analyse once `response` has
 #'       taken its share.}
 #'     \item{`capped`}{`TRUE` when only a census meets the margin, so `n` is
@@ -87,8 +113,26 @@
 #'       responded, two at least as for `n_effective`. Equal to `n_effective`
 #'       unless the whole frame is drawn at a `response` below 1.}
 #'     \item{`spread`}{The standard deviation used, `sd`, or
-#'       `sqrt(p * (1 - p))` for a proportion.}
+#'       `sqrt(p * (1 - p))` for a proportion. `NA` with `strata`.}
 #'   }
+#'
+#'   With `strata` there are four more, and `raised` is always `FALSE`,
+#'   since `min_per_stratum` sets the floor:
+#'   \describe{
+#'     \item{`allocation`}{The rows to draw from each stratum, a data frame
+#'       of the strata columns and `n`, in the order of `strata`. Pass it to
+#'       [design_stratified()] as `allocation` to draw that split.}
+#'     \item{`strata`}{The strata as given, checked, with `n` added.}
+#'     \item{`rule`, `min_per_stratum`}{The `allocation` rule and the floor
+#'       used.}
+#'   }
+#'
+#'   A plan can be passed as `n` to any design that takes `n`, such as
+#'   `design_simple(n = plan)`, which draws `plan$n` rows. `as.data.frame()`
+#'   turns it into a data frame of one row, with a column for each field
+#'   above, except that a stratified plan has the number of `strata` in
+#'   place of the two data frames. Several plans at once give a data frame
+#'   of those rows, one per plan.
 #'
 #' @examples
 #' # A proportion, no prior guess, 20,000 in the frame
@@ -103,6 +147,27 @@
 #' # A total, to within 100,000 across a 20,000-row frame
 #' plan_size(margin = 1e5, sd = 40, N = 20000, target = "total")
 #'
+#' # Clusters of ten rows, whose rows correlate at 0.05, before any pilot
+#' plan_size(margin = 5, sd = 40, N = 20000,
+#'           deff = deff_cluster(m = 10, icc = 0.05))
+#'
+#' # Three margins at once, one plan per row
+#' plan_size(margin = c(3, 5, 10), sd = 40, N = 20000)
+#'
+#' # A plan is a valid `n`
+#' design_simple(n = plan_size(margin = 5, sd = 40, N = 20000))
+#'
+#' # Three strata, with the spread of each from an earlier survey
+#' bands <- data.frame(band = c("small", "medium", "large"),
+#'                     N = c(1200, 600, 200), sd = c(10, 25, 80))
+#' plan <- plan_size(margin = 2, strata = bands, allocation = "neyman")
+#' plan
+#' frame <- data.frame(id = 1:2000,
+#'                     band = rep(bands$band, times = bands$N))
+#' s <- draw(frame, design_stratified("band", allocation = plan$allocation),
+#'           seed = 1)
+#' table(s$band)
+#'
 #' # The design effect of a cluster pilot, passed as the estimate itself
 #' pop <- data.frame(cl = rep(paste0("c", 1:50), each = 8))
 #' pop$y <- rep(seq(10, 59), each = 8) + rep(c(-3, 3), 200)
@@ -110,6 +175,38 @@
 #'               weights = TRUE)
 #' plan_size(margin = 3, sd = sd(pilot$y), N = nrow(pop),
 #'           deff = ht_mean(pilot, "y"))
+#'
+#' @section Planning a stratified sample:
+#' With `strata`, `plan_size()` plans a stratified simple random sample, as
+#' [design_stratified()] draws one. For each total `n` it splits `n` over
+#' the strata as that design would, by the same `allocation` rule, the
+#' floor `min_per_stratum` and largest-remainder rounding, with no stratum
+#' given more rows than it has, and works out the variance of the
+#' stratified mean,
+#' `deff * sum(W_h^2 * (1 / n_h - 1 / N_h) * S_h^2)` with `W_h = N_h / N`
+#' (Cochran 1977, chapter 5). For a proportion `S_h^2` is
+#' `N_h * p_h * (1 - p_h) / (N_h - 1)`. The plan is the smallest `n` whose
+#' variance is at most `(margin / z)^2`, with `margin / N` for a total. A
+#' split that leaves a stratum with no rows does not count, since the
+#' estimate then leaves that stratum out. The rounded split can take a row
+#' from one stratum as `n` grows, so the variance does not always fall with
+#' `n`, and the search checks each `n` from the first that could meet the
+#' margin.
+#'
+#' `response` divides `n` as without strata, and the rows to draw are split
+#' by the same rule. The split is returned as `allocation`, which
+#' [design_stratified()] takes as the count for each stratum. Passing the
+#' plan as `n` instead lets the design split `n` again by its own rule and
+#' `min_per_stratum`, whose default there is 0.
+#'
+#' @section Several plans at once:
+#' `margin`, `sd`, `p`, `deff` and `response` each take one value, or
+#' several for several plans. Those with one value are used for every plan,
+#' and those with several must have the same number, one per plan, so
+#' `plan_size(margin = c(3, 5, 10), sd = 40)` plans three margins at the
+#' same spread. The result is then a data frame with a row per plan, as
+#' `as.data.frame()` gives for each, without the split over strata or the
+#' printed notes.
 #'
 #' @section Where the formula comes from:
 #' `n0 = (z * spread / margin)^2 * deff` is the size for an unbounded frame,
@@ -149,121 +246,225 @@
 #' Valliant, R., Dever, J. A. and Kreuter, F. (2018). *Practical Tools for
 #' Designing and Weighting Survey Samples*, 2nd ed. Springer.
 #'
-#' @seealso [deff()] to measure the design effect of a past sample, [draw()] to
+#' @seealso [deff()] to measure the design effect of a past sample,
+#'   [deff_cluster()] for one from an intraclass correlation, [draw()] to
 #'   take the sample.
 #' @export
 plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
                       deff = 1, response = 1,
-                      target = c("mean", "proportion", "total")) {
+                      target = c("mean", "proportion", "total"),
+                      strata = NULL,
+                      allocation = c("proportional", "equal", "neyman"),
+                      min_per_stratum = 2L) {
   target <- check_choice(target, c("mean", "proportion", "total"), "target")
-  check_pos <- function(x, arg, allow_inf = FALSE) {
-    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0 ||
-        (!allow_inf && !is.finite(x))) {
-      stop("`", arg, "` must be a single positive number",
-           if (allow_inf) " (or Inf)" else "", ".", call. = FALSE)
+  check_pos <- function(x, arg, allow_inf = FALSE, several = TRUE) {
+    if (!is.numeric(x) || !length(x) || (!several && length(x) != 1L) ||
+        anyNA(x) || any(x <= 0) || (!allow_inf && !all(is.finite(x)))) {
+      stop("`", arg, "` must be ",
+           if (several) "a positive number" else "a single positive number",
+           if (allow_inf) " (or Inf)" else "",
+           if (several) ", or a vector of them for several plans" else "",
+           ".", call. = FALSE)
     }
     x
   }
   margin <- check_pos(margin, "margin")
   deff <- check_pos(plan_deff(deff, target), "deff")
-  N <- check_pos(N, "N", allow_inf = TRUE)
-  if (N < 1) {
-    stop("`N` is ", format_bad(N), ", and a frame holds at least one row. ",
-         "Give the number of rows in the frame, or Inf.", call. = FALSE)
+  if (is.null(strata)) {
+    given <- c("allocation", "min_per_stratum")[
+      c(!missing(allocation), !missing(min_per_stratum))]
+    if (length(given)) {
+      warn_drawn(paste0(
+        paste0("`", given, "`", collapse = " and "), " ",
+        if (length(given) == 1L) "is" else "are", " not used without ",
+        "`strata`, which describes the strata to split `n` over. Give a ",
+        "row per stratum in `strata`, or leave ",
+        if (length(given) == 1L) "it" else "them", " out."),
+        "drawn_irrelevant_argument")
+    }
+    if (is.numeric(N) && length(N) > 1L) {
+      stop("`N` must be a single positive number (or Inf), not ", length(N),
+           " numbers. For a frame in strata, give each stratum's `N` and ",
+           "`sd` in `strata`, a data frame with a row per stratum.",
+           call. = FALSE)
+    }
+    N <- check_pos(N, "N", allow_inf = TRUE, several = FALSE)
+    if (N < 1) {
+      stop("`N` is ", format_bad(N), ", and a frame holds at least one row. ",
+           "Give the number of rows in the frame, or Inf.", call. = FALSE)
+    }
+    st <- NULL
+  } else {
+    given <- c("sd", "p", "N")[c(!is.null(sd), !missing(p), !missing(N))]
+    if (length(given)) {
+      warn_drawn(paste0(
+        paste0("`", given, "`", collapse = " and "), " ",
+        if (length(given) == 1L) "is" else "are", " not used with ",
+        "`strata`, whose columns give each stratum's `N` and its `",
+        if (target == "proportion") "p" else "sd", "`. Leave ",
+        if (length(given) == 1L) "it" else "them", " out."),
+        "drawn_irrelevant_argument")
+    }
+    allocation <- check_choice(allocation,
+                               c("proportional", "equal", "neyman"),
+                               "allocation")
+    min_per_stratum <- check_count(min_per_stratum, "min_per_stratum")
+    st <- plan_strata(strata, target, allocation, min_per_stratum)
+    N <- st$N
   }
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
       level <= 0 || level >= 1) {
     stop("`level` must be a single number strictly between 0 and 1.",
          call. = FALSE)
   }
-  if (!is.numeric(response) || length(response) != 1L || is.na(response) ||
-      response <= 0 || response > 1) {
-    stop("`response` must be a single number in (0, 1].", call. = FALSE)
+  if (!is.numeric(response) || !length(response) || anyNA(response) ||
+      any(response <= 0 | response > 1)) {
+    stop("`response` must be a number in (0, 1], or a vector of them for ",
+         "several plans.", call. = FALSE)
   }
 
   if (target == "proportion") {
-    if (!is.null(sd)) {
+    if (is.null(st) && !is.null(sd)) {
       warn_drawn(paste0(
         "`sd` is not used for target = \"proportion\", whose spread comes ",
         "from `p`. Give the expected proportion as `p`, and leave `sd` out."),
         "drawn_irrelevant_argument")
     }
-    if (margin >= 1) {
-      stop("`margin` is ", format_bad(margin), ", and a proportion lies ",
+    if (any(margin >= 1)) {
+      m <- margin[margin >= 1][1]
+      stop("`margin` is ", format_bad(m), ", and a proportion lies ",
            "between 0 and 1, so a margin of 1 or more says nothing. Give it ",
-           "as a proportion, such as ", format(margin / 100), " for ",
-           format(margin), " percentage point", if (margin != 1) "s", ".",
+           "as a proportion, such as ", format(m / 100), " for ",
+           format(m), " percentage point", if (m != 1) "s", ".",
            call. = FALSE)
     }
-    if (!is.numeric(p) || length(p) != 1L || is.na(p) || p < 0 || p > 1) {
-      stop("`p` must be a single number in [0, 1].", call. = FALSE)
-    }
-    spread <- sqrt(p * (1 - p))
-    if (spread <= 0) {
-      stop("`p` of exactly 0 or 1 implies no variation and no sample is ",
-           "needed. Use a value strictly between 0 and 1.", call. = FALSE)
-    }
-    unit_margin <- margin
-    p_used <- p
-  } else {
-    if (is.null(sd)) {
-      stop("`sd` is required for target = \"", target, "\". Use a pilot ",
-           "estimate, or a plausible range divided by four.",
-           if (!missing(p)) {
-             " To plan a proportion from `p`, use target = \"proportion\"."
-           }, call. = FALSE)
-    }
-    if (!missing(p)) {
-      warn_drawn(paste0(
-        "`p` is not used for target = \"", target, "\", whose spread is ",
-        "`sd`. To plan a proportion from `p`, use target = \"proportion\"; ",
-        "otherwise leave `p` out."), "drawn_irrelevant_argument")
-    }
-    spread <- check_pos(sd, "sd")
-    if (target == "total") {
-      if (!is.finite(N)) {
-        stop("A margin on a total needs a finite `N`.", call. = FALSE)
+    if (is.null(st)) {
+      if (!is.numeric(p) || !length(p) || anyNA(p) || any(p < 0 | p > 1)) {
+        stop("`p` must be a number in [0, 1], or a vector of them for ",
+             "several plans.", call. = FALSE)
       }
-      # A margin of M on the total is a margin of M/N on the mean.
-      unit_margin <- margin / N
+      spread <- sqrt(p * (1 - p))
+      if (any(spread <= 0)) {
+        stop("`p` of exactly 0 or 1 implies no variation and no sample is ",
+             "needed. Use a value strictly between 0 and 1.", call. = FALSE)
+      }
+      p_used <- p
     } else {
-      unit_margin <- margin
+      spread <- NA_real_
+      p_used <- NA_real_
+    }
+  } else {
+    if (is.null(st)) {
+      if (is.null(sd)) {
+        stop("`sd` is required for target = \"", target, "\". Use a pilot ",
+             "estimate, or a plausible range divided by four.",
+             if (!missing(p)) {
+               " To plan a proportion from `p`, use target = \"proportion\"."
+             }, call. = FALSE)
+      }
+      if (!missing(p)) {
+        warn_drawn(paste0(
+          "`p` is not used for target = \"", target, "\", whose spread is ",
+          "`sd`. To plan a proportion from `p`, use target = \"proportion\"; ",
+          "otherwise leave `p` out."), "drawn_irrelevant_argument")
+      }
+      spread <- check_pos(sd, "sd")
+    } else {
+      spread <- NA_real_
+    }
+    if (target == "total" && !is.finite(N)) {
+      stop("A margin on a total needs a finite `N`.", call. = FALSE)
     }
     p_used <- NA_real_
   }
 
-  z <- stats::qnorm(1 - (1 - level) / 2)
-  n0 <- (z * spread / unit_margin)^2 * deff
-  # n0 is the size for an unbounded frame. For a mean or a total, whose sd has
-  # the divisor N - 1, the smallest n with (1/n - 1/N) S^2 deff <=
-  # (margin/z)^2 is n0 / (1 + n0/N). For a proportion, whose p(1 - p) has the
-  # divisor N, it is n0 / (1 + (n0 - 1)/N). Both are written with n0 in a
-  # denominator, so an n0 too large for a double gives N, a census.
-  n_eff <- if (!is.finite(N)) {
-    n0
-  } else if (target == "proportion") {
-    N / (1 + (N - 1) / n0)
-  } else {
-    N / (1 + N / n0)
+  several <- list(margin = margin, deff = deff, response = response)
+  if (is.null(st)) {
+    several[[if (target == "proportion") "p" else "sd"]] <- spread
   }
-  if (is.na(n_eff) || (!is.finite(N) && !is.finite(n_eff / response))) {
-    shown <- format(level)
-    if (shown == "1") shown <- format(level, digits = 17)
-    stop("`margin` = ", format_bad(margin), " with a spread of ",
-         format(signif(spread, 4)), " at `level` = ", shown, " needs more ",
-         "rows than a number can hold. Widen `margin` or lower `level`",
-         if (!is.finite(N)) ", or give a finite `N`", ".", call. = FALSE)
+  k <- plan_count(several)
+  one <- function(i) {
+    at <- function(x) x[[if (length(x) == 1L) 1L else i]]
+    plan_one(at(margin), at(spread), at(p_used), N, level, at(deff),
+             at(response), target, st)
   }
+  if (k == 1L) return(one(1L))
+  do.call(rbind, lapply(seq_len(k), function(i) as.data.frame(one(i))))
+}
 
-  # The tolerance keeps a rounding error from adding a row: 21 / 0.7 is
-  # 30.000000000000004 in floating point.
-  n_margin <- max(1, ceiling(n_eff - 1e-9))
-  if (is.finite(N)) n_margin <- min(n_margin, floor(N))
-  capped <- is.finite(N) && n_margin >= floor(N)
-  # One row meets a margin of about two standard deviations, but gives no
-  # variance and no interval.
-  raised <- n_margin < 2 && floor(N) >= 2
-  n_eff <- if (raised) 2 else n_margin
+#' How many plans the vector arguments of `plan_size()` ask for
+#'
+#' Each of `args` holds one value, or one per plan; one value is used for
+#' every plan, as [base::Map()] recycles it. Lengths that differ otherwise
+#' are refused, since recycling them would pair values by accident.
+#'
+#' @noRd
+plan_count <- function(args) {
+  lens <- lengths(args)
+  k <- max(lens)
+  bad <- lens != 1L & lens != k
+  if (any(bad)) {
+    long <- names(lens)[lens == k][1]
+    other <- names(lens)[bad][1]
+    stop("`", long, "` has ", k, " values and `", other, "` has ",
+         lens[[other]], ". Give each of ",
+         paste0("`", utils::head(names(args), -1L), "`", collapse = ", "),
+         " and `", utils::tail(names(args), 1L), "` one value, or one for ",
+         "each plan.", call. = FALSE)
+  }
+  k
+}
+
+#' One plan from single values of each argument
+#'
+#' `plan_size()` has checked the arguments. `st` is `NULL`, or the strata
+#' from `plan_strata()`.
+#'
+#' @noRd
+plan_one <- function(margin, spread, p, N, level, deff, response, target,
+                     st) {
+  # A margin of M on the total is a margin of M/N on the mean.
+  unit_margin <- if (target == "total") margin / N else margin
+  z <- stats::qnorm(1 - (1 - level) / 2)
+  if (is.null(st)) {
+    n0 <- (z * spread / unit_margin)^2 * deff
+    # n0 is the size for an unbounded frame. For a mean or a total, whose sd
+    # has the divisor N - 1, the smallest n with (1/n - 1/N) S^2 deff <=
+    # (margin/z)^2 is n0 / (1 + n0/N). For a proportion, whose p(1 - p) has
+    # the divisor N, it is n0 / (1 + (n0 - 1)/N). Both are written with n0
+    # in a denominator, so an n0 too large for a double gives N, a census.
+    n_eff <- if (!is.finite(N)) {
+      n0
+    } else if (target == "proportion") {
+      N / (1 + (N - 1) / n0)
+    } else {
+      N / (1 + N / n0)
+    }
+    if (is.na(n_eff) || (!is.finite(N) && !is.finite(n_eff / response))) {
+      shown <- format(level)
+      if (shown == "1") shown <- format(level, digits = 17)
+      stop("`margin` = ", format_bad(margin), " with a spread of ",
+           format(signif(spread, 4)), " at `level` = ", shown, " needs more ",
+           "rows than a number can hold. Widen `margin` or lower `level`",
+           if (!is.finite(N)) ", or give a finite `N`", ".", call. = FALSE)
+    }
+
+    # The tolerance keeps a rounding error from adding a row: 21 / 0.7 is
+    # 30.000000000000004 in floating point.
+    n_margin <- max(1, ceiling(n_eff - 1e-9))
+    if (is.finite(N)) n_margin <- min(n_margin, floor(N))
+    capped <- is.finite(N) && n_margin >= floor(N)
+    # One row meets a margin of about two standard deviations, but gives no
+    # variance and no interval.
+    raised <- n_margin < 2 && floor(N) >= 2
+    n_eff <- if (raised) 2 else n_margin
+  } else {
+    n_margin <- strata_size(st, (unit_margin / z)^2 / deff)
+    capped <- n_margin >= N
+    # The floor `min_per_stratum` takes the place of the two rows.
+    raised <- FALSE
+    n_eff <- n_margin
+  }
   n_needed <- n_eff
   n_draw <- ceiling(n_eff / response - 1e-9)
 
@@ -277,13 +478,194 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
     n_eff <- min(n_eff, floor(n_draw * response + 1e-9))
   }
 
-  structure(
-    list(n = n_draw, n_effective = n_eff, margin = margin, level = level,
-         N = N, deff = deff, response = response, target = target,
-         spread = spread, p = p_used, capped = capped, short = short,
-         raised = raised, n_needed = n_needed),
-    class = "drawn_plan"
-  )
+  out <- list(n = n_draw, n_effective = n_eff, margin = margin,
+              level = level, N = N, deff = deff, response = response,
+              target = target, spread = spread, p = p, capped = capped,
+              short = short, raised = raised, n_needed = n_needed)
+  if (!is.null(st)) {
+    tab <- st$table
+    tab$n <- integer(nrow(tab))
+    tab$n[st$order] <- strata_split(st, n_draw)
+    out$rule <- st$rule
+    out$min_per_stratum <- st$floor
+    out$strata <- tab
+    out$allocation <- tab[c(st$keys, "n")]
+  }
+  structure(out, class = "drawn_plan")
+}
+
+#' Check the strata given to `plan_size()`, and put them in key order
+#'
+#' `strata` is a data frame of the columns that name the strata, `N`, `sd`
+#' (or `p` for a proportion) and, for Neyman allocation, an optional
+#' `cost`. Returns the checked table in the order given, and in key order,
+#' the order `design_stratified()` allocates in, the sizes, the variances
+#' `S_h^2`, the spreads and costs for Neyman allocation, and `w2`, each
+#' stratum's squared share of the frame.
+#'
+#' @noRd
+plan_strata <- function(strata, target, allocation, min_per_stratum) {
+  spread_col <- if (target == "proportion") "p" else "sd"
+  if (!is.data.frame(strata)) {
+    stop("`strata` must be a data frame with a row per stratum, holding the ",
+         "columns that name the strata, `N` and `", spread_col, "`, not ",
+         format_bad(strata), ".", call. = FALSE)
+  }
+  given <- names(strata)
+  if ("n" %in% given) {
+    stop("`strata` has a column `n`, which is what plan_size() works out. ",
+         "Give the number of rows of the frame in each stratum as `N`.",
+         call. = FALSE)
+  }
+  keys <- setdiff(given, c("N", "sd", "p", "cost"))
+  if (!length(keys)) {
+    stop("`strata` has no column naming the strata. Add one, such as the ",
+         "column `design_stratified()` will take as `strata`, beside `N` ",
+         "and `", spread_col, "`.", call. = FALSE)
+  }
+  need <- setdiff(c("N", spread_col), given)
+  if (length(need)) {
+    what <- c(N = "the number of rows of the frame in each stratum",
+              sd = paste0("the standard deviation of the measure in each ",
+                          "stratum, from a pilot or an earlier survey"),
+              p = "the expected proportion in each stratum")
+    stop("`strata` needs a column `", need[1], "`, ", what[[need[1]]], ".",
+         call. = FALSE)
+  }
+  unused <- setdiff(intersect(c("sd", "p"), given), spread_col)
+  if (length(unused)) {
+    warn_drawn(paste0(
+      "`strata` has a `", unused, "` column, which target = \"", target,
+      "\" does not use, since its spread is the `", spread_col, "` column. ",
+      "Leave it out", if (unused == "p") {
+        ", or use target = \"proportion\""
+      }, "."), "drawn_irrelevant_argument")
+  }
+  has_cost <- "cost" %in% given
+  if (has_cost && allocation != "neyman") {
+    stop("`strata` has a `cost` column, which applies only to allocation = ",
+         "\"neyman\", and `allocation` is \"", allocation, "\". Use ",
+         "allocation = \"neyman\", or drop the column.", call. = FALSE)
+  }
+  value <- c("N", spread_col, if (has_cost) "cost")
+  spec <- strata_frame(strata, keys, "strata", value)
+
+  sizes <- spec$N
+  if (!is.numeric(sizes)) {
+    stop("The stratum sizes in `strata$N` must be numbers, not ",
+         class(sizes)[1], ".", call. = FALSE)
+  }
+  bad <- !is.finite(sizes) | sizes < 1 | sizes != trunc(sizes) |
+    sizes > .Machine$integer.max
+  if (any(bad)) {
+    h <- which(bad)[1]
+    stop("The stratum sizes in `strata$N` must be whole numbers of 1 or ",
+         "more, the rows of the frame in each stratum, and stratum ",
+         spec_label(spec, keys, h), " has ", format(sizes[h]), ".",
+         call. = FALSE)
+  }
+  spec$N <- as.integer(sizes)
+  sizes <- as.numeric(sizes)
+  if (spread_col == "sd") {
+    spread <- check_stratum_values(spec[c(keys, "sd")], keys, "strata",
+                                   "sd")$sd
+    spec$sd <- spread
+    s2 <- spread^2
+  } else {
+    p <- spec$p
+    if (!is.numeric(p)) {
+      stop("The proportions in `strata$p` must be numbers, not ",
+           class(p)[1], ".", call. = FALSE)
+    }
+    bad <- is.na(p) | p < 0 | p > 1
+    if (any(bad)) {
+      h <- which(bad)[1]
+      stop("The proportions in `strata$p` must lie between 0 and 1, and ",
+           "stratum ", spec_label(spec, keys, h), " has ", format(p[h]), ".",
+           call. = FALSE)
+    }
+    # p(1 - p) has the divisor N_h; S_h^2 has N_h - 1. A stratum of one row
+    # is taken whole and adds nothing.
+    s2 <- ifelse(sizes > 1, sizes * p * (1 - p) / pmax(sizes - 1, 1), 0)
+    spread <- sqrt(s2)
+  }
+  cost <- if (has_cost) {
+    spec$cost <- check_stratum_values(spec[c(keys, "cost")], keys, "strata",
+                                      "cost", positive = TRUE)$cost
+    spec$cost
+  }
+
+  o <- order(as.integer(group_key(spec, keys)))
+  # Neyman shares do not change when every spread is scaled alike, and a
+  # spread near the largest double would overflow `size * spread`.
+  if (any(spread > 0)) spread <- spread / max(spread)
+  N <- sum(sizes)
+  list(table = spec, keys = keys, order = o, sizes = sizes[o],
+       s2 = s2[o], w2 = (sizes[o] / N)^2,
+       spread = if (allocation == "neyman") spread[o],
+       cost = if (!is.null(cost)) cost[o],
+       rule = allocation, floor = min_per_stratum, N = N)
+}
+
+#' The split of `n` over the strata of a plan, in key order
+#'
+#' As `design_stratified()` splits it: the same rule, floor and
+#' largest-remainder rounding, with no stratum given more rows than it has.
+#'
+#' @noRd
+strata_split <- function(st, n) {
+  allocate(n, st$sizes, st$rule, st$floor, cap = TRUE, spread = st$spread,
+           cost = st$cost)
+}
+
+#' Variance of a stratified mean for a split `n_h` of a plan's strata
+#'
+#' `sum(W_h^2 * (1 / n_h - 1 / N_h) * S_h^2)`. A stratum taken whole adds
+#' nothing, even when its `S_h^2` is too large for a double. A split that
+#' leaves a stratum with no rows gives `Inf`, since the estimate then leaves
+#' the stratum out and no margin holds for it.
+#'
+#' @noRd
+strata_variance <- function(st, n_h) {
+  if (any(n_h < 1)) return(Inf)
+  sum(st$w2 * ifelse(n_h >= st$sizes, 0, (1 / n_h - 1 / st$sizes) * st$s2))
+}
+
+#' The smallest total whose split meets a variance bound
+#'
+#' The variance of the rounded split need not fall as `n` grows, since
+#' largest-remainder rounding can give a stratum one row fewer at `n + 1`
+#' than at `n`. So the search scans upward from the first `n` that a lower
+#' bound on the variance allows. Rounding gives each stratum at most one row
+#' more than its share before rounding, and those shares never fall as `n`
+#' grows, so the variance at the shares plus one row is a lower bound that
+#' falls with `n`, and bisection finds the first `n` it allows. Every
+#' smaller `n` has a variance above `bound`, and the scan ends at the census
+#' at the latest, whose variance is 0.
+#'
+#' @noRd
+strata_size <- function(st, bound) {
+  limit <- bound * (1 + 1e-9)
+  share <- allocation_share(st$rule, st$sizes, st$spread, st$cost)
+  lower <- group_floor(st$floor, st$sizes, cap = TRUE)
+  floor_at <- function(n) {
+    raw <- capped_shares(n, share, st$sizes, cap = TRUE, lower = lower)
+    strata_variance(st, pmin(raw + 1, st$sizes))
+  }
+  lo <- sum(lower)
+  hi <- st$N
+  if (floor_at(lo) > limit) {
+    while (hi - lo > 1) {
+      mid <- floor((lo + hi) / 2)
+      if (floor_at(mid) <= limit) hi <- mid else lo <- mid
+    }
+    lo <- hi
+  }
+  n <- lo
+  while (n < st$N && strata_variance(st, strata_split(st, n)) > limit) {
+    n <- n + 1
+  }
+  n
 }
 
 #' The design effect `plan_size()` inflates by
@@ -321,19 +703,24 @@ plan_deff <- function(deff, target) {
   }
   if (!is.atomic(deff)) {
     stop("`deff` is a `", class(deff)[1], "`. Give a design effect as a ",
-         "single positive number, or the result of ht_mean() or ht_total() ",
-         "for one variable without `by`.", call. = FALSE)
+         "positive number, a vector of them for several plans, or the result ",
+         "of ht_mean() or ht_total() for one variable without `by`.",
+         call. = FALSE)
   }
-  if (length(deff) == 1L && is.na(deff)) {
-    stop("`deff` is NA, which deff() gives for a pilot with no variance ",
-         "estimate or with one value of `y`. ", na_fix, call. = FALSE)
+  if (length(deff) && anyNA(deff)) {
+    stop("`deff` ", if (length(deff) == 1L) "is NA" else "holds an NA",
+         ", which deff() gives for a pilot with no variance estimate or with ",
+         "one value of `y`. ", na_fix, call. = FALSE)
   }
   deff
 }
 
 #' @export
 print.drawn_plan <- function(x, ...) {
-  cat("Sample size for a ", x$target, "\n", sep = "")
+  by_strata <- !is.null(x$allocation)
+  cat("Sample size for a ", x$target,
+      if (by_strata) paste0(", over ", nrow(x$allocation), " strata"), "\n",
+      sep = "")
   cat("  draw           ", fmt_n(x$n), "\n", sep = "")
   if (x$n != x$n_effective) {
     cat("  to analyse     ", fmt_n(x$n_effective), "  (after ",
@@ -342,7 +729,13 @@ print.drawn_plan <- function(x, ...) {
   cat("  margin         +/- ",
       format(x$margin, big.mark = ",", scientific = FALSE), " at ",
       format(100 * x$level), "% confidence\n", sep = "")
-  spread <- if (identical(x$target, "proportion") && isTRUE(x$p >= 0)) {
+  spread <- if (by_strata) {
+    paste0(if (x$rule == "neyman") "Neyman" else x$rule, " allocation",
+           if (x$min_per_stratum > 0L) {
+             paste0(", at least ", x$min_per_stratum, " row",
+                    if (x$min_per_stratum != 1L) "s", " per stratum")
+           })
+  } else if (identical(x$target, "proportion") && isTRUE(x$p >= 0)) {
     paste0("p ", signif(x$p, 4))
   } else {
     paste0("sd ", signif(x$spread, 4))
@@ -357,6 +750,7 @@ print.drawn_plan <- function(x, ...) {
   cat("  assuming       ", spread,
       if (x$deff != 1) paste0(", deff ", signif(x$deff, 3)) else "",
       ", N ", frame, "\n", sep = "")
+  if (by_strata) print_strata(x$strata)
   msg <- if (isTRUE(x$capped)) {
     paste0("That is a census. No sample smaller than the frame meets this ",
            "margin, so every row is needed. ",
@@ -381,6 +775,113 @@ print.drawn_plan <- function(x, ...) {
                     "interval need two, so the plan is for two."))
   }
   invisible(x)
+}
+
+#' The strata of a plan, ten at most, with the rows to draw from each
+#' @noRd
+print_strata <- function(tab, max = 10L) {
+  shown <- utils::capture.output(
+    print(utils::head(tab, max), row.names = FALSE))
+  cat("\n", paste0("    ", shown, "\n"), sep = "")
+  if (nrow(tab) > max) {
+    cat("    ... and ", nrow(tab) - max, " more strata, all in ",
+        "`$allocation`\n", sep = "")
+  }
+}
+
+#' @export
+as.data.frame.drawn_plan <- function(x, row.names = NULL, optional = FALSE,
+                                     ...) {
+  fields <- c("n", "n_effective", "margin", "level", "N", "deff", "response",
+              "target", "spread", "p", "capped", "short", "raised",
+              "n_needed")
+  out <- data.frame(unclass(x)[fields], stringsAsFactors = FALSE)
+  if (!is.null(x$allocation)) {
+    out$strata <- nrow(x$allocation)
+    out$rule <- x$rule
+    out$min_per_stratum <- x$min_per_stratum
+  }
+  if (!is.null(row.names)) row.names(out) <- row.names
+  out
+}
+
+#' Design effect of a cluster sample, from the intraclass correlation
+#'
+#' The design effect of taking `m` rows from each cluster, for
+#' [plan_size()] before a pilot has measured one with [deff()]:
+#' `1 + (m - 1) * icc`, with `icc` the intraclass correlation of the
+#' measure, the correlation between two rows of one cluster (Kish 1965).
+#' Rows of one cluster tend to be alike, so each row taken from a cluster
+#' already sampled adds less than a row from a new cluster would, and the
+#' more alike they are and the more taken from each, the larger the design
+#' effect.
+#'
+#' The formula assumes every cluster gives the same number of rows, drawn
+#' by simple random sampling of clusters. `plan_size()` counts rows, so a
+#' plan of `n` rows in clusters of `m` takes `ceiling(n / m)` clusters, and
+#' the "Where the formula comes from" section of [plan_size()] explains why
+#' a few clusters call for more than the plan.
+#'
+#' @param m Rows taken from each cluster, 1 or more. With one row a
+#'   cluster, the design effect is 1 whatever `icc` is.
+#' @param icc Intraclass correlation, from a pilot or a published study of
+#'   the same measure, between `-1 / (m - 1)` and 1. A negative one, rows
+#'   of a cluster less alike than rows taken at random, gives a design
+#'   effect below 1.
+#'
+#' @return The design effect, a number. `m` and `icc` may be vectors,
+#'   recycled to a common length, and give one design effect per pair.
+#'
+#' @references
+#' Kish, L. (1965). *Survey Sampling*. Wiley.
+#'
+#' @examples
+#' deff_cluster(m = 10, icc = 0.05)
+#'
+#' # Rows to draw, and the clusters of ten rows that hold them
+#' p <- plan_size(margin = 5, sd = 40, N = 20000,
+#'                deff = deff_cluster(m = 10, icc = 0.05))
+#' p$n
+#' ceiling(p$n / 10)
+#'
+#' # Takes of 5, 10 and 20 rows a cluster, side by side
+#' plan_size(margin = 5, sd = 40, N = 20000,
+#'           deff = deff_cluster(m = c(5, 10, 20), icc = 0.05))
+#'
+#' @seealso [plan_size()], [deff()] to measure the design effect of a past
+#'   sample.
+#' @export
+deff_cluster <- function(m, icc) {
+  if (!is.numeric(m) || !length(m) || anyNA(m) || !all(is.finite(m)) ||
+      any(m < 1)) {
+    stop("`m` must be the rows taken from each cluster, a finite number of ",
+         "1 or more, not ", format_bad(m), ".", call. = FALSE)
+  }
+  if (!is.numeric(icc) || !length(icc) || anyNA(icc) ||
+      !all(is.finite(icc))) {
+    stop("`icc` must be a finite number, the intraclass correlation, not ",
+         format_bad(icc), ".", call. = FALSE)
+  }
+  k <- max(length(m), length(icc))
+  if (!all(c(length(m), length(icc)) %in% c(1L, k))) {
+    stop("`m` has ", length(m), " values and `icc` has ", length(icc),
+         ". Give each one value, or the same number of values.",
+         call. = FALSE)
+  }
+  m <- rep_len(m, k)
+  icc <- rep_len(icc, k)
+  low <- ifelse(m > 1, -1 / (m - 1), -Inf)
+  # A rounding error below the bound still means the bound.
+  bad <- icc > 1 | icc < low - 1e-12
+  if (any(bad)) {
+    i <- which(bad)[1]
+    stop("`icc` must lie between -1 / (m - 1) and 1, and is ",
+         format(icc[i]), " with `m` = ", format(m[i]),
+         if (icc[i] < 1) paste0(", below ", format(signif(low[i], 3))),
+         ". A correlation above 1 is impossible, and one below the bound ",
+         "would make the design effect negative.", call. = FALSE)
+  }
+  pmax(1 + (m - 1) * icc, 0)
 }
 
 #' Describe a drawn sample

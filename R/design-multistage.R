@@ -71,12 +71,12 @@
 #' @param clusters Column naming each row's cluster.
 #' @param n_clusters Number of clusters to select at stage one.
 #' @param n Total rows to draw across the selected clusters, at least
-#'   `n_clusters`. A multiple of `n_clusters`, no larger than `n_clusters`
-#'   times the smallest cluster, gives every selected cluster the same take
-#'   and every row a closed-form inclusion probability. Otherwise the take
-#'   depends on which clusters were selected, and `draw(weights = TRUE)`
-#'   weights the sample conditional on them. See "When the take depends on
-#'   the clusters selected".
+#'   `n_clusters`, or a plan from [plan_size()]. A multiple of `n_clusters`,
+#'   no larger than `n_clusters` times the smallest cluster, gives every
+#'   selected cluster the same take and every row a closed-form inclusion
+#'   probability. Otherwise the take depends on which clusters were
+#'   selected, and `draw(weights = TRUE)` weights the sample conditional on
+#'   them. See "When the take depends on the clusters selected".
 #' @param allocation `"equal"` splits `n` evenly across the selected clusters;
 #'   `"proportional"` splits it in proportion to their size, and its weights
 #'   are conditional on the clusters selected. Proportional allocation can
@@ -125,7 +125,7 @@ design_multistage <- function(clusters, n_clusters, n,
                               na_rm = FALSE, size = NULL) {
   clusters <- check_columns(clusters, "clusters", 1L)
   n_clusters <- check_count(n_clusters, "n_clusters", allow_zero = FALSE)
-  n <- check_count(n, "n")
+  n <- check_count(plan_n(n), "n")
   min_per_cluster <- check_count(min_per_cluster, "min_per_cluster")
   allocation <- check_choice(allocation, c("equal", "proportional"),
                              "allocation")
