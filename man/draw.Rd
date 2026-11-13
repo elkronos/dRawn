@@ -12,7 +12,7 @@ connection, or a zero-argument generator function.}
 
 \item{design}{A design built by one of the \code{\link[=design_simple]{design_simple()}} family.}
 
-\item{seed}{Optional seed, applied only for this draw.}
+\item{seed}{Optional seed, applied only for this draw. See "Seeding".}
 
 \item{weights}{Attach \code{.prob}, \code{.weight} and \code{.row} columns. See "Design
 weights".}
@@ -45,6 +45,13 @@ in the order they are used. With \code{weights = TRUE} it follows \code{.row},
 and \code{.prob} is the main sample's probability for every row.
 \code{\link[=use_reserves]{use_reserves()}} turns the list into the sample to estimate from.
 }
+
+Row names of the frame's own, such as the car names of \code{mtcars}, stay with
+their rows. A row drawn more than once, by a design with \code{replace = TRUE}
+or by \code{\link[=design_bootstrap]{design_bootstrap()}}, gets names made unique by \code{\link[=make.unique]{make.unique()}}:
+\code{"Mazda RX4"}, then \code{"Mazda RX4.1"}. The automatic row names 1, 2, ...
+number the sample's rows afresh, and \code{weights = TRUE} records each row's
+place in \code{data} in \code{.row}. A tibble has no row names to keep.
 }
 
 \section{Design weights}{
@@ -115,9 +122,27 @@ stratified design.
 
 \section{Seeding}{
 
-\code{seed} is saved, applied, and unwound: \code{.Random.seed} is restored on exit, so
-drawing a sample inside a simulation does not shift the simulation's own
-random number stream. Leave it \code{NULL} to draw from the current stream.
+With a \code{seed}, \code{draw()} saves the caller's random number state, seeds,
+draws, and restores the state on exit, so drawing a sample inside a
+simulation does not shift the simulation's own random number stream. With
+\code{seed = NULL} it draws from the caller's stream and advances it, as any
+function that draws random numbers does.
+
+A seed is applied with R's default generator,
+\code{set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")}, whatever generator the session has selected,
+and the session's generator is restored on exit with its state. A seed
+therefore draws the same sample after \code{RNGkind("L'Ecuyer-CMRG")}, which
+parallel code often selects, or under \code{sample.kind = "Rounding"} as it
+does in a session left at R's defaults. It must be a whole number from
+\code{-.Machine$integer.max} to \code{.Machine$integer.max}. The same holds for the
+\code{seed} of \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=joint_prob]{joint_prob()}} and \link[=plot.drawn_design]{plot()}.
+
+With \code{weights = TRUE} the sample records how it was drawn in its
+\code{drawn_meta} attribute: \code{seed} (\code{NULL} without one), \code{rng_kind} (the
+generator used, as \code{\link[=RNGkind]{RNGkind()}} gives it), \code{version} (of drawn), \code{time},
+\code{frame_rows} (the rows of \code{data}) and \code{made_by} (\code{"draw()"}, or
+\code{"as_drawn()"} for a sample rebuilt from a file). \code{\link[=sample_summary]{sample_summary()}}
+prints it.
 }
 
 \examples{

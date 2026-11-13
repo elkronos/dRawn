@@ -137,9 +137,9 @@ draw_design.drawn_design_reservoir <- function(design, data) {
     validate_data(data)
     n_rows <- nrow(data)
     if (is.finite(max_items) && max_items < n_rows) {
-      warning("`max_items` (", max_items, ") is below the ", n_rows,
-              " available rows; sampling only the first ", max_items, ".",
-              call. = FALSE)
+      warn_drawn(paste0("`max_items` (", max_items, ") is below the ",
+                        n_rows, " available rows; sampling only the first ",
+                        max_items, "."), "drawn_stream_truncated")
       n_rows <- as.integer(max_items)
     }
     idx <- if (n >= n_rows) seq_len(n_rows) else sort(sample.int(n_rows, n))
@@ -373,12 +373,10 @@ row_reservoir <- function(n) {
     parts <- lapply(unique(from), function(p) {
       reindex(pieces[[p]], row_of[held][from == p])
     })
-    if (length(parts) == 1L) {
-      out <- parts[[1L]]
-    } else {
-      out <- do.call(rbind, parts)
-      rownames(out) <- NULL
-    }
+    out <- if (length(parts) == 1L) parts[[1L]] else do.call(rbind, parts)
+    # The batches' row names number rows within each batch, not rows of a
+    # frame, so the sample numbers its rows afresh.
+    rownames(out) <- NULL
     list(data = out, slots = held)
   }
 
@@ -465,8 +463,8 @@ column_change <- function(now, first) {
 
 #' @noRd
 truncation_warning <- function(max_items) {
-  warning("Stopped after `max_items` = ", max_items, " item(s); the stream ",
-          "may have held more.", call. = FALSE)
+  warn_drawn(paste0("Stopped after `max_items` = ", max_items, " item(s); ",
+                    "the stream may have held more."), "drawn_stream_truncated")
 }
 
 #' Turn a connection or function into a block reader

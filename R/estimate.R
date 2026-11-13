@@ -451,7 +451,7 @@ mean_is_proportion <- function(parts, proportion) {
     if (!is.logical(proportion) || length(proportion) != 1L ||
         is.na(proportion)) {
       stop("`proportion` must be NULL, TRUE or FALSE, not ",
-           format_bad(proportion), ".", call. = FALSE)
+           format_bad(proportion, value = TRUE), ".", call. = FALSE)
     }
     if (proportion && !binary) {
       bad <- unique(y[!(y == 0 | y == 1)])
@@ -1911,8 +1911,8 @@ prepare_sample <- function(sample, level, df = NULL) {
   if (!is.null(df) && (!is.numeric(df) || length(df) != 1L || is.na(df) ||
                        df < 1)) {
     stop("`df` must be NULL, Inf or a single number of 1 or more, not ",
-         format_bad(df), ". A t interval needs at least one degree of ",
-         "freedom.", call. = FALSE)
+         format_bad(df, value = TRUE), ". A t interval needs at least one ",
+         "degree of freedom.", call. = FALSE)
   }
   # The rows the design can reach: those with a probability above 0 at draw
   # time, or none recorded because the sample is conditional on clusters
@@ -2503,7 +2503,7 @@ check_ci_level <- function(level, arg = "level") {
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
       level <= 0 || level >= 1) {
     stop("`", arg, "` must be a single number strictly between 0 and 1, not ",
-         format_bad(level), ".", call. = FALSE)
+         format_bad(level, value = TRUE), ".", call. = FALSE)
   }
   level
 }

@@ -1,10 +1,11 @@
 # The state a weighted sample carries, and the one place it is read.
 #
-# draw(weights = TRUE) attaches four attributes: the design (`drawn_design`),
+# draw(weights = TRUE) attaches five attributes: the design (`drawn_design`),
 # the frame rows in draw order (`drawn_rows`), a copy of the frame
-# (`drawn_population`) and every frame row's inclusion probability at draw
-# time (`drawn_pi`). It also adds a `.row` column holding each sampled row's
-# frame row. Everything that estimates from a sample reads that state through
+# (`drawn_population`), every frame row's inclusion probability at draw time
+# (`drawn_pi`) and a record of how it was drawn (`drawn_meta`). It also adds
+# a `.row` column holding each sampled row's frame row. Everything that
+# estimates from a sample reads that state through
 # drawn_state(), which matches rows through `.row` rather than by position,
 # checks `.prob` against the probabilities recorded at draw time, and checks
 # that the design still gives the frame those probabilities. Design keys
@@ -99,7 +100,9 @@ format_rows <- function(x) {
 #' sample weighted conditional on them, else `NULL`), `compact` (what
 #' compact_sample() dropped from the stored frame, else `NULL`) and `reserve`
 #' (for a list from a design with `reserve`, each row's place among the
-#' reserves, 0 for the main sample, else `NULL`). In a conditional sample,
+#' reserves, 0 for the main sample, else `NULL`) and `meta` (how the sample
+#' was drawn, from draw_meta(), or `NULL` for a sample from an earlier
+#' version of drawn). In a conditional sample,
 #' `pi_all` is `NA` for the rows of clusters not selected; count the rows a
 #' design can reach with reachable().
 #'
@@ -139,6 +142,7 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
   pop <- attr(sample, "drawn_population", exact = TRUE)
   pi_all <- attr(sample, "drawn_pi", exact = TRUE)
   compact <- attr(sample, "drawn_compact", exact = TRUE)
+  meta <- attr(sample, "drawn_meta", exact = TRUE)
   if (is.null(design) || is.null(drawn) || is.null(pop)) {
     stop_not_drawn(arg = arg)
   }
@@ -163,7 +167,7 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
     }
     return(list(design = design, pop = pop, rows = drawn, pi_all = NULL,
                 units = pop[drawn, , drop = FALSE], selection = NULL,
-                compact = compact))
+                compact = compact, meta = meta))
   }
 
   rows <- sample_rows(sample, drawn, nrow(pop), arg)
@@ -173,7 +177,8 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
   list(design = design, pop = pop, rows = rows, pi_all = pi_all,
        units = pop[rows, , drop = FALSE], selection = selection,
        compact = compact,
-       reserve = if (r > 0L) list_places(sample, rows, drawn, design$n, arg))
+       reserve = if (r > 0L) list_places(sample, rows, drawn, design$n, arg),
+       meta = meta)
 }
 
 #' Each row's place among a list's reserves, checked against `.reserve`
@@ -579,11 +584,14 @@ as_drawn <- function(data, design, frame, by = NULL) {
            "the sample was drawn with.", call. = FALSE)
     }
   }
+  # The seed and generator of the draw are not in the file.
+  meta <- draw_meta(NULL, nrow(frame), made_by = "as_drawn()")
   if (r > 0L) {
     return(rebuild_sample(data, design, frame, rows, pi_all, selection,
-                          reserve = reserve, drawn = rows[order(reserve)]))
+                          reserve = reserve, drawn = rows[order(reserve)],
+                          meta = meta))
   }
-  rebuild_sample(data, design, frame, rows, pi_all, selection)
+  rebuild_sample(data, design, frame, rows, pi_all, selection, meta = meta)
 }
 
 #' Each row's reserve number, from the `.reserve` column of a list
@@ -624,12 +632,13 @@ rebuilt_reserve <- function(data, n, r) {
 #' column after `.row`. `drawn` is the frame rows in the order recorded as
 #' `drawn_rows`, which for a list is the main sample and then the reserves
 #' in the order they are used. `compact` is what compact_sample() dropped
-#' from `frame`, kept as `drawn_compact`.
+#' from `frame`, kept as `drawn_compact`. `meta` is the record of how the
+#' sample was drawn, from draw_meta(), kept as `drawn_meta`.
 #'
 #' @noRd
 rebuild_sample <- function(data, design, frame, rows, pi_all,
                            selection = NULL, reserve = NULL, drawn = rows,
-                           compact = NULL) {
+                           compact = NULL, meta = NULL) {
   added <- c(".prob", ".weight", ".row", if (!is.null(reserve)) ".reserve")
   out <- data
   for (col in intersect(added, names(out))) out[[col]] <- NULL
@@ -650,6 +659,7 @@ rebuild_sample <- function(data, design, frame, rows, pi_all,
   attr(out, "drawn_pi") <- pi_all
   if (!is.null(selection)) attr(out, "drawn_selection") <- selection
   if (!is.null(compact)) attr(out, "drawn_compact") <- compact
+  if (!is.null(meta)) attr(out, "drawn_meta") <- meta
   table_ready(out)
 }
 
@@ -1053,7 +1063,8 @@ use_reserves <- function(sample, unavailable) {
   pi_all <- exact_inclusion(resolved, state$pop)
   keep <- which(used)
   rebuild_sample(reindex(sample, keep), resolved, state$pop, rows[keep],
-                 pi_all, reserve = place[keep], compact = state$compact)
+                 pi_all, reserve = place[keep], compact = state$compact,
+                 meta = state$meta)
 }
 
 #' What the visits to a list found, as a logical vector over its rows

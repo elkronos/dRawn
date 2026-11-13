@@ -200,7 +200,7 @@ draw_design.drawn_design_systematic <- function(design, data) {
   pos <- systematic_positions(design, data)
   if (anyNA(pos)) {
     keep <- which(!is.na(pos))
-    data <- data[keep, , drop = FALSE]
+    data <- reindex(data, keep)
     pos <- pos[keep]
   }
   walk <- order(pos)
@@ -219,13 +219,20 @@ draw_design.drawn_design_systematic <- function(design, data) {
   starts <- design$start %||% sort(sample.int(step, m))
   live <- starts[starts <= nrow(data)]
   if (!length(live)) {
-    warning(if (m == 1L) {
+    warn_drawn(if (!is.null(design$start)) {
       paste0("`start` (", starts, ") is past the last row (", nrow(data),
              "); returning no rows.")
+    } else if (m == 1L) {
+      paste0("The random start (", starts, ") is past the last row (",
+             nrow(data), "), so the sample is empty. `interval` (",
+             design$interval, ") is larger than the number of rows, so ",
+             "a start above ", nrow(data), " draws nothing.")
     } else {
-      paste0("Every start (", format_rows(starts), ") is past the last row (",
-             nrow(data), "); returning no rows.")
-    }, call. = FALSE)
+      paste0("Every random start (", format_rows(starts), ") is past the ",
+             "last row (", nrow(data), "), so the sample is empty. The ",
+             "starts are drawn from 1:", step, ", `n_starts * interval`, ",
+             "and a start above ", nrow(data), " draws nothing.")
+    }, "drawn_empty_start")
     return(empty_like(data))
   }
 

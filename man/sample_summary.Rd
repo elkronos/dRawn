@@ -61,6 +61,11 @@ drawn are listed. For \code{\link[=design_certainty]{design_certainty()}}, the g
 its \code{rest} over the rows below the threshold, after a \code{"(certain)"}
 row for the rows above it.}
 \item{\code{group_col}}{The column(s) \code{by_group} is keyed on.}
+\item{\code{drawn}}{How the sample was drawn, from its \code{drawn_meta}
+attribute: \code{seed}, \code{rng_kind}, \code{version}, \code{time}, \code{frame_rows} and
+\code{made_by} (see "Seeding" in \code{\link[=draw]{draw()}}). \code{NULL} for a sample from an
+earlier version of drawn, which recorded none. The print shows the
+seed, the version and the date.}
 }
 }
 \description{

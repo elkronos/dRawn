@@ -104,6 +104,7 @@ sample_summary(s)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
 #>   effective n        60  (Kish, from the weights alone)
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-13
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate
@@ -207,7 +208,7 @@ inclusion_prob(invoices, design_weighted("value", n = 60))
 #> Its weights govern each successive draw, not each row's chance of ending up in
 #> the sample. Use method = "systematic" or "poisson" for a design whose inclusion
 #> probabilities really are proportional to the weights.
-#> Or pass simulate = TRUE to estimate it by Monte Carlo.
+#> Or estimate it by Monte Carlo with inclusion_prob(data, design, simulate = TRUE).
 ```
 
 ``` r

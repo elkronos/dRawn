@@ -185,6 +185,5 @@ with_reserve <- function(out, n, r) {
   out[[".reserve"]] <- c(integer(n), seq_len(r))
   out <- out[, c(k + 1L, seq_len(k)), drop = FALSE]
   names(out) <- c(".reserve", nm)
-  rownames(out) <- NULL
   out
 }

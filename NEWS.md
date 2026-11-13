@@ -521,6 +521,28 @@
   values".
 * Messages that name a class put "an" before a vowel, as in "not an
   integer", where they said "not a integer".
+* `draw()`, `inclusion_prob()` and `joint_prob()` refuse a `seed` outside
+  the integer range, such as `2^31`, and give the range. `set.seed()`
+  stopped with "supplied seed is not a valid integer" after a coercion
+  warning. A seed, count, `level` or `df` given as text reads as
+  `the string "1"` in the message, where it read as the number 1 would.
+  `inclusion_prob()` and `joint_prob()` check `seed` without
+  `simulate = TRUE` too, where they ignored any value.
+* `draw()`, `inclusion_prob()` and `joint_prob()` given the design first and
+  the data second say the two look swapped and how to call the function.
+  They said only that `design` must come from a constructor.
+* A design with no closed-form inclusion probability points to
+  `inclusion_prob(data, design, simulate = TRUE)`. It said "pass
+  simulate = TRUE" when raised by `draw(weights = TRUE)` and `plot()`,
+  neither of which takes `simulate`. A design with no closed-form joint
+  probability points to `joint_prob(data, design, simulate = TRUE)` as well,
+  where most of those refusals did not mention it, except a bootstrap, whose
+  simulation is refused.
+* A design class of your own (see `?draw_design`) is refused by
+  `draw(weights = TRUE)` and the exact probabilities with a message that
+  points to `inclusion_prob(simulate = TRUE)`, where it said "No inclusion
+  probability method for design type". A draw method that drops columns of
+  `data` is refused by the simulations, which counted it as drawing nothing.
 
 ## Behaviour changes
 
@@ -721,6 +743,31 @@
   `random` for `design_systematic()`, and `n` is `nrow(data)` and the
   default `block_length` is `nrow(data)^(1/3), rounded down` for
   `design_bootstrap()`.
+* A `seed` is applied with R's default generator,
+  `set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion",
+  sample.kind = "Rejection")`, whatever generator the session has selected,
+  and the session's generator is restored with its state. A seed drew
+  another sample after `RNGkind("L'Ecuyer-CMRG")` or under
+  `sample.kind = "Rounding"`. A session left at R's defaults draws the same
+  samples as before. This holds for the `seed` of `draw()`,
+  `inclusion_prob()`, `joint_prob()` and `plot()`.
+* `draw()` keeps the row names of a frame that has its own, such as the car
+  names of `mtcars`, on the rows drawn, made unique by `make.unique()` where
+  a row is drawn more than once. They were replaced by 1, 2, and so on.
+  Automatic row names are still numbered afresh, and a tibble has none.
+* `inclusion_prob(simulate = TRUE)` and `joint_prob(simulate = TRUE)` give a
+  warning that the draws raise once, at the end, with the number of draws
+  that raised it. `max_items` below the rows of a frame and a systematic
+  start past the last row warned once per draw, hundreds of times, and an
+  empty stratum or cluster was not reported. These two warnings have the
+  classes `drawn_stream_truncated` and `drawn_empty_start`, and a random
+  systematic start past the last row is called random, where the message
+  named `start`.
+* `inclusion_prob(simulate = TRUE)` and `joint_prob(simulate = TRUE)` time
+  their first draws, and a run projected to take more than 30 seconds says
+  how long, with a progress bar in an interactive session. A run of hours,
+  such as the default `R` for `design_spread()` on 10,000 rows, gave no
+  sign of progress.
 
 ## New
 
@@ -1087,6 +1134,12 @@
   title. A `sub` given before was matched to an internal argument of the
   same name, and `type = "map"` stopped with 'graphical parameter "bg" has
   the wrong length'.
+* A sample from `draw(weights = TRUE)` records how it was drawn in the
+  attribute `drawn_meta`: the seed, the generator, the version of drawn, the
+  time and the number of frame rows. `sample_summary()` returns it as
+  `drawn` and prints the seed, the version and the date. A sample from
+  `as_drawn()` records that it was rebuilt, and `use_reserves()` keeps the
+  record of the draw.
 
 ## Speed and memory
 
@@ -1269,6 +1322,16 @@
   for a proportion is asymmetric, with an upper arm that exceeds `margin` in
   most samples when `p` is small, and cites chapter 4 of Cochran (1977) for
   both corrections.
+* `?draw` and `?designs` say that a `seed` restores the caller's random
+  number stream and that `seed = NULL` draws from and advances it.
+  `?designs` said the stream was always restored.
+* `?draw_design` gives the contract for a design class of your own: a
+  method takes `design` and `data` and returns rows of `data`, which is
+  enough for `draw()` and `simulate = TRUE` but not for `weights = TRUE` or
+  the estimators. The site lists it under "Extending", where it was a page
+  with no contract beside `draw()`.
+* `?inclusion_prob` says what a simulation costs: `R` draws, each of which
+  takes time in proportion to `N^2` for `design_spread()`.
 
 # drawn 0.2.0
 

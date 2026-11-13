@@ -178,8 +178,18 @@ test_that("an empty stratum biases a total, which is why it warns", {
 
 test_that("simulation loops do not repeat the empty-stratum warning", {
   d <- data.frame(g = c(rep("big", 99), "rare"))
-  expect_silent(inclusion_prob(d, design_stratified("g", n = 5),
-                               simulate = TRUE, R = 50, seed = 1))
+  warned <- 0L
+  withCallingHandlers(
+    inclusion_prob(d, design_stratified("g", n = 5), simulate = TRUE,
+                   R = 50, seed = 1),
+    warning = function(w) {
+      warned <<- warned + 1L
+      expect_s3_class(w, "drawn_empty_stratum")
+      expect_match(conditionMessage(w), "50 of the 50 simulated draws",
+                   fixed = TRUE)
+      invokeRestart("muffleWarning")
+    })
+  expect_equal(warned, 1L)
 })
 
 # ---- degrees of freedom and t intervals -------------------------------------

@@ -77,8 +77,16 @@ test_that("a selected cluster the allocation leaves empty is named", {
                                     min_per_cluster = 2), seed = 1)
   )
   expect_equal(as.vector(table(s2$cl)), c(9L, 1L))
-  # Simulation draws many times on purpose and stays quiet.
-  expect_no_warning(inclusion_prob(d, des, simulate = TRUE, R = 20, seed = 1))
+  # Simulation draws many times on purpose and warns once, with the count.
+  warned <- character(0)
+  withCallingHandlers(
+    inclusion_prob(d, des, simulate = TRUE, R = 20, seed = 1),
+    drawn_empty_cluster = function(w) {
+      warned <<- c(warned, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_length(warned, 1L)
+  expect_match(warned, "20 of the 20 simulated draws", fixed = TRUE)
 })
 
 test_that("with replacement, a row's probability is that of being drawn at all", {

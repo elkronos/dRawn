@@ -422,3 +422,115 @@ test_that("joint_prob refuses rows that are not whole numbers", {
                           simulate = TRUE, R = 10),
                "not 1.7", fixed = TRUE)
 })
+
+# ---- where a refusal points ---------------------------------------------------
+
+test_that("a refusal names the function that simulates", {
+  df <- data.frame(id = 1:20, cl = rep(letters[1:4], each = 5), w = 1:20)
+  succ <- design_weighted("w", n = 3)
+  # draw() and plot() take no `simulate`, so the pointer names the function
+  # that does.
+  for (call in list(quote(inclusion_prob(df, succ)),
+                    quote(draw(df, succ, seed = 1, weights = TRUE)))) {
+    err <- tryCatch(eval(call), error = conditionMessage)
+    expect_match(err, "inclusion_prob(data, design, simulate = TRUE)",
+                 fixed = TRUE)
+    expect_no_match(err, "Or pass simulate", fixed = TRUE)
+  }
+  # Joint refusals point to a simulation where one works ...
+  for (des in list(succ,
+                   design_cluster("cl", n_clusters = 2, balanced = TRUE),
+                   design_multistage("cl", n_clusters = 2, n = 4,
+                                     allocation = "proportional"),
+                   design_simple(n = 3, replace = TRUE))) {
+    expect_error(joint_prob(df, des, rows = 1:3),
+                 "joint_prob(data, design, simulate = TRUE)", fixed = TRUE)
+  }
+  # ... and not for a bootstrap, where it is refused.
+  err <- tryCatch(joint_prob(df, design_bootstrap(n_replicates = 2),
+                             rows = 1:3), error = conditionMessage)
+  expect_no_match(err, "simulate = TRUE", fixed = TRUE)
+})
+
+# ---- warnings and time in a simulation --------------------------------------
+
+test_that("a warning each draw raises is given once, with the count", {
+  short <- data.frame(y = 1:5)
+  caught <- list()
+  p <- withCallingHandlers(
+    inclusion_prob(short, design_systematic(interval = 8), simulate = TRUE,
+                   R = 400, seed = 1),
+    warning = function(w) {
+      caught[[length(caught) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    })
+  expect_length(caught, 1L)
+  expect_s3_class(caught[[1L]], "drawn_empty_start")
+  expect_match(conditionMessage(caught[[1L]]),
+               "^The random start \\([678]\\) is past the last row \\(5\\)")
+  expect_match(conditionMessage(caught[[1L]]),
+               "This happened in [0-9]+ of the 400 simulated draws\\.$")
+  expect_lt(max(abs(p - 1 / 8)), 0.05)
+
+  # simulate_joint() counts them the same way.
+  caught <- list()
+  withCallingHandlers(
+    joint_prob(short, design_systematic(interval = 8), simulate = TRUE,
+               R = 50, seed = 1),
+    warning = function(w) {
+      caught[[length(caught) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    })
+  expect_length(caught, 1L)
+  expect_s3_class(caught[[1L]], "drawn_empty_start")
+
+  # A fixed start keeps its wording.
+  expect_warning(draw(short, design_systematic(interval = 8, start = 7)),
+                 "`start` (7) is past the last row (5); returning no rows.",
+                 fixed = TRUE, class = "drawn_empty_start")
+  expect_warning(draw(short[1, , drop = FALSE],
+                      design_systematic(interval = 50, n_starts = 2),
+                      seed = 1),
+                 "Every random start", class = "drawn_empty_start")
+})
+
+test_that("a long simulation says how long it will take", {
+  df <- data.frame(id = 1:20)
+  des <- design_simple(n = 3)
+  # Each reading of the clock is 10 seconds after the last, so the first draw
+  # takes 10 seconds and 40 draws project 400.
+  clock <- 0
+  local_mocked_bindings(elapsed_time = function() {
+    clock <<- clock + 10
+    clock
+  })
+  expect_message(p <- inclusion_prob(df, des, simulate = TRUE, R = 40,
+                                     seed = 1),
+                 "Simulating 40 draws will take about 6.7 minutes, at 10 seconds a draw.",
+                 fixed = TRUE)
+  # Timing and messages leave the draws as they were.
+  expect_identical(p, suppressMessages(
+    inclusion_prob(df, des, simulate = TRUE, R = 40, seed = 1)))
+  expect_message(joint_prob(df, des, rows = 1:3, simulate = TRUE, R = 40,
+                            seed = 1), "Simulating 40 draws")
+
+  # An interactive session also gets a progress bar.
+  local_mocked_bindings(is_interactive = function() TRUE)
+  shown <- capture.output(suppressMessages(
+    inclusion_prob(df, des, simulate = TRUE, R = 40, seed = 1)))
+  expect_match(paste(shown, collapse = ""), "100%", fixed = TRUE)
+})
+
+test_that("a short simulation is quiet", {
+  df <- data.frame(id = 1:20)
+  local_mocked_bindings(is_interactive = function() TRUE)
+  expect_silent(inclusion_prob(df, design_simple(n = 3), simulate = TRUE,
+                               R = 200, seed = 1))
+})
+
+test_that("durations read in the unit that suits them", {
+  expect_identical(format_duration(0.0123), "0.012 seconds")
+  expect_identical(format_duration(1), "1 second")
+  expect_identical(format_duration(400), "6.7 minutes")
+  expect_identical(format_duration(3600 * 3.3), "3.3 hours")
+})

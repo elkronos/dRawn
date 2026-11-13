@@ -11,8 +11,8 @@
 check_count <- function(x, arg, allow_zero = TRUE) {
   if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
       !is.finite(x) || x != trunc(x)) {
-    stop("`", arg, "` must be a single whole number, not ", format_bad(x), ".",
-         call. = FALSE)
+    stop("`", arg, "` must be a single whole number, not ",
+         format_bad(x, value = TRUE), ".", call. = FALSE)
   }
   if (x < 0 || (!allow_zero && x < 1)) {
     stop("`", arg, "` must be ",
@@ -207,8 +207,17 @@ panel_parameters <- function() {
     "xlog", "xpd", "yaxp", "yaxs", "yaxt", "ylbias", "ylog")
 }
 
+#' A value that failed a check, for the message
+#'
+#' Text is shown in backticks, as a name, by default. Where a number or a
+#' flag was wanted, `value = TRUE` shows a single string as one, so a seed
+#' given as "1" reads `the string "1"` rather than the `1` of a number.
+#'
 #' @noRd
-format_bad <- function(x) {
+format_bad <- function(x, value = FALSE) {
+  if (value && is.character(x) && length(x) == 1L && !is.na(x)) {
+    return(paste0("the string \"", x, "\""))
+  }
   if (is.character(x)) {
     return(paste0("`", x, "`", collapse = ", "))
   }
@@ -232,6 +241,25 @@ with_article <- function(word) {
 #' The class of `x`, with its article, for messages
 #' @noRd
 a_class <- function(x) with_article(class(x)[1])
+
+#' Require a design, and say so when it and the data are swapped
+#'
+#' `data |> draw(design)` written the other way round, `design |> draw(data)`,
+#' puts the design where the data go.
+#'
+#' @noRd
+check_design <- function(design, data, fun) {
+  if (is_design(data) && !is_design(design)) {
+    stop("`data` is a sampling design and `design` is ", a_class(design),
+         ", so the two look swapped. Call ", fun, "(data, design), with the ",
+         "data first.", call. = FALSE)
+  }
+  if (!is_design(design)) {
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
+  }
+  invisible(design)
+}
 
 #' Validate a data frame and, optionally, that it holds the given columns
 #' @noRd
@@ -282,7 +310,7 @@ drop_na_rows <- function(data, bad, na_rm, what) {
     stop(sum(bad), " row(s) have ", what, ". Set na_rm = TRUE to drop them.",
          call. = FALSE)
   }
-  out <- data[!bad, , drop = FALSE]
+  out <- reindex(data, which(!bad))
   if (nrow(out) == 0L) {
     stop("Every row has ", what, ".", call. = FALSE)
   }

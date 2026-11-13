@@ -25,9 +25,11 @@ closed form, at the cost of Monte Carlo error. Refused for
 \code{\link[=design_bootstrap]{design_bootstrap()}}, where every row appears in some replicate and the
 count converges to 1 for all of them.}
 
-\item{R}{Number of simulated draws when \code{simulate = TRUE}.}
+\item{R}{Number of simulated draws when \code{simulate = TRUE}. A simulation
+costs \code{R} draws; see "What a simulation costs" in \code{\link[=inclusion_prob]{inclusion_prob()}}.}
 
-\item{seed}{Optional seed for the simulation.}
+\item{seed}{Optional seed for the simulation, applied as in \code{\link[=draw]{draw()}} (see
+"Seeding" there). Checked whether or not \code{simulate} is \code{TRUE}.}
 }
 \value{
 A square matrix with one row and column per element of \code{rows}

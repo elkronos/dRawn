@@ -18,9 +18,11 @@ sampling_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
 closed form. Required for the designs listed above; allowed for any
 probability design, which is a convenient way to check the exact formulas.}
 
-\item{R}{Number of simulated draws when \code{simulate = TRUE}.}
+\item{R}{Number of simulated draws when \code{simulate = TRUE}. See "What a
+simulation costs".}
 
-\item{seed}{Optional seed for the simulation.}
+\item{seed}{Optional seed for the simulation, applied as in \code{\link[=draw]{draw()}} (see
+"Seeding" there). Checked whether or not \code{simulate} is \code{TRUE}.}
 }
 \value{
 A numeric vector with one element per row of \code{data}.
@@ -113,6 +115,23 @@ Carlo instead. The estimate carries \code{R}-sized error, which is fine for
 checking a design and not fine for publishing a variance. Simulating a
 bootstrap is refused rather than answered: every row turns up in some
 replicate, so the count converges to 1 for all of them.
+}
+
+\section{What a simulation costs}{
+
+\code{simulate = TRUE} makes \code{R} draws, 5,000 by default, so it takes \code{R}
+times as long as one \code{\link[=draw]{draw()}}. Most designs draw from a frame of 10,000
+rows in well under a second. The local pivotal method of \code{\link[=design_spread]{design_spread()}}
+does work in proportion to \code{N^2} on every draw, so at 10,000 rows each
+draw takes seconds and the default \code{R} takes hours. When the first draws
+project a run of more than 30 seconds, a message says how long it will
+take, and an interactive session shows a progress bar. Lower \code{R} for a
+quicker answer with more Monte Carlo error: its standard error is
+\code{sqrt(p * (1 - p) / R)}, at most 0.007 for \code{R = 5000}.
+
+A warning that every draw raises, such as a stratum allocated no rows or
+\code{max_items} cutting a frame short, is given once at the end, with the
+number of draws that raised it.
 }
 
 \examples{

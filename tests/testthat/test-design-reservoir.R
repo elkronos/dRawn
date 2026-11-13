@@ -41,7 +41,26 @@ test_that("max_items warns when it truncates", {
 
   expect_warning(draw(data.frame(x = 1:100), design_reservoir(n = 5, max_items = 20),
                       seed = 1),
-                 "below the 100 available rows")
+                 "below the 100 available rows", class = "drawn_stream_truncated")
+})
+
+test_that("a simulation over a truncated frame warns once, with the count", {
+  d <- data.frame(x = 1:100)
+  des <- design_reservoir(n = 5, max_items = 20)
+  caught <- list()
+  p <- withCallingHandlers(
+    inclusion_prob(d, des, simulate = TRUE, R = 300, seed = 1),
+    warning = function(w) {
+      caught[[length(caught) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    })
+  expect_length(caught, 1L)
+  expect_s3_class(caught[[1L]], "drawn_stream_truncated")
+  expect_match(conditionMessage(caught[[1L]]),
+               "only the first 20. This happened in 300 of the 300 simulated draws.",
+               fixed = TRUE)
+  expect_lt(max(abs(p[1:20] - 0.25)), 0.08)
+  expect_true(all(p[21:100] == 0))
 })
 
 test_that("max_items is validated", {

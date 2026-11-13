@@ -22,8 +22,10 @@ draw(data, plan, seed = 1, weights = TRUE)
 Twelve designs share one contract: `n` always means the total drawn,
 `allocation` always means how a total is split, `na_rm` always means the same
 thing on both the draw and the probability path, `replace` always rules out
-design weights, the caller's RNG stream is restored on exit, and the result is a
-data frame with the input's class and column order. A design can also report its
+design weights, a `seed` is applied with R's default generator and the caller's
+RNG stream is restored on exit (with `seed = NULL` the draw uses and advances
+that stream), and the result is a data frame with the input's class and column
+order. A design can also report its
 own first- and second-order inclusion probabilities, so `ht_total()` and
 `ht_mean()` return an estimate — overall or by domain — with a standard error
 from the variance estimator the literature recommends for that design, a

@@ -24,7 +24,6 @@ reference:
   - designs
   - plot.drawn_design
   - is_design
-  - draw_design
 
 - title: What a design knows before you draw
   desc: The probabilities that make a sample estimable.
@@ -99,6 +98,11 @@ reference:
 - title: Resampling
   contents:
   - design_bootstrap
+
+- title: Extending
+  desc: A design class of your own, drawn by its own method.
+  contents:
+  - draw_design
 
 articles:
 - title: Guides

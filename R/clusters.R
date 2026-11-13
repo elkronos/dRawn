@@ -59,7 +59,7 @@ cluster_values <- function(labels) {
 select_clusters <- function(design, data, cl = cluster_setup(design, data)) {
   # Dropping rows with no label leaves every other row's code unchanged, since
   # codes number the labels in order of first appearance.
-  if (!all(cl$present)) data <- data[cl$present, , drop = FALSE]
+  if (!all(cl$present)) data <- reindex(data, which(cl$present))
   code <- cl$code[cl$present]
   labels <- cl$labels[cl$present]
   k <- cl$total

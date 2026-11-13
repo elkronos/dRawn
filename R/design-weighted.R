@@ -287,7 +287,7 @@ weighted_pi <- function(design, st) {
 #' @export
 draw_design.drawn_design_weighted <- function(design, data) {
   st <- weighted_setup(design, data)
-  if (length(st$keep) < nrow(data)) data <- data[st$keep, , drop = FALSE]
+  if (length(st$keep) < nrow(data)) data <- reindex(data, st$keep)
   w <- st$w
   n_rows <- nrow(data)
 

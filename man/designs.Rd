@@ -60,9 +60,13 @@ of text is walked in the same order everywhere.
 design works on, and always rules out \code{draw(weights = TRUE)}: an inclusion
 probability describes distinct units, and a sample holding duplicates
 cannot be weighted by one.
-\item \code{\link[=draw]{draw()}} always restores the caller's random number stream before
-returning, and always gives back a data frame with the input's class and
-column order. \code{\link[=design_bootstrap]{design_bootstrap()}} with \code{output = "indices"} or
+\item With a \code{seed}, \code{\link[=draw]{draw()}} always restores the caller's random number
+stream and generator before returning, and a seed draws the same sample
+whatever generator the session has selected. With \code{seed = NULL} it draws
+from, and advances, the caller's stream. See "Seeding" in \code{\link[=draw]{draw()}}.
+\item \code{\link[=draw]{draw()}} always gives back a data frame with the input's class and
+column order, and the frame's own row names on the rows drawn.
+\code{\link[=design_bootstrap]{design_bootstrap()}} with \code{output = "indices"} or
 \code{"weights"} gives a matrix instead, and \code{\link[=design_reservoir]{design_reservoir()}} a list
 when \code{data} is not a data frame, unless \code{batches = TRUE}.
 \item Rows come back in frame order for every design that selects a set of rows,

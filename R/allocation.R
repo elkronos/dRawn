@@ -343,18 +343,6 @@ quote_labels <- function(labels, max = 5L) {
   shown
 }
 
-#' Evaluate `code`, silencing the empty-stratum and empty-cluster warnings
-#'
-#' For loops that draw the same design many times on purpose; the result they
-#' return already shows the unreachable rows as zeros.
-#'
-#' @noRd
-quietly_empty <- function(code) {
-  muffle <- function(w) invokeRestart("muffleWarning")
-  withCallingHandlers(code, drawn_empty_stratum = muffle,
-                      drawn_empty_cluster = muffle)
-}
-
 # ---- per-stratum values given by the user ---------------------------------
 
 #' Per-stratum values as a data frame of the strata columns and `value`

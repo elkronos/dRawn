@@ -258,6 +258,13 @@ test_that("reindex() subsets a plain data frame as `[` does", {
   names(d)[2] <- "i"
   rownames(d) <- paste0("r", 1:6)
   attr(d, "note") <- "kept"
+  # Row names of the frame's own stay with their rows, made unique where a
+  # row repeats, as `[` gives them.
+  for (idx in list(c(2L, 2L, 5L, 1L), integer(0), 6:1)) {
+    expect_identical(reindex(d, idx), d[idx, , drop = FALSE])
+  }
+  # Automatic row names are numbered afresh.
+  rownames(d) <- NULL
   for (idx in list(c(2L, 2L, 5L, 1L), integer(0), 6:1)) {
     ref <- d[idx, , drop = FALSE]
     rownames(ref) <- NULL

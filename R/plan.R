@@ -855,12 +855,13 @@ deff_cluster <- function(m, icc) {
   if (!is.numeric(m) || !length(m) || anyNA(m) || !all(is.finite(m)) ||
       any(m < 1)) {
     stop("`m` must be the rows taken from each cluster, a finite number of ",
-         "1 or more, not ", format_bad(m), ".", call. = FALSE)
+         "1 or more, not ", format_bad(m, value = TRUE), ".",
+         call. = FALSE)
   }
   if (!is.numeric(icc) || !length(icc) || anyNA(icc) ||
       !all(is.finite(icc))) {
     stop("`icc` must be a finite number, the intraclass correlation, not ",
-         format_bad(icc), ".", call. = FALSE)
+         format_bad(icc, value = TRUE), ".", call. = FALSE)
   }
   k <- max(length(m), length(icc))
   if (!all(c(length(m), length(icc)) %in% c(1L, k))) {
@@ -943,6 +944,11 @@ deff_cluster <- function(m, icc) {
 #'       its `rest` over the rows below the threshold, after a `"(certain)"`
 #'       row for the rows above it.}
 #'     \item{`group_col`}{The column(s) `by_group` is keyed on.}
+#'     \item{`drawn`}{How the sample was drawn, from its `drawn_meta`
+#'       attribute: `seed`, `rng_kind`, `version`, `time`, `frame_rows` and
+#'       `made_by` (see "Seeding" in [draw()]). `NULL` for a sample from an
+#'       earlier version of drawn, which recorded none. The print shows the
+#'       seed, the version and the date.}
 #'   }
 #'
 #' @examples
@@ -999,8 +1005,34 @@ sample_summary <- function(sample) {
       sum(!reachable(pi_all))
     },
     by_group = groups$table,
-    group_col = groups$col
+    group_col = groups$col,
+    drawn = state$meta
   ), class = "drawn_summary")
+}
+
+#' The line of a summary that says how the sample was drawn
+#'
+#' The seed, or that there was none, with the generator when it is not R's
+#' default; then the version of drawn and the date. A sample rebuilt by
+#' as_drawn() says so, since its seed is not known.
+#'
+#' @noRd
+meta_line <- function(meta) {
+  stamp <- paste0("drawn ", meta$version, " on ",
+                  format(meta$time, "%Y-%m-%d"))
+  if (!identical(meta$made_by, "draw()")) {
+    return(paste0("  rebuilt            by ", meta$made_by, " of ", stamp,
+                  "; the seed is not recorded"))
+  }
+  kind <- if (!identical(meta$rng_kind, seed_kind())) {
+    paste0(" (", paste(meta$rng_kind, collapse = ", "), ")")
+  }
+  paste0("  drawn              ",
+         if (is.null(meta$seed)) {
+           "without a seed"
+         } else {
+           paste0("with seed ", format(meta$seed, scientific = FALSE))
+         }, kind, ", by ", stamp)
 }
 
 #' Rows drawn against rows in the frame, per stratum, interval or cluster
@@ -1143,6 +1175,7 @@ print.drawn_summary <- function(x, ...) {
     cat("  unreachable rows   ", fmt_n(x$unreachable),
         "  (probability 0 under this design)\n", sep = "")
   }
+  if (!is.null(x$drawn)) cat(meta_line(x$drawn), "\n", sep = "")
   if (!is.null(x$by_group)) {
     cat("\n  by ", paste(x$group_col, collapse = " x "), ":\n", sep = "")
     b <- x$by_group

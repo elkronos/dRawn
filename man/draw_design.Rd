@@ -2,7 +2,7 @@
 % Please edit documentation in R/draw.R
 \name{draw_design}
 \alias{draw_design}
-\title{Design-specific draw method}
+\title{Draw method for a design class}
 \usage{
 draw_design(design, data)
 }
@@ -18,6 +18,34 @@ which \code{\link[=draw]{draw()}} removes or, for a sample weighted conditional 
 clusters, keeps.
 }
 \description{
-Design-specific draw method
+The generic \code{\link[=draw]{draw()}} calls to make a sample from a design. Each design in
+the package has a method, and a design of your own can have one too.
 }
-\keyword{internal}
+\section{Writing a design of your own}{
+
+A design is a list with a class vector ending in \code{"drawn_design"}, so that
+\code{\link[=is_design]{is_design()}} accepts it, such as
+\code{structure(list(n = 5), class = c("first_rows", "drawn_design"))}. Its
+method takes \code{design} and \code{data} and returns rows of \code{data}, with every
+column of \code{data}, as \code{data[idx, , drop = FALSE]} gives them. It draws its
+random numbers from the current stream; \code{\link[=draw]{draw()}} applies the seed around
+it. A package registers the method with \verb{@exportS3Method drawn::draw_design}, and a script with \code{\link[=.S3method]{.S3method()}}.
+
+That is enough for \code{\link[=draw]{draw()}} without weights, and for \code{\link[=inclusion_prob]{inclusion_prob()}}
+and \code{\link[=joint_prob]{joint_prob()}} with \code{simulate = TRUE}, which count how often each row
+is drawn and find the rows through a column they add to \code{data}. The exact
+probabilities, \code{draw(weights = TRUE)} and the estimators need the
+design's inclusion probabilities, which the package computes for its own
+designs only, so they refuse a design of your own.
+}
+
+\examples{
+first_rows <- structure(list(n = 3), class = c("first_rows", "drawn_design"))
+.S3method("draw_design", "first_rows", function(design, data) {
+  data[seq_len(design$n), , drop = FALSE]
+})
+
+df <- data.frame(id = 1:10)
+draw(df, first_rows)
+inclusion_prob(df, first_rows, simulate = TRUE, R = 20, seed = 1)
+}

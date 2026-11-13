@@ -1121,7 +1121,7 @@ conditional_variance <- function(design, cl, rows, y, pi_i) {
       paste0("Its sample is weighted with unconditional probabilities, ",
              "which the two-stage estimator\ncannot use. draw(weights = ",
              "TRUE) weights the design on its own conditional on the\n",
-             "clusters selected."))
+             "clusters selected."), simulate = FALSE)
   }
   if (all(is_certain(pi_i))) return(all_certain())
   if (one_row_clusters(design, code, sizes, fixed = FALSE)) {

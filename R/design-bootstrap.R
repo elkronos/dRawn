@@ -158,7 +158,6 @@ draw_design.drawn_design_bootstrap <- function(design, data) {
       out[[".replicate"]] <- rep(seq_len(ncol(idx)), each = n)
       out <- out[, c(k + 1L, seq_len(k)), drop = FALSE]
       names(out) <- c(".replicate", names(data))
-      rownames(out) <- NULL
       out
     }
   )

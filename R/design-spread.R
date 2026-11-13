@@ -478,9 +478,8 @@ exact_inclusion.drawn_design_spread <- function(design, data) {
 joint_inclusion.drawn_design_spread <- function(design, data, rows) {
   no_joint_form(
     "`design_spread()`",
-    paste0("The local pivotal method has no closed-form joint inclusion ",
-           "probability. Pass\nsimulate = TRUE to estimate them; ht_total() ",
-           "uses the local mean variance\nestimator instead.")
+    paste0("ht_total() uses the local mean variance estimator, which needs ",
+           "no joint probabilities.")
   )
 }
 

@@ -67,8 +67,10 @@
 #'   closed form, at the cost of Monte Carlo error. Refused for
 #'   [design_bootstrap()], where every row appears in some replicate and the
 #'   count converges to 1 for all of them.
-#' @param R Number of simulated draws when `simulate = TRUE`.
-#' @param seed Optional seed for the simulation.
+#' @param R Number of simulated draws when `simulate = TRUE`. A simulation
+#'   costs `R` draws; see "What a simulation costs" in [inclusion_prob()].
+#' @param seed Optional seed for the simulation, applied as in [draw()] (see
+#'   "Seeding" there). Checked whether or not `simulate` is `TRUE`.
 #'
 #' @return A square matrix with one row and column per element of `rows`
 #'   (or per row of `data`). The diagonal holds first-order probabilities.
@@ -84,12 +86,10 @@
 #' @export
 joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
                        seed = NULL) {
-  if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not ",
-         a_class(design), ". See ?designs.", call. = FALSE)
-  }
+  check_design(design, data, "joint_prob")
   validate_data(data)
   check_flag(simulate, "simulate")
+  check_seed(seed)
   warn_region(design, data)
   given <- !is.null(rows)
   rows <- rows %||% seq_len(nrow(data))
@@ -179,22 +179,28 @@ simulate_joint <- function(data, design, rows, R, seed) {
   pos <- match(seq_len(nrow(data)), rows)   # NA for rows we are not tracking
 
   counts <- matrix(0L, k, k)
-  with_seed(seed, quietly_empty({
-    for (i in seq_len(R)) {
-      s <- draw_design(design, tagged)
-      ids <- unique(if (is.data.frame(s)) s[[key]] else unlist(s))
-      hit <- pos[ids]
-      hit <- hit[!is.na(hit)]
-      if (length(hit)) counts[hit, hit] <- counts[hit, hit] + 1L
-    }
-  }))
+  simulate_draws(R, seed, function() {
+    ids <- unique(drawn_ids(draw_design(design, tagged), key, design))
+    hit <- pos[ids]
+    hit <- hit[!is.na(hit)]
+    if (length(hit)) counts[hit, hit] <<- counts[hit, hit] + 1L
+  })
   counts / R
 }
 
+#' Refuse joint probabilities the design does not define
+#'
+#' `simulate` adds the pointer to a simulation, for the designs where one
+#' estimates them: every design but the bootstrap.
+#'
 #' @noRd
-no_joint_form <- function(what, alternative) {
-  stop_declined(paste0(what, " has no closed-form joint inclusion ",
-                       "probability.\n", alternative))
+no_joint_form <- function(what, alternative, simulate = TRUE) {
+  stop_declined(paste0(
+    what, " has no closed-form joint inclusion probability.\n", alternative,
+    if (simulate) {
+      paste0("\nOr estimate them by Monte Carlo with ",
+             "joint_prob(data, design, simulate = TRUE).")
+    }))
 }
 
 #' @noRd
@@ -378,8 +384,8 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
       paste0("Its clusters are shuffled before the systematic PPS walk, so ",
              "every pair of clusters\ncan be selected together, but their ",
              "joint probabilities average over every ordering\nand have no ",
-             "closed form. Pass simulate = TRUE to estimate them; ht_total() ",
-             "uses\nDeville's approximation for the clusters.")
+             "closed form. ht_total() uses Deville's approximation for the ",
+             "clusters.")
     )
   }
   if (design$allocation == "proportional") {
@@ -432,8 +438,8 @@ joint_inclusion.drawn_design_weighted <- function(design, data, rows) {
       "`design_weighted(method = \"systematic\")`",
       paste0("The rows are shuffled before the systematic walk, so every pair ",
              "can co-occur,\nbut the joint probabilities average over every ",
-             "ordering and have no closed form.\nPass simulate = TRUE to ",
-             "estimate them; ht_total() uses Deville's approximation.")
+             "ordering and have no closed form.\nht_total() uses Deville's ",
+             "approximation.")
     )
   }
   no_joint_form("`design_weighted(method = \"successive\")`",
@@ -495,7 +501,8 @@ fractional_joint <- function(pos, n, N) {
 #' @noRd
 joint_inclusion.drawn_design_bootstrap <- function(design, data, rows) {
   no_joint_form("`design_bootstrap()`",
-                "A bootstrap is not a probability sample of a finite population.")
+                "A bootstrap is not a probability sample of a finite population.",
+                simulate = FALSE)
 }
 
 

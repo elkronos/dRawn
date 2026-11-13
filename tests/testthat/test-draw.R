@@ -219,3 +219,198 @@ test_that("messages give a class its article", {
   expect_error(design_certainty("w", 1, list()),
                "not a list.", fixed = TRUE)
 })
+
+# ---- seeds, generators and the record of a draw -----------------------------
+
+# Run `code` under another generator, then put back the caller's random number
+# state, or its absence, and generator.
+under_kind <- function(kind, code) {
+  had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  old <- if (had) get(".Random.seed", envir = globalenv())
+  old_kind <- RNGkind()
+  on.exit({
+    if (had) {
+      assign(".Random.seed", old, envir = globalenv())
+    } else {
+      do.call(RNGkind, as.list(old_kind))
+      suppressWarnings(rm(".Random.seed", envir = globalenv()))
+    }
+  })
+  do.call(RNGkind, as.list(kind))
+  code
+}
+
+test_that("a seed draws the same sample under any generator", {
+  df <- make_df()
+  des <- design_stratified("site", n = 8)
+  ref <- draw(df, des, seed = 11)
+  for (kind in list("L'Ecuyer-CMRG", "Knuth-TAOCP-2002",
+                    list("Mersenne-Twister", "Box-Muller", "Rounding"))) {
+    got <- suppressWarnings(under_kind(kind, {
+      before <- RNGkind()
+      out <- draw(df, des, seed = 11)
+      # The caller's generator is back in place afterwards.
+      expect_identical(RNGkind(), before)
+      out
+    }))
+    expect_identical(got, ref)
+  }
+  expect_equal(inclusion_prob(df, design_simple(n = 8), simulate = TRUE,
+                              R = 50, seed = 3),
+               under_kind("L'Ecuyer-CMRG",
+                          inclusion_prob(df, design_simple(n = 8),
+                                         simulate = TRUE, R = 50, seed = 3)))
+})
+
+test_that("a seeded draw leaves the caller's generator and stream alone", {
+  df <- make_df()
+  under_kind("L'Ecuyer-CMRG", {
+    before <- get(".Random.seed", envir = globalenv())
+    draw(df, design_simple(n = 3), seed = 1)
+    expect_identical(get(".Random.seed", envir = globalenv()), before)
+    expect_identical(RNGkind()[[1L]], "L'Ecuyer-CMRG")
+  })
+  # With no stream started, none is left behind, and the generator is the
+  # caller's.
+  under_kind("L'Ecuyer-CMRG", {
+    rm(".Random.seed", envir = globalenv())
+    draw(df, design_simple(n = 3), seed = 1)
+    expect_false(exists(".Random.seed", envir = globalenv(),
+                        inherits = FALSE))
+    expect_identical(RNGkind()[[1L]], "L'Ecuyer-CMRG")
+  })
+})
+
+test_that("a seed outside the integer range or given as text is refused", {
+  df <- make_df()
+  des <- design_simple(n = 3)
+  for (s in list(2^31, -2^31, 1e15)) {
+    expect_error(draw(df, des, seed = s), "must lie between -2147483647 and")
+  }
+  expect_no_error(draw(df, des, seed = .Machine$integer.max))
+  expect_error(draw(df, des, seed = "1"), 'not the string "1"', fixed = TRUE)
+  # The probability functions check it whether or not they simulate.
+  expect_error(inclusion_prob(df, des, seed = "abc"), 'the string "abc"',
+               fixed = TRUE)
+  expect_error(joint_prob(df, des, rows = 1:2, seed = 2^31), "must lie")
+})
+
+test_that("a weighted sample records how it was drawn", {
+  df <- make_df()
+  des <- design_stratified("site", n = 8)
+  s <- draw(df, des, seed = 5, weights = TRUE)
+  meta <- attr(s, "drawn_meta")
+  expect_identical(meta$seed, 5)
+  expect_identical(meta$rng_kind,
+                   c("Mersenne-Twister", "Inversion", "Rejection"))
+  expect_identical(meta$version, as.character(utils::packageVersion("drawn")))
+  expect_s3_class(meta$time, "POSIXct")
+  expect_identical(meta$frame_rows, 100L)
+  expect_identical(meta$made_by, "draw()")
+  expect_identical(sample_summary(s)$drawn, meta)
+  expect_match(capture.output(sample_summary(s)),
+               "with seed 5, by drawn [0-9.]+ on [0-9-]+$", all = FALSE)
+
+  # Without a seed, the session's generator is recorded.
+  u <- under_kind("L'Ecuyer-CMRG", draw(df, des, weights = TRUE))
+  expect_null(attr(u, "drawn_meta")$seed)
+  expect_identical(attr(u, "drawn_meta")$rng_kind[[1L]], "L'Ecuyer-CMRG")
+  expect_match(capture.output(sample_summary(u)),
+               "without a seed (L'Ecuyer-CMRG", fixed = TRUE, all = FALSE)
+
+  # A sample rebuilt from a file does not know its seed.
+  back <- as_drawn(as.data.frame(s)[, c(".row", names(df))], des, df)
+  expect_identical(attr(back, "drawn_meta")$made_by, "as_drawn()")
+  expect_null(attr(back, "drawn_meta")$seed)
+  expect_match(capture.output(sample_summary(back)), "rebuilt",
+               all = FALSE)
+})
+
+test_that("use_reserves() keeps the record of the draw", {
+  df <- make_df()
+  l <- draw(df, design_simple(n = 4, reserve = 2), seed = 9, weights = TRUE)
+  s <- use_reserves(l, c(TRUE, FALSE, FALSE, FALSE, FALSE, NA))
+  expect_identical(attr(s, "drawn_meta"), attr(l, "drawn_meta"))
+})
+
+# ---- row names --------------------------------------------------------------
+
+test_that("row names of the frame's own stay with their rows", {
+  cars <- mtcars[, c("mpg", "cyl", "wt")]
+  cars$id <- seq_len(nrow(cars))
+  s <- draw(cars, design_simple(n = 5), seed = 1)
+  expect_identical(rownames(s), rownames(cars)[s$id])
+  w <- draw(cars, design_stratified("cyl", n = 6), seed = 1, weights = TRUE)
+  expect_identical(rownames(w), rownames(cars)[w$.row])
+  # A frame left with integer row names by an earlier subset keeps them.
+  sub <- cars[cars$cyl != 6, ]
+  w <- draw(sub, design_simple(n = 4), seed = 2, weights = TRUE)
+  expect_identical(rownames(w), rownames(sub)[w$.row])
+
+  # A row drawn twice gets a name made unique, as `[` gives it.
+  r <- draw(cars, design_simple(n = 40, replace = TRUE), seed = 1)
+  expect_false(anyDuplicated(rownames(r)) > 0)
+  expect_identical(rownames(r), make.unique(rownames(cars)[r$id]))
+  b <- draw(cars, design_bootstrap(n_replicates = 2, n = 5), seed = 1)
+  expect_false(anyDuplicated(rownames(b)) > 0)
+})
+
+test_that("automatic row names are numbered afresh, also after rows drop", {
+  df <- make_df()
+  df$o <- df$id
+  df$o[c(3, 50)] <- NA
+  df$w <- df$id
+  df$w[7] <- NA
+  df$cl <- rep(1:10, each = 10)
+  df$cl[c(1, 95)] <- NA
+  df$big <- df$id
+  df$big[4] <- NA
+  designs <- list(
+    design_systematic(interval = 7, order_by = "o", na_rm = TRUE),
+    design_weighted("w", n = 6, na_rm = TRUE),
+    design_cluster("cl", n_clusters = 2, na_rm = TRUE),
+    design_certainty("big", 95, rest = design_simple(n = 3), na_rm = TRUE)
+  )
+  for (d in designs) {
+    s <- draw(df, d, seed = 4)
+    expect_identical(attr(s, "row.names"), seq_len(nrow(s)),
+                     info = class(d)[1])
+  }
+})
+
+# ---- arguments --------------------------------------------------------------
+
+test_that("a design and data given the wrong way round are named as swapped", {
+  df <- make_df()
+  des <- design_simple(n = 3)
+  expect_error(draw(des, df), "look swapped. Call draw(data, design)",
+               fixed = TRUE)
+  expect_error(des |> draw(df), "look swapped")
+  expect_error(inclusion_prob(des, df), "Call inclusion_prob(data, design)",
+               fixed = TRUE)
+  expect_error(joint_prob(des, df), "Call joint_prob(data, design)",
+               fixed = TRUE)
+})
+
+test_that("a design class of the user's own draws through draw_design()", {
+  df <- data.frame(id = 1:10)
+  first <- structure(list(n = 3), class = c("drawn_test_first", "drawn_design"))
+  .S3method("draw_design", "drawn_test_first", function(design, data) {
+    data[seq_len(design$n), , drop = FALSE]
+  })
+  expect_identical(draw(df, first)$id, 1:3)
+  expect_equal(inclusion_prob(df, first, simulate = TRUE, R = 5, seed = 1),
+               rep(c(1, 0), c(3, 7)))
+  expect_error(draw(df, first, weights = TRUE),
+               "simulate = TRUE) estimates the probabilities", fixed = TRUE)
+  expect_error(joint_prob(df, first, rows = 1:2),
+               "joint_prob(data, design, simulate = TRUE)", fixed = TRUE)
+  # A method that drops columns is caught rather than counted as drawing
+  # nothing.
+  thin <- structure(list(), class = c("drawn_test_thin", "drawn_design"))
+  .S3method("draw_design", "drawn_test_thin", function(design, data) {
+    data.frame(id = data$id[1:2])
+  })
+  expect_error(inclusion_prob(df, thin, simulate = TRUE, R = 2, seed = 1),
+               "returned rows without the `.drawn_row_id` column")
+})

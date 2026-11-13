@@ -162,7 +162,8 @@ check_probs <- function(probs) {
   if (!is.numeric(probs) || !length(probs) || anyNA(probs) ||
       any(probs < 0 | probs > 1)) {
     stop("`probs` must be one or more numbers from 0 to 1, such as 0.5 for ",
-         "the median, not ", format_bad(probs), ".", call. = FALSE)
+         "the median, not ", format_bad(probs, value = TRUE), ".",
+         call. = FALSE)
   }
   twice <- unique(probs[duplicated(probs)])
   if (length(twice)) {

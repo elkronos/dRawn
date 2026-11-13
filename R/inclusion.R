@@ -73,13 +73,30 @@
 #' bootstrap is refused rather than answered: every row turns up in some
 #' replicate, so the count converges to 1 for all of them.
 #'
+#' @section What a simulation costs:
+#' `simulate = TRUE` makes `R` draws, 5,000 by default, so it takes `R`
+#' times as long as one [draw()]. Most designs draw from a frame of 10,000
+#' rows in well under a second. The local pivotal method of [design_spread()]
+#' does work in proportion to `N^2` on every draw, so at 10,000 rows each
+#' draw takes seconds and the default `R` takes hours. When the first draws
+#' project a run of more than 30 seconds, a message says how long it will
+#' take, and an interactive session shows a progress bar. Lower `R` for a
+#' quicker answer with more Monte Carlo error: its standard error is
+#' `sqrt(p * (1 - p) / R)`, at most 0.007 for `R = 5000`.
+#'
+#' A warning that every draw raises, such as a stratum allocated no rows or
+#' `max_items` cutting a frame short, is given once at the end, with the
+#' number of draws that raised it.
+#'
 #' @param data A data frame.
 #' @param design A design object.
 #' @param simulate Estimate the probabilities by repeated draws rather than in
 #'   closed form. Required for the designs listed above; allowed for any
 #'   probability design, which is a convenient way to check the exact formulas.
-#' @param R Number of simulated draws when `simulate = TRUE`.
-#' @param seed Optional seed for the simulation.
+#' @param R Number of simulated draws when `simulate = TRUE`. See "What a
+#'   simulation costs".
+#' @param seed Optional seed for the simulation, applied as in [draw()] (see
+#'   "Seeding" there). Checked whether or not `simulate` is `TRUE`.
 #'
 #' @return A numeric vector with one element per row of `data`.
 #'
@@ -115,12 +132,10 @@
 #' @export
 inclusion_prob <- function(data, design, simulate = FALSE, R = 5000,
                            seed = NULL) {
-  if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not ",
-         a_class(design), ". See ?designs.", call. = FALSE)
-  }
+  check_design(design, data, "inclusion_prob")
   validate_data(data)
   check_flag(simulate, "simulate")
+  check_seed(seed)
   warn_region(design, data)
 
   if (isTRUE(simulate)) {
@@ -230,22 +245,113 @@ simulate_inclusion <- function(data, design, R, seed) {
   tagged[[key]] <- seq_len(n_rows)
 
   hits <- integer(n_rows)
-  with_seed(seed, quietly_empty({
-    for (i in seq_len(R)) {
-      s <- draw_design(design, tagged)
-      ids <- s[[key]]
-      # A row drawn twice in one replicate is still one inclusion.
-      hits[unique(ids)] <- hits[unique(ids)] + 1L
-    }
-  }))
+  simulate_draws(R, seed, function() {
+    # A row drawn twice in one replicate is still one inclusion.
+    ids <- unique(drawn_ids(draw_design(design, tagged), key, design))
+    hits[ids] <<- hits[ids] + 1L
+  })
   hits / R
+}
+
+#' The frame rows of one simulated draw
+#'
+#' Read from the column the simulators add to `data`. A draw method that
+#' drops it, as one written outside the package might, is refused rather
+#' than counted as drawing nothing.
+#'
+#' @noRd
+drawn_ids <- function(s, key, design) {
+  ids <- if (is.data.frame(s)) s[[key]] else unlist(s)
+  if (is.null(ids)) {
+    stop("The draw_design() method for design type \"", design_type(design),
+         "\" returned rows without the `", key, "` column the simulation ",
+         "adds to `data`. A method must return rows of `data` with all its ",
+         "columns; see ?draw_design.", call. = FALSE)
+  }
+  ids
+}
+
+#' Run `R` simulated draws
+#'
+#' `one()` makes one draw and records it, and the draws run under `seed`.
+#' A warning of drawn's own class is muffled and counted, and each kind is
+#' given once at the end with the number of draws that raised it, rather than
+#' once per draw. A run is timed over its first five draws, or over the draws
+#' of its first two seconds when they are slower, and one projected to take
+#' more than 30 seconds says so with a message and, in an interactive
+#' session, shows a progress bar.
+#'
+#' @noRd
+simulate_draws <- function(R, seed, one) {
+  i <- 0L
+  kinds <- character(0)
+  first <- character(0)
+  draws <- integer(0)
+  last <- integer(0)
+  record <- function(w) {
+    k <- match(class(w)[1L], kinds)
+    if (is.na(k)) {
+      kinds <<- c(kinds, class(w)[1L])
+      first <<- c(first, conditionMessage(w))
+      draws <<- c(draws, 0L)
+      last <<- c(last, 0L)
+      k <- length(kinds)
+    }
+    if (last[k] != i) {
+      draws[k] <<- draws[k] + 1L
+      last[k] <<- i
+    }
+    invokeRestart("muffleWarning")
+  }
+
+  bar <- NULL
+  on.exit(if (!is.null(bar)) close(bar), add = TRUE)
+  start <- elapsed_time()
+  timed <- FALSE
+  with_seed(seed, withCallingHandlers({
+    for (i in seq_len(R)) {
+      one()
+      if (!timed) {
+        spent <- elapsed_time() - start
+        if (i >= min(5L, R) || spent >= 2) {
+          timed <- TRUE
+          bar <- announce_run(R, i, spent)
+        }
+      }
+      if (!is.null(bar)) utils::setTxtProgressBar(bar, i)
+    }
+  }, drawn_warning = record))
+
+  for (k in seq_along(kinds)) {
+    warn_drawn(paste0(first[k], " This happened in ", fmt_n(draws[k]),
+                      " of the ", fmt_n(R), " simulated draws."), kinds[k])
+  }
+  invisible(NULL)
+}
+
+#' Say how long a simulation will take, when that is more than 30 seconds
+#'
+#' `done` draws took `spent` seconds. Returns a progress bar, already at
+#' `done`, in an interactive session, else `NULL`.
+#'
+#' @noRd
+announce_run <- function(R, done, spent) {
+  total <- spent / done * R
+  if (done >= R || total <= 30) return(NULL)
+  message("Simulating ", fmt_n(R), " draws will take about ",
+          format_duration(total), ", at ", format_duration(spent / done),
+          " a draw. A smaller `R` takes less time, with more Monte Carlo ",
+          "error.")
+  if (!is_interactive()) return(NULL)
+  utils::txtProgressBar(min = 0, max = R, initial = done, style = 3)
 }
 
 #' @noRd
 no_closed_form <- function(what, alternative) {
   stop_declined(paste0(
     what, " has no closed-form inclusion probability.\n", alternative, "\n",
-    "Or pass simulate = TRUE to estimate it by Monte Carlo."))
+    "Or estimate it by Monte Carlo with ",
+    "inclusion_prob(data, design, simulate = TRUE)."))
 }
 
 #' @noRd
@@ -255,7 +361,11 @@ exact_inclusion <- function(design, data) {
 
 #' @noRd
 exact_inclusion.default <- function(design, data) {
-  stop("No inclusion probability method for design type \"",
-       design_type(design), "\".", call. = FALSE)
+  stop_declined(paste0(
+    "Design type \"", design_type(design), "\" is not one of drawn's own, ",
+    "so drawn has no inclusion probabilities for it, and `weights = TRUE`, ",
+    "the exact inclusion_prob() and joint_prob() and the estimators are not ",
+    "available. inclusion_prob(data, design, simulate = TRUE) estimates the ",
+    "probabilities by Monte Carlo; see ?draw_design."))
 }
 
