@@ -3,11 +3,21 @@
 ## Test environments
 
 * local: Ubuntu 24.04, R 4.3.3
-* GitHub Actions: macOS, Windows and Ubuntu, on R-release, R-devel and oldrel-1
+* GitHub Actions: macOS and Windows on R-release; Ubuntu on R-devel,
+  R-release, oldrel-1 and R 4.1, the oldest version DESCRIPTION allows. One
+  more Ubuntu run on R-release builds the PDF manual and fails on any NOTE,
+  with the CRAN incoming checks turned off.
 
 ## R CMD check results
 
-0 errors | 0 warnings | 0 notes
+0 errors | 0 warnings | 1 note
+
+* This is a new submission.
+
+If the NOTE also lists possibly misspelled words in DESCRIPTION, they are
+names spelled as published: Grafström, Lundström and Schelin proposed the
+local pivotal method, Deville the variance approximation, and Horvitz is one
+of the two names in Horvitz-Thompson.
 
 ## What this package is for
 
@@ -45,9 +55,9 @@ three, provides joint inclusion probabilities for several of them, and adds
 calibration, balanced sampling via the cube method, and ratio and regression
 estimators. Anyone who needs Brewer, Midzuno, Sampford, Tillé, pivotal or
 maximum-entropy sampling should use `sampling`, and the documentation for
-`design_weighted()` and `joint_prob()` says so by name.
+`design_weighted()` says so by name.
 
-`drawn` differs in three ways rather than in statistical novelty:
+`drawn` differs in four ways rather than in statistical novelty:
 
 1. **Interface.** `sampling` is a library of functions over vectors that return
    index tables, which you then join back to your data. `drawn` takes a data

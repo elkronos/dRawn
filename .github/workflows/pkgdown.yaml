@@ -1,7 +1,12 @@
 # Derived from https://github.com/r-lib/actions/tree/v2/examples
+#
+# A pull request builds the site, which knits the articles under
+# vignettes/articles that R CMD build leaves out and checks the reference
+# index, but does not deploy it.
 on:
   push:
     branches: [main, master]
+  pull_request:
   release:
     types: [published]
   workflow_dispatch:
@@ -43,3 +48,4 @@ jobs:
           clean: false
           branch: gh-pages
           folder: docs
+          commit-message: Deploy site from ${{ github.sha }}

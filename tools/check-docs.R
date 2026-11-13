@@ -6,11 +6,92 @@
 #  2. Every [foo()] cross-reference in R/, README and NEWS resolves.
 #  3. Nothing references an identifier the package no longer has.
 #  4. Every design constructor appears in the overview topic, README and NEWS.
-#  5. Every exported function is reachable from the overview topic, and the
+#  5. Every exported function is linked from the overview topic, and the
 #     generated Rd is real Rd -- not markdown that was never processed.
 #
 # R CMD check catches undocumented objects but not documentation that has
 # quietly gone stale, which is the failure mode this covers.
+#
+#   Rscript tools/check-docs.R              checks the installed package
+#   Rscript tools/check-docs.R --self-test  checks rules 4 and 5 on
+#                                           tools/fixtures/docs
+
+# A name as a whole word: `draw` is not found in `drawn` or `draw_design`.
+mentions <- function(text, name) {
+  pattern <- paste0("(?<![\\w.])", gsub("(\\W)", "\\\\\\1", name, perl = TRUE),
+                    "(?!\\w)")
+  grepl(pattern, paste(text, collapse = " "), perl = TRUE)
+}
+
+# Plain text of a parsed Rd file, outside \usage and \examples. Code leaves
+# are left out too, because `x[f()]` is valid R there.
+rd_prose <- function(rd) {
+  out <- character(0)
+  walk <- function(x) {
+    tag <- attr(x, "Rd_tag")
+    if (!is.null(tag) && tag %in% c("\\usage", "\\examples")) return()
+    if (is.list(x)) {
+      for (el in x) walk(el)
+    } else if (identical(tag, "TEXT")) {
+      out <<- c(out, as.character(x))
+    }
+  }
+  walk(rd)
+  paste(out, collapse = "")
+}
+
+# A markdown link roxygen never processed: [foo()] left as text.
+unprocessed_link <- function(rd) {
+  grepl("\\[[a-zA-Z_.][a-zA-Z0-9_.]*\\(\\)\\]", rd_prose(rd))
+}
+
+# Topics a parsed Rd file links to: \link{f}, \link[=f]{...},
+# \link[pkg:f]{...} and \link[pkg]{f}.
+rd_links <- function(rd) {
+  out <- character(0)
+  walk <- function(x) {
+    if (identical(attr(x, "Rd_tag"), "\\link")) {
+      opt <- paste(unlist(attr(x, "Rd_option")), collapse = "")
+      out <<- c(out, if (grepl("^=|:", opt)) {
+        sub("^=|^[^:]*:", "", opt)
+      } else {
+        paste(unlist(x), collapse = "")
+      })
+    }
+    if (is.list(x)) for (el in x) walk(el)
+  }
+  walk(rd)
+  unique(out)
+}
+
+if ("--self-test" %in% commandArgs(trailingOnly = TRUE)) {
+  failed <- character(0)
+  expect <- function(ok, what) if (!ok) failed <<- c(failed, what)
+  fx <- function(f) tools::parse_Rd(file.path("tools/fixtures/docs", f))
+  expect(unprocessed_link(fx("unprocessed.Rd")),
+         "a [foo()] link in \\details is found")
+  expect(!unprocessed_link(fx("processed.Rd")),
+         "[foo()] in \\usage, \\examples and \\code is not reported")
+  hub <- fx("hub.Rd")
+  expect(identical(sort(rd_links(hub)),
+                   c("ht_mean", "ht_total", "median", "ratio")),
+         "the targets of every form of \\link are read")
+  expect(!"draw" %in% rd_links(hub),
+         "the words drawn and draw_design do not link draw")
+  prose <- rd_prose(hub)
+  expect(!mentions(prose, "draw") && mentions(prose, "drawn"),
+         "draw is not mentioned through drawn or draw_design")
+  expect(mentions("see design_simple().", "design_simple") &&
+           !mentions("design_simple_x", "design_simple") &&
+           !mentions("x.design_simple", "design_simple"),
+         "a name followed by ( counts, a longer or dotted name does not")
+  if (length(failed)) {
+    cat("Self-test failed:\n", paste0("  ", failed, "\n"), sep = "")
+    quit(status = 1)
+  }
+  cat("Self-test passed.\n")
+  quit(status = 0)
+}
 
 suppressMessages(library(drawn))
 bad <- 0L
@@ -96,12 +177,12 @@ cat("4. every design is documented everywhere\n")
 ctors <- sort(grep("^design_", exports, value = TRUE))
 for (f in c("man/designs.Rd", "README.md", "NEWS.md")) {
   if (!file.exists(f)) next
-  txt <- paste(lines_of(f), collapse = " ")
-  miss <- ctors[!vapply(ctors, grepl, logical(1), x = txt, fixed = TRUE)]
+  txt <- lines_of(f)
+  miss <- ctors[!vapply(ctors, mentions, logical(1), text = txt)]
   if (length(miss)) note(basename(f), " omits ", paste(miss, collapse = ", "))
 }
 
-cat("5. Rd is processed, and every export is reachable\n")
+cat("5. Rd is processed, and every export is linked from the overview\n")
 # Without `Roxygen: list(markdown = TRUE)` in DESCRIPTION every [foo()] and
 # `code` span is written to Rd verbatim, so the help pages render as raw
 # markdown with no working links. Cheap to check, silent to miss.
@@ -109,19 +190,15 @@ if (!any(grepl("markdown\\s*=\\s*TRUE", lines_of("DESCRIPTION")))) {
   note("DESCRIPTION: needs Roxygen: list(markdown = TRUE)")
 }
 for (f in rd_files) {
-  txt <- lines_of(f)
-  # Skip \examples and \usage, where both are legitimate literal code.
-  keep <- txt[cumsum(grepl("^\\\\(examples|usage)\\{", txt)) ==
-                cumsum(grepl("^\\}", txt))]
-  if (any(grepl("\\[[a-zA-Z_.][a-zA-Z0-9_.]*\\(\\)\\]", keep))) {
+  if (unprocessed_link(tools::parse_Rd(f))) {
     note(basename(f), ": unprocessed markdown link -- see DESCRIPTION")
   }
 }
-hub <- paste(lines_of("man/designs.Rd"), collapse = " ")
+hub <- rd_links(tools::parse_Rd("man/designs.Rd"))
 for (e in setdiff(exports, c(grep("^design_", exports, value = TRUE),
                              "draw_design", "is_design"))) {
-  if (!grepl(e, hub, fixed = TRUE)) {
-    note("designs.Rd: no route to ", e, "() from the overview topic")
+  if (!e %in% hub) {
+    note("designs.Rd: no link to ", e, "() from the overview topic")
   }
 }
 

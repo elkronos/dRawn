@@ -124,7 +124,7 @@ survey::svyglm(value ~ site, des)
 | `design_cluster()` | whole clusters | `n_clusters` | analytic |
 | `design_multistage()` | clusters, at random or in proportion to size, then rows within them | `n_clusters`, `n` | analytic, two-stage; deville (an approximation) for the clusters with `size` |
 | `design_weighted()` | probability proportional to size, within strata if asked | `n` total | analytic (Poisson); deville (an approximation) for systematic, summed over strata |
-| `design_certainty()` | everything above a threshold, plus any design below it | `rest`'s own | `rest`'s own |
+| `design_certainty()` | everything above a threshold, plus any design below it | rows above the threshold + `rest`'s | `rest`'s own |
 | `design_spread()` | a sample spread evenly over a map or covariates | `n` | local mean (an approximation) |
 | `design_temporal()` | a fixed number per time interval | `per_interval` | analytic |
 | `design_spatial()` | a simple random sample inside a region | `n` | analytic |

@@ -1359,6 +1359,13 @@
   error. The spatial-sampling article shows the mean it promised, and the
   choosing-a-design article says why one cluster sample's design effect came
   out below 1.
+* `?drawn` and the package description give Deville's (1999) approximation
+  as the variance for systematic probability-proportional-to-size samples,
+  where they gave it for every probability-proportional-to-size design.
+  Poisson samples get the exact Horvitz-Thompson variance. They cite
+  Grafström, Lundström and Schelin (2012) by its DOI. The README's table of
+  designs gives the size of a `design_certainty()` sample as the rows above
+  the threshold plus `rest`'s, where it said `rest`'s own.
 
 # drawn 0.2.0
 

@@ -1,8 +1,11 @@
 # Derived from https://github.com/r-lib/actions/tree/v2/examples
 #
-# Checks the package on macOS, Windows and Linux, against the current R release,
-# the previous one, and R-devel. R-devel is the one that catches deprecations
-# before CRAN does; oldrel-1 backs up the `R (>= 4.1)` claim in DESCRIPTION.
+# Checks the package on macOS and Windows against the current R release, and
+# on Linux against R-devel, the release, the previous release (oldrel-1) and
+# R 4.1. R-devel is the one that catches deprecations before CRAN does; the
+# R 4.1 leg backs up the `R (>= 4.1)` claim in DESCRIPTION, which oldrel-1
+# does not reach. One more Linux leg builds the PDF manual, fails on any
+# NOTE, and checks that README.md was rendered from the current README.Rmd.
 on:
   push:
     branches: [main, master]
@@ -23,7 +26,10 @@ jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
 
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }}${{ matrix.config.strict && ', strict' || '' }})
+
+    # Stops a hung job after an hour rather than the six-hour default.
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
@@ -33,12 +39,16 @@ jobs:
           - {os: windows-latest, r: 'release'}
           - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,  r: 'release'}
+          - {os: ubuntu-latest,  r: 'release', strict: true}
           - {os: ubuntu-latest,  r: 'oldrel-1'}
+          - {os: ubuntu-latest,  r: '4.1'}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      # Surface anything the tests only warn about.
+      # Lets R CMD check run when a Suggests package is missing. The
+      # dependency step below installs every Suggests package and fails the
+      # job if one cannot be installed, so on these runners none is missing.
       _R_CHECK_FORCE_SUGGESTS_: false
 
     steps:
@@ -52,27 +62,73 @@ jobs:
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
 
+      # LaTeX for the PDF manual. Rd.sty sets code in Inconsolata.
+      - uses: r-lib/actions/setup-tinytex@v2
+        if: matrix.config.strict
+
+      - name: Install the Inconsolata font package
+        if: matrix.config.strict
+        run: tlmgr install inconsolata
+
+      # HTML Tidy validates the HTML manual; without it the strict check
+      # reports a NOTE that it skipped the validation.
+      - name: Install HTML Tidy
+        if: matrix.config.strict
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tidy
+
       # `sf` is a Suggests-only dependency and needs GDAL, GEOS and PROJ.
       # setup-r-dependencies installs the Linux system libraries itself; macOS
-      # and Windows get binaries. If it ever fails to install on one platform
-      # the spatial tests skip rather than fail, which is why they are written
-      # with skip_if_not_installed("sf").
+      # and Windows get binaries. If `sf` or any other Suggests package fails
+      # to install, this step fails the job. The spatial tests are written
+      # with skip_if_not_installed("sf") for machines without it, such as
+      # some CRAN check machines.
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::rcmdcheck
           needs: check
 
       - name: No duplicate function definitions under R/
-        run: Rscript tools/check-duplicates.R
+        run: |
+          Rscript tools/check-duplicates.R --self-test
+          Rscript tools/check-duplicates.R
+        shell: bash
 
       - name: Documentation is consistent with the code
         run: |
+          Rscript tools/check-docs.R --self-test
           R CMD INSTALL --no-multiarch --with-keep.source .
           Rscript tools/check-docs.R
         shell: bash
 
+      # The sample summary in the README prints the date it was drawn, so a
+      # change confined to that line is ignored.
+      - name: README.md is rendered from README.Rmd
+        if: matrix.config.strict
+        run: |
+          Rscript -e 'rmarkdown::render("README.Rmd", output_options = list(html_preview = FALSE), quiet = TRUE)'
+          git diff --exit-code -I '^#> +drawn +with seed' README.md || {
+            echo "README.md differs from a fresh render of README.Rmd; run devtools::build_readme() and commit README.md."
+            exit 1
+          }
+        shell: bash
+
       - uses: r-lib/actions/check-r-package@v2
+        if: ${{ !matrix.config.strict }}
         with:
           upload-snapshots: true
           build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
           error-on: '"warning"'
+
+      # The incoming checks are off because a first submission always gets
+      # the "New submission" NOTE; every other NOTE fails this leg.
+      - uses: r-lib/actions/check-r-package@v2
+        if: ${{ matrix.config.strict }}
+        env:
+          _R_CHECK_CRAN_INCOMING_: false
+        with:
+          upload-snapshots: true
+          args: 'c("--as-cran")'
+          build_args: 'c("--compact-vignettes=gs+qpdf")'
+          error-on: '"note"'

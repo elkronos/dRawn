@@ -201,12 +201,6 @@ test_that("validates its inputs and honours na_rm", {
 
 test_that("hands off to survey, and plots as a map", {
   d <- spread_pop()
-  s <- draw(d, design_spread(c("x", "y"), n = 30), seed = 1, weights = TRUE)
-  skip_if_not_installed("survey")
-  svd <- as_svydesign(s)
-  expect_equal(as.numeric(survey::svytotal(~smooth, svd)),
-               ht_total(s, "smooth")$total)
-
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
   expect_invisible(plot(design_spread(c("x", "y"), n = 30), d, type = "map",
@@ -214,6 +208,12 @@ test_that("hands off to survey, and plots as a map", {
   expect_error(plot(design_simple(n = 5), d, type = "map"), "coords")
   expect_invisible(plot(design_simple(n = 5), d, type = "map",
                         coords = c("x", "y"), seed = 1))
+
+  s <- draw(d, design_spread(c("x", "y"), n = 30), seed = 1, weights = TRUE)
+  skip_if_not_installed("survey")
+  svd <- as_svydesign(s)
+  expect_equal(as.numeric(survey::svytotal(~smooth, svd)),
+               ht_total(s, "smooth")$total)
 })
 
 test_that("an sf frame spreads across plain numeric columns", {
