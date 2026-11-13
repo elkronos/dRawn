@@ -69,9 +69,9 @@ plan_size(margin = 100, sd = stats::sd(invoices$value), N = nrow(invoices),
 ```
 
 `deff` is not a guess you have to invent — it is measurable from a comparable
-past sample with `deff()`, which we come back to below. If the margin you ask
-for cannot be reached by sampling at all, `plan_size()` says so rather than
-returning a number bigger than your frame:
+past sample with `deff()`, which we come back to below. If only a census meets
+the margin you ask for, `plan_size()` says so rather than returning a number
+bigger than your frame:
 
 ```{r}
 plan_size(margin = 2, sd = stats::sd(invoices$value), N = nrow(invoices))

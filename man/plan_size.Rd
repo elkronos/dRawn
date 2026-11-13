@@ -16,18 +16,26 @@ plan_size(
 )
 }
 \arguments{
-\item{margin}{Half-width of the confidence interval you want.}
+\item{margin}{Half-width of the confidence interval you want, the
+half-width the plan expects (see "Where the formula comes from"). For a
+proportion it is a proportion, and a \code{margin} of 1 or more is refused.}
 
 \item{sd}{Standard deviation of the measure, for \code{target = "mean"} or
-\code{"total"}.}
+\code{"total"}, as \code{\link[stats:sd]{stats::sd()}} computes it.}
 
 \item{p}{Expected proportion, for \code{target = "proportion"}.}
 
-\item{N}{Population size. \code{Inf} for an effectively unbounded frame.}
+\item{N}{Population size, at least 1. \code{Inf} for an effectively unbounded
+frame. An estimated \code{N} need not be a whole number; \code{n} is at most
+\code{floor(N)}.}
 
 \item{level}{Confidence level.}
 
-\item{deff}{Design effect to inflate by. \code{1} assumes simple random sampling.}
+\item{deff}{Design effect to inflate by: a positive number, or the result
+of \code{\link[=ht_mean]{ht_mean()}} for a mean or a proportion, or of \code{\link[=ht_total]{ht_total()}} for a
+total, on a pilot sample. \code{1} assumes simple random sampling. A number
+should come from \code{\link[=deff]{deff()}} on the estimator you will report, rounded up
+(see "The corrections").}
 
 \item{response}{Expected response rate, between 0 and 1.}
 
@@ -37,19 +45,29 @@ margin is on the population total and \code{N} must be finite.}
 \value{
 A list with a \code{print()} method, holding:
 \describe{
-\item{\code{n}}{Draw this many. Never more than \code{N}.}
+\item{\code{n}}{Draw this many. Never more than \code{N}, and at least two when
+the frame has two rows or more.}
 \item{\code{n_effective}}{What you expect to analyse once \code{response} has
 taken its share.}
-\item{\code{capped}}{\code{TRUE} when the frame is not large enough to reach the
-margin at all, however you sample it.}
-\item{\code{short}}{\code{TRUE} when the frame could reach the margin but not at
-this \code{response} rate, so \code{n} is the whole frame and the margin
-achieved will be wider than the one asked for.}
+\item{\code{capped}}{\code{TRUE} when only a census meets the margin, so \code{n} is
+every row of the frame. A census meets any margin when everyone
+responds.}
+\item{\code{short}}{\code{TRUE} when a sample smaller than the frame would meet
+the margin if everyone responded, but not at this \code{response} rate,
+so \code{n} is the whole frame and the margin achieved will be wider than
+the one asked for. It is never \code{TRUE} with \code{capped}.}
+\item{\code{raised}}{\code{TRUE} when the margin alone needs one row, and
+\code{n_effective} was raised to two, the fewest that give a standard
+error and an interval.}
 \item{\code{margin}, \code{level}, \code{N}, \code{deff}, \code{response}, \code{target}}{The inputs,
-returned so the assumptions travel with the number.}
+returned so the assumptions travel with the number. \code{deff} is the
+number used, also when an estimate was passed.}
+\item{\code{p}}{The expected proportion for a proportion, and \code{NA} for a
+mean or a total.}
 \item{\code{n_needed}}{Rows that would reach the margin if everyone
-responded. Equal to \code{n_effective} unless \code{short} is \code{TRUE}.}
-\item{\code{spread}}{The standard deviation used — \code{sd}, or
+responded, two at least as for \code{n_effective}. Equal to \code{n_effective}
+unless the whole frame is drawn at a \code{response} below 1.}
+\item{\code{spread}}{The standard deviation used, \code{sd}, or
 \code{sqrt(p * (1 - p))} for a proportion.}
 }
 }
@@ -67,29 +85,71 @@ varies:
 range divided by four as a rough stand-in.
 \item For a \strong{proportion}, a \code{p}. Leave it at \code{0.5}, the most pessimistic value,
 unless you have a better guess; that is the honest default because it
-maximises the required size.
+maximises the required size. The margin is a proportion too, \code{0.03} for
+3 percentage points.
 }
+
+\code{sd} given for a proportion, or \code{p} for a mean or a total, is not used,
+and \code{plan_size()} warns that it is ignored.
 }
 
 \section{The corrections}{
 
 \code{N} applies a finite population correction: sampling 400 from 500 is very
 different from 400 from 500,000, and past a certain point a bigger frame
-stops mattering. \code{deff} inflates for the design — pass the \code{\link[=deff]{deff()}} from a
-comparable past sample, since a clustered design of 400 may carry the
-information of 100. \code{response} inflates for non-response: at \code{0.6} you draw
+stops mattering. \code{response} inflates for non-response: at \code{0.6} you draw
 enough to end up with what you need.
+
+\code{deff} inflates for the design, since a clustered design of 400 may carry
+the information of 100. Measure it with \code{\link[=deff]{deff()}} on a comparable past
+sample, using the estimator you will report: \code{\link[=ht_mean]{ht_mean()}} for a mean or a
+proportion, and \code{\link[=ht_total]{ht_total()}} for a total. The two design effects differ for
+the same sample, and can differ many times over. In one cluster sample
+with clusters of 2 to 40 rows, the total's design effect was 28 and the
+mean's 0.66, and a total planned with the mean's figure came out a small
+fraction of the size it needed. A total reported as \code{N} times a mean takes
+the mean's design effect, and is planned as a mean with \code{margin / N}. You
+can pass the result of \code{ht_mean()} or \code{ht_total()} itself as \code{deff}, and
+\code{plan_size()} refuses one of the wrong kind for \code{target}.
+
+A design effect from one pilot is an estimate, and a noisy one, which
+comes out below the truth more often than above it. Round it up. \code{\link[=deff]{deff()}}
+gives \code{NA} for a pilot without a variance estimate, such as one taken with
+\code{variance = "none"}, a census, or one with a single cluster, and for one in
+which \code{y} took a single value. Such a pilot cannot supply a design effect,
+and \code{plan_size()} refuses an \code{NA}.
 }
 
 \section{Where the formula comes from}{
 
-\code{n0 = (z * spread / margin)^2 * deff}, then Cochran's finite population
-correction \code{n0 / (1 + (n0 - 1) / N)}, then division by \code{response} (Cochran
-1977, section 4.4; Valliant, Dever and Kreuter 2018, chapter 3). \code{z} is the
-normal quantile. The interval \code{\link[=ht_total]{ht_total()}} reports uses t on the design's
-degrees of freedom, which is slightly wider when those are few — with a
-handful of clusters, plan on more clusters rather than trusting the margin
-to the last digit.
+\code{n0 = (z * spread / margin)^2 * deff} is the size for an unbounded frame,
+with \code{z} the normal quantile for \code{level} and, for a total, \code{margin / N} as
+the margin on the mean. For a mean or a total the finite population
+correction gives \code{n0 / (1 + n0 / N)}, the smallest \code{n} with
+\code{(1 / n - 1 / N) * deff * sd^2 <= (margin / z)^2}. For a proportion, whose
+variance \code{p * (1 - p)} has the divisor \code{N} rather than \code{N - 1}, it gives
+\code{n0 / (1 + (n0 - 1) / N)}. The result is rounded up, raised to two when it
+is one, and divided by \code{response} (Cochran 1977, chapter 4; Valliant,
+Dever and Kreuter 2018, chapter 3).
+
+\code{margin} is the half-width the plan expects, the usual convention for
+sizing a sample: the estimate from a sample of size \code{n} lands within
+\code{margin} of the truth with probability about \code{level}. The interval a
+sample reports is built from that sample's own estimate of the variance,
+which comes out above the planned variance about as often as below it, so
+the reported half-width is wider than \code{margin} about half the time.
+
+That interval also uses t on the design's degrees of freedom rather than
+\code{z}, which matters when the primary sampling units are few. With 3, 4 and
+6 clusters in one stratum, which give 2, 3 and 5 degrees of freedom, the
+95\% t quantile is 2.2, 1.6 and 1.3 times \code{z}. \code{plan_size()} counts rows
+and knows nothing of clusters, so when you turn \code{n} into a few clusters,
+plan more of them.
+
+For a proportion, \code{\link[=ht_mean]{ht_mean()}} reports an interval on the logit scale, which
+is asymmetric. When \code{p} is small its upper arm is longer than its lower one,
+and exceeds \code{margin} in most samples even when the estimate is as precise
+as planned.
 }
 
 \examples{
@@ -104,6 +164,14 @@ plan_size(margin = 5, sd = 40, N = 20000, deff = 2.5, response = 0.7)
 
 # A total, to within 100,000 across a 20,000-row frame
 plan_size(margin = 1e5, sd = 40, N = 20000, target = "total")
+
+# The design effect of a cluster pilot, passed as the estimate itself
+pop <- data.frame(cl = rep(paste0("c", 1:50), each = 8))
+pop$y <- rep(seq(10, 59), each = 8) + rep(c(-3, 3), 200)
+pilot <- draw(pop, design_cluster("cl", n_clusters = 6), seed = 1,
+              weights = TRUE)
+plan_size(margin = 3, sd = sd(pilot$y), N = nrow(pop),
+          deff = ht_mean(pilot, "y"))
 
 }
 \references{

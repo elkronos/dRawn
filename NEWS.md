@@ -275,6 +275,17 @@
   data frame with two columns named `a` came back with `a` and `a.1`, and a
   tibble lost the second `a` without a word. Both now come back as they went
   in, after `.replicate`, as with every other design.
+* **`plan_size()` used a proportion's finite population correction for a
+  mean or a total.** `n0 / (1 + (n0 - 1) / N)` fits a proportion, whose
+  variance has the divisor `N`. A mean's `sd` has the divisor `N - 1`, and
+  the smallest size for it is `n0 / (1 + n0 / N)`. Plans for a mean or a
+  total were sometimes a row too large, and a margin that `N - 1` rows meet
+  was planned as a census. With `sd = 40` and `N = 10`, a margin of 8.4 gave
+  all 10 rows and called it a census, where 9 meet it.
+* **`plan_size()` added a row when dividing by `response` gave a whole
+  number.** `21 / 0.7` is `30.000000000000004` in floating point, so 21 rows
+  at 70% response gave 31 to draw where 30 bring back 21, and with `N = 30`
+  the plan said the frame was too small at that response rate.
 
 ## Refusals and clearer errors
 
@@ -457,6 +468,25 @@
   over the other rows would be, and points to `ht_mean(na_rm = TRUE)`, `by`
   and a weighting-class adjustment through `as_svydesign()`. It said only
   how many values were missing. `ht_mean()` points to `na_rm`.
+* `plan_size()` refuses an `N` below 1, and plans at most `floor(N)` rows,
+  so an estimated `N` such as 240.5 gives a whole `n` that `draw()` accepts.
+  It returned `n = 240.5`, which `draw()` refused, and `n = 0` for
+  `N = 0.5`.
+* `plan_size()` refuses a `margin` of 1 or more for a proportion, and says
+  to give it as a proportion, such as `0.05` for 5 percentage points. A
+  margin of 5 planned one row.
+* `plan_size()` warns that it ignores `sd` given for a proportion and `p`
+  given for a mean or a total, and when `sd` is missing and `p` is given its
+  refusal suggests `target = "proportion"`. Both were ignored without a
+  word, and `plan_size(margin = 0.03, p = 0.2)` said only that `sd` was
+  required.
+* `plan_size()` refuses a `deff` of `NA` with the reason `deff()` gives one,
+  a pilot without a variance estimate or with one value of `y`. It said only
+  that `deff` must be a positive number.
+* `plan_size()` plans a census when the size for an unbounded frame is too
+  large for a number, and refuses it for an unbounded `N` with a message
+  naming `margin` and `level`. It stopped with "missing value where
+  TRUE/FALSE needed", or returned `n = Inf`.
 
 ## Behaviour changes
 
@@ -595,6 +625,18 @@
   design the groups of its `rest`, after a `(certain)` row for the rows
   above the threshold, where it gave none, and groups a temporal sample by
   interval. The rates print with three decimals, where their widths varied.
+* `plan_size()` plans two rows at least when the frame has two, since one
+  row gives no standard error or interval, and its printout says so. The
+  result's new `raised` is `TRUE` when this applies. A margin of two
+  standard deviations planned one row.
+* `plan_size()` no longer sets `capped` and `short` together. `capped` means
+  that only a census meets the margin, and `short` that a smaller sample
+  would if everyone responded. `capped` was documented as a frame that could
+  not reach the margin however it was sampled, though a census always
+  reaches it, and the printout now says the same.
+* A printed proportion plan shows the `p` it assumes, where it showed
+  `sqrt(p * (1 - p))` as `sd`, and the result holds `p`, which is `NA` for a
+  mean or a total.
 
 ## New
 
@@ -935,6 +977,11 @@
   or `x` and use it for every row, so `ht_total(s, 1)` estimates the number
   of frame rows the design can reach, and with `by` the number in each
   domain. A single number was refused.
+* `plan_size()` takes the result of `ht_mean()` or `ht_total()` on a pilot
+  as `deff` and uses its design effect. It refuses a mean when
+  `target = "total"` and a total for a mean or a proportion, since the two
+  design effects differ for one sample, by a factor of 42 in one cluster
+  sample.
 
 ## Speed and memory
 
@@ -1105,6 +1152,18 @@
   `1 / interval` for every row without saying the start must be random.
   `joint_prob()` and the estimators now refuse a fixed start with the same
   message as `inclusion_prob()`, which says to leave `start` as `NULL`.
+* `?plan_size` says which design effect to pass: that of `ht_mean()` for a
+  mean or a proportion and that of `ht_total()` for a total. A mean's design
+  effect used for a total planned a sample that met its margin in 23% of
+  samples, against the 95% planned. It also says that a design effect from
+  one pilot is noisy and worth rounding up, and when `deff()` gives `NA`.
+* `?plan_size` says that `margin` is the half-width the plan expects, so the
+  interval a sample reports is wider about half the time, and gives the t
+  quantile for 3, 4 and 6 clusters as 2.2, 1.6 and 1.3 times `z`, where it
+  said "slightly wider". It says that the logit interval `ht_mean()` reports
+  for a proportion is asymmetric, with an upper arm that exceeds `margin` in
+  most samples when `p` is small, and cites chapter 4 of Cochran (1977) for
+  both corrections.
 
 # drawn 0.2.0
 

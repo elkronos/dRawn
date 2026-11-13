@@ -104,6 +104,255 @@ test_that("printing a plan states the number and the assumptions behind it", {
   expect_true(any(grepl("deff 2.5", out, fixed = TRUE)))
 })
 
+test_that("plan_size gives the smallest size that meets the margin", {
+  z <- stats::qnorm(0.975)
+  # The smallest n whose variance meets (margin / z)^2, found by trying every
+  # size the frame allows, and never below two rows.
+  smallest <- function(N, ratio) {
+    n <- seq_len(N)
+    ok <- ratio(n) <= 1 + 1e-12
+    n <- if (any(ok)) min(n[ok]) else N
+    if (N >= 2) max(n, 2) else n
+  }
+  for (N in c(3, 7, 10, 25, 60)) {
+    for (m in c(5, 8.4, 12.5, 20, 40)) {
+      mean_n <- smallest(N, function(n) (1 / n - 1 / N) * 40^2 / (m / z)^2)
+      expect_equal(plan_size(margin = m, sd = 40, N = N)$n, mean_n,
+                   info = paste("mean", N, m))
+      total_n <- smallest(N, function(n) {
+        N^2 * (1 / n - 1 / N) * 2 * 40^2 / (m * N / z)^2
+      })
+      expect_equal(plan_size(margin = m * N, sd = 40, N = N, deff = 2,
+                             target = "total")$n, total_n,
+                   info = paste("total", N, m))
+    }
+    for (m in c(0.05, 0.1, 0.2, 0.4)) {
+      for (p in c(0.1, 0.5)) {
+        prop_n <- smallest(N, function(n) {
+          p * (1 - p) / n * (N - n) / (N - 1) / (m / z)^2
+        })
+        expect_equal(plan_size(margin = m, p = p, N = N,
+                               target = "proportion")$n, prop_n,
+                     info = paste("proportion", N, m, p))
+      }
+    }
+  }
+})
+
+test_that("a margin that fewer rows than the frame meet is not a census", {
+  # With sd = 40, nine of ten rows meet a margin of 8.4.
+  z <- stats::qnorm(0.975)
+  expect_lte((1 / 9 - 1 / 10) * 40^2, (8.4 / z)^2)
+  p <- plan_size(margin = 8.4, sd = 40, N = 10)
+  expect_equal(p$n, 9)
+  expect_false(p$capped)
+
+  # Nine rows do not meet a margin of 2, so only a census does.
+  expect_gt((1 / 9 - 1 / 10) * 40^2, (2 / z)^2)
+  cen <- plan_size(margin = 2, sd = 40, N = 10)
+  expect_equal(cen$n, 10)
+  expect_true(cen$capped)
+  expect_output(print(cen), "No sample smaller than the frame meets")
+})
+
+test_that("a census plan is capped and not short", {
+  cen <- plan_size(margin = 0.2, sd = 40, N = 300, response = 0.5)
+  expect_true(cen$capped)
+  expect_false(cen$short)
+  expect_equal(cen$n, 300)
+  expect_equal(cen$n_effective, 150)
+})
+
+test_that("non-response does not add a row through rounding", {
+  # 21 / 0.7 is 30.000000000000004 in floating point.
+  p <- plan_size(margin = 17.11, sd = 40, response = 0.7)
+  expect_equal(p$n_effective, 21)
+  expect_equal(p$n, 30)
+
+  # Thirty rows at 70% response bring back the 21 needed, so the frame is
+  # not short.
+  q <- plan_size(margin = 10, sd = 40, N = 30, response = 0.7)
+  expect_equal(q$n, 30)
+  expect_equal(q$n_effective, 21)
+  expect_false(q$short)
+  expect_false(q$capped)
+  expect_false(any(grepl("more rows than the frame holds",
+                         utils::capture.output(print(q)), fixed = TRUE)))
+})
+
+test_that("a fractional N gives a whole n that draw() accepts", {
+  p <- plan_size(margin = 0.01, sd = 40, N = 240.5)
+  expect_equal(p$n, 240)
+  expect_true(p$capped)
+  s <- draw(data.frame(id = 1:240), design_simple(n = p$n), seed = 1)
+  expect_equal(nrow(s), 240)
+  expect_output(print(p), "N 240.5", fixed = TRUE)
+
+  # An estimated N plans a total as a whole one would, below the cap.
+  expect_equal(plan_size(margin = 5000, sd = 40, N = 2400.4,
+                         target = "total")$n,
+               ceiling(2400.4 / (1 + 2400.4 /
+                                   (stats::qnorm(0.975) * 40 * 2400.4 /
+                                      5000)^2)))
+
+  expect_error(plan_size(margin = 1000, sd = 40, N = 0.5),
+               "`N` is 0.5, and a frame holds at least one row")
+  expect_error(plan_size(margin = 5, sd = 40, N = 1e-9), "at least one row")
+  expect_equal(plan_size(margin = 5, sd = 40, N = 1)$n, 1)
+})
+
+test_that("a size too large for a number gives a census or a clear error", {
+  p <- plan_size(margin = 1e-300, sd = 40, N = 240)
+  expect_equal(p$n, 240)
+  expect_true(p$capped)
+  expect_equal(plan_size(margin = 5, sd = 40, N = 240, deff = 1e308)$n, 240)
+  expect_equal(plan_size(margin = 5, sd = 1e300, N = 240)$n, 240)
+  expect_equal(plan_size(margin = 5, sd = 40, N = 240, level = 1 - 1e-16)$n,
+               240)
+  expect_equal(plan_size(margin = 0.03, N = 240, level = 1 - 1e-16,
+                         target = "proportion")$n, 240)
+  expect_error(plan_size(margin = 1e-300, sd = 40),
+               "`margin` = 1e-300 with a spread of 40")
+  expect_error(plan_size(margin = 1e-300, sd = 40), "finite `N`")
+  expect_error(plan_size(margin = 5, sd = 40, level = 1 - 1e-16),
+               "lower `level`")
+})
+
+test_that("a plan has two rows at least, the fewest that give a variance", {
+  p <- plan_size(margin = 80, sd = 40)
+  expect_equal(p$n, 2)
+  expect_equal(p$n_effective, 2)
+  expect_true(p$raised)
+  expect_output(print(p), "interval need\\s+two")
+  expect_false(plan_size(margin = 5, sd = 40)$raised)
+
+  # A proportion margin close to 1 would have asked for one row.
+  expect_equal(plan_size(margin = 0.99, target = "proportion")$n, 2)
+
+  two <- plan_size(margin = 80, sd = 40, N = 2)
+  expect_equal(two$n, 2)
+  expect_false(two$capped)
+  expect_equal(plan_size(margin = 80, sd = 40, N = 1)$n, 1)
+  expect_equal(plan_size(margin = 80, sd = 40, response = 0.5)$n, 4)
+})
+
+test_that("an argument the target does not use is ignored with a warning", {
+  expect_warning(
+    a <- plan_size(margin = 0.05, sd = 0.1, target = "proportion"),
+    class = "drawn_irrelevant_argument")
+  expect_equal(a$n, plan_size(margin = 0.05, target = "proportion")$n)
+  expect_warning(plan_size(margin = 0.05, sd = 0.1, target = "proportion"),
+                 "`sd` is not used")
+
+  expect_warning(b <- plan_size(margin = 5, sd = 40, p = 7),
+                 class = "drawn_irrelevant_argument")
+  expect_equal(b$n, plan_size(margin = 5, sd = 40)$n)
+  expect_warning(plan_size(margin = 5e4, sd = 40, p = 0.2, N = 2e4,
+                           target = "total"),
+                 "`p` is not used for target = \"total\"")
+
+  expect_error(plan_size(margin = 0.03, p = 0.2),
+               "use target = \"proportion\"", fixed = TRUE)
+  expect_error(plan_size(margin = 5),
+               "plausible range divided by four.$")
+
+  expect_silent(plan_size(margin = 0.03, p = 0.2, target = "proportion"))
+  expect_silent(plan_size(margin = 5, sd = 40))
+})
+
+test_that("a proportion margin of 1 or more is refused", {
+  expect_error(plan_size(margin = 5, N = 20000, target = "proportion"),
+               "such as 0.05 for 5 percentage points", fixed = TRUE)
+  expect_error(plan_size(margin = 1, target = "proportion"),
+               "0.01 for 1 percentage point.", fixed = TRUE)
+  expect_equal(plan_size(margin = 0.03, target = "proportion")$n,
+               plan_size(margin = 0.03, p = 0.5, target = "proportion")$n)
+})
+
+test_that("a proportion plan prints and returns p", {
+  p <- plan_size(margin = 0.03, p = 0.1, N = 20000, target = "proportion")
+  expect_equal(p$p, 0.1)
+  expect_output(print(p), "assuming       p 0.1, N 20,000", fixed = TRUE)
+  m <- plan_size(margin = 5, sd = 40, N = 20000)
+  expect_true(is.na(m$p))
+  expect_output(print(m), "assuming       sd 40, N 20,000", fixed = TRUE)
+})
+
+test_that("deff takes the estimate it came from, of the kind target plans", {
+  pop <- data.frame(id = 1:400, cl = rep(paste0("c", 1:40), each = 10))
+  pop$y <- rep(seq(10, 49), each = 10) + rep(c(-2, 2), 200)
+  pilot <- draw(pop, design_cluster("cl", n_clusters = 6), seed = 1,
+                weights = TRUE)
+  m <- ht_mean(pilot, "y")
+  tot <- ht_total(pilot, "y")
+  expect_true(is.finite(deff(m)))
+  expect_true(is.finite(deff(tot)))
+
+  expect_equal(plan_size(margin = 3, sd = 10, N = 400, deff = m),
+               plan_size(margin = 3, sd = 10, N = 400, deff = deff(m)))
+  expect_equal(plan_size(margin = 3, sd = 10, N = 400, deff = m)$deff,
+               deff(m))
+  expect_equal(plan_size(margin = 1200, sd = 10, N = 400, deff = tot,
+                         target = "total")$deff, deff(tot))
+  expect_equal(plan_size(margin = 0.1, N = 400, deff = m,
+                         target = "proportion")$deff, deff(m))
+
+  expect_error(plan_size(margin = 1200, sd = 10, N = 400, deff = m,
+                         target = "total"),
+               "Pass ht_total() on the same pilot", fixed = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = tot),
+               "Pass ht_mean() on the same pilot", fixed = TRUE)
+  expect_error(plan_size(margin = 0.1, N = 400, deff = tot,
+                         target = "proportion"),
+               "`target` is \"proportion\"", fixed = TRUE)
+
+  none <- ht_mean(pilot, "y", variance = "none")
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = none),
+               "design effect of NA")
+  expect_error(plan_size(margin = 3, sd = 10, deff = NA),
+               "`deff` is NA, which deff() gives", fixed = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10, deff = NA_real_),
+               "`deff` is NA", fixed = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10,
+                         deff = ht_mean(pilot, "y", by = "cl")),
+               "without `by`", fixed = TRUE)
+})
+
+test_that("plan_size meets the margin at a small N, where the correction bites", {
+  skip_on_cran()
+  N <- 60
+  pop <- data.frame(id = seq_len(N),
+                    y = 100 + 40 * stats::qnorm(stats::ppoints(N)))
+  truth <- mean(pop$y)
+  p <- plan_size(margin = 8, sd = stats::sd(pop$y), N = N)
+  # Without the correction the plan would be more than the frame.
+  expect_gt(plan_size(margin = 8, sd = stats::sd(pop$y))$n, N)
+  expect_lt(p$n, N)
+  hit <- vapply(seq_len(500), function(i) {
+    s <- draw(pop, design_simple(n = p$n), seed = i, weights = TRUE)
+    abs(ht_mean(s, "y", variance = "none")$mean - truth) <= 8
+  }, logical(1))
+  expect_gt(mean(hit), 0.92)
+  expect_lt(mean(hit), 0.99)
+})
+
+test_that("plan_size meets a margin on a total", {
+  skip_on_cran()
+  N <- 400
+  pop <- data.frame(id = seq_len(N),
+                    y = exp(3 + 0.5 * stats::qnorm(stats::ppoints(N))))
+  truth <- sum(pop$y)
+  M <- 0.04 * truth
+  p <- plan_size(margin = M, sd = stats::sd(pop$y), N = N, target = "total")
+  expect_lt(p$n, N)
+  hit <- vapply(seq_len(500), function(i) {
+    s <- draw(pop, design_simple(n = p$n), seed = 1000 + i, weights = TRUE)
+    abs(ht_total(s, "y", variance = "none")$total - truth) <= M
+  }, logical(1))
+  expect_gt(mean(hit), 0.92)
+  expect_lt(mean(hit), 0.99)
+})
+
 # ---- sample_summary --------------------------------------------------------
 
 test_that("sample_summary counts what was drawn against what was there", {

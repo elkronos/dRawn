@@ -12,42 +12,81 @@
 #'   range divided by four as a rough stand-in.
 #' * For a **proportion**, a `p`. Leave it at `0.5`, the most pessimistic value,
 #'   unless you have a better guess; that is the honest default because it
-#'   maximises the required size.
+#'   maximises the required size. The margin is a proportion too, `0.03` for
+#'   3 percentage points.
+#'
+#' `sd` given for a proportion, or `p` for a mean or a total, is not used,
+#' and `plan_size()` warns that it is ignored.
 #'
 #' @section The corrections:
 #' `N` applies a finite population correction: sampling 400 from 500 is very
 #' different from 400 from 500,000, and past a certain point a bigger frame
-#' stops mattering. `deff` inflates for the design — pass the [deff()] from a
-#' comparable past sample, since a clustered design of 400 may carry the
-#' information of 100. `response` inflates for non-response: at `0.6` you draw
+#' stops mattering. `response` inflates for non-response: at `0.6` you draw
 #' enough to end up with what you need.
 #'
-#' @param margin Half-width of the confidence interval you want.
+#' `deff` inflates for the design, since a clustered design of 400 may carry
+#' the information of 100. Measure it with [deff()] on a comparable past
+#' sample, using the estimator you will report: [ht_mean()] for a mean or a
+#' proportion, and [ht_total()] for a total. The two design effects differ for
+#' the same sample, and can differ many times over. In one cluster sample
+#' with clusters of 2 to 40 rows, the total's design effect was 28 and the
+#' mean's 0.66, and a total planned with the mean's figure came out a small
+#' fraction of the size it needed. A total reported as `N` times a mean takes
+#' the mean's design effect, and is planned as a mean with `margin / N`. You
+#' can pass the result of `ht_mean()` or `ht_total()` itself as `deff`, and
+#' `plan_size()` refuses one of the wrong kind for `target`.
+#'
+#' A design effect from one pilot is an estimate, and a noisy one, which
+#' comes out below the truth more often than above it. Round it up. [deff()]
+#' gives `NA` for a pilot without a variance estimate, such as one taken with
+#' `variance = "none"`, a census, or one with a single cluster, and for one in
+#' which `y` took a single value. Such a pilot cannot supply a design effect,
+#' and `plan_size()` refuses an `NA`.
+#'
+#' @param margin Half-width of the confidence interval you want, the
+#'   half-width the plan expects (see "Where the formula comes from"). For a
+#'   proportion it is a proportion, and a `margin` of 1 or more is refused.
 #' @param sd Standard deviation of the measure, for `target = "mean"` or
-#'   `"total"`.
+#'   `"total"`, as [stats::sd()] computes it.
 #' @param p Expected proportion, for `target = "proportion"`.
-#' @param N Population size. `Inf` for an effectively unbounded frame.
+#' @param N Population size, at least 1. `Inf` for an effectively unbounded
+#'   frame. An estimated `N` need not be a whole number; `n` is at most
+#'   `floor(N)`.
 #' @param level Confidence level.
-#' @param deff Design effect to inflate by. `1` assumes simple random sampling.
+#' @param deff Design effect to inflate by: a positive number, or the result
+#'   of [ht_mean()] for a mean or a proportion, or of [ht_total()] for a
+#'   total, on a pilot sample. `1` assumes simple random sampling. A number
+#'   should come from [deff()] on the estimator you will report, rounded up
+#'   (see "The corrections").
 #' @param response Expected response rate, between 0 and 1.
 #' @param target `"mean"`, `"proportion"` or `"total"`. For `"total"` the
 #'   margin is on the population total and `N` must be finite.
 #'
 #' @return A list with a `print()` method, holding:
 #'   \describe{
-#'     \item{`n`}{Draw this many. Never more than `N`.}
+#'     \item{`n`}{Draw this many. Never more than `N`, and at least two when
+#'       the frame has two rows or more.}
 #'     \item{`n_effective`}{What you expect to analyse once `response` has
 #'       taken its share.}
-#'     \item{`capped`}{`TRUE` when the frame is not large enough to reach the
-#'       margin at all, however you sample it.}
-#'     \item{`short`}{`TRUE` when the frame could reach the margin but not at
-#'       this `response` rate, so `n` is the whole frame and the margin
-#'       achieved will be wider than the one asked for.}
+#'     \item{`capped`}{`TRUE` when only a census meets the margin, so `n` is
+#'       every row of the frame. A census meets any margin when everyone
+#'       responds.}
+#'     \item{`short`}{`TRUE` when a sample smaller than the frame would meet
+#'       the margin if everyone responded, but not at this `response` rate,
+#'       so `n` is the whole frame and the margin achieved will be wider than
+#'       the one asked for. It is never `TRUE` with `capped`.}
+#'     \item{`raised`}{`TRUE` when the margin alone needs one row, and
+#'       `n_effective` was raised to two, the fewest that give a standard
+#'       error and an interval.}
 #'     \item{`margin`, `level`, `N`, `deff`, `response`, `target`}{The inputs,
-#'       returned so the assumptions travel with the number.}
+#'       returned so the assumptions travel with the number. `deff` is the
+#'       number used, also when an estimate was passed.}
+#'     \item{`p`}{The expected proportion for a proportion, and `NA` for a
+#'       mean or a total.}
 #'     \item{`n_needed`}{Rows that would reach the margin if everyone
-#'       responded. Equal to `n_effective` unless `short` is `TRUE`.}
-#'     \item{`spread`}{The standard deviation used — `sd`, or
+#'       responded, two at least as for `n_effective`. Equal to `n_effective`
+#'       unless the whole frame is drawn at a `response` below 1.}
+#'     \item{`spread`}{The standard deviation used, `sd`, or
 #'       `sqrt(p * (1 - p))` for a proportion.}
 #'   }
 #'
@@ -64,14 +103,43 @@
 #' # A total, to within 100,000 across a 20,000-row frame
 #' plan_size(margin = 1e5, sd = 40, N = 20000, target = "total")
 #'
+#' # The design effect of a cluster pilot, passed as the estimate itself
+#' pop <- data.frame(cl = rep(paste0("c", 1:50), each = 8))
+#' pop$y <- rep(seq(10, 59), each = 8) + rep(c(-3, 3), 200)
+#' pilot <- draw(pop, design_cluster("cl", n_clusters = 6), seed = 1,
+#'               weights = TRUE)
+#' plan_size(margin = 3, sd = sd(pilot$y), N = nrow(pop),
+#'           deff = ht_mean(pilot, "y"))
+#'
 #' @section Where the formula comes from:
-#' `n0 = (z * spread / margin)^2 * deff`, then Cochran's finite population
-#' correction `n0 / (1 + (n0 - 1) / N)`, then division by `response` (Cochran
-#' 1977, section 4.4; Valliant, Dever and Kreuter 2018, chapter 3). `z` is the
-#' normal quantile. The interval [ht_total()] reports uses t on the design's
-#' degrees of freedom, which is slightly wider when those are few — with a
-#' handful of clusters, plan on more clusters rather than trusting the margin
-#' to the last digit.
+#' `n0 = (z * spread / margin)^2 * deff` is the size for an unbounded frame,
+#' with `z` the normal quantile for `level` and, for a total, `margin / N` as
+#' the margin on the mean. For a mean or a total the finite population
+#' correction gives `n0 / (1 + n0 / N)`, the smallest `n` with
+#' `(1 / n - 1 / N) * deff * sd^2 <= (margin / z)^2`. For a proportion, whose
+#' variance `p * (1 - p)` has the divisor `N` rather than `N - 1`, it gives
+#' `n0 / (1 + (n0 - 1) / N)`. The result is rounded up, raised to two when it
+#' is one, and divided by `response` (Cochran 1977, chapter 4; Valliant,
+#' Dever and Kreuter 2018, chapter 3).
+#'
+#' `margin` is the half-width the plan expects, the usual convention for
+#' sizing a sample: the estimate from a sample of size `n` lands within
+#' `margin` of the truth with probability about `level`. The interval a
+#' sample reports is built from that sample's own estimate of the variance,
+#' which comes out above the planned variance about as often as below it, so
+#' the reported half-width is wider than `margin` about half the time.
+#'
+#' That interval also uses t on the design's degrees of freedom rather than
+#' `z`, which matters when the primary sampling units are few. With 3, 4 and
+#' 6 clusters in one stratum, which give 2, 3 and 5 degrees of freedom, the
+#' 95% t quantile is 2.2, 1.6 and 1.3 times `z`. `plan_size()` counts rows
+#' and knows nothing of clusters, so when you turn `n` into a few clusters,
+#' plan more of them.
+#'
+#' For a proportion, [ht_mean()] reports an interval on the logit scale, which
+#' is asymmetric. When `p` is small its upper arm is longer than its lower one,
+#' and exceeds `margin` in most samples even when the estimate is as precise
+#' as planned.
 #'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
@@ -97,8 +165,12 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
     x
   }
   margin <- check_pos(margin, "margin")
-  deff <- check_pos(deff, "deff")
+  deff <- check_pos(plan_deff(deff, target), "deff")
   N <- check_pos(N, "N", allow_inf = TRUE)
+  if (N < 1) {
+    stop("`N` is ", format_bad(N), ", and a frame holds at least one row. ",
+         "Give the number of rows in the frame, or Inf.", call. = FALSE)
+  }
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
       level <= 0 || level >= 1) {
     stop("`level` must be a single number strictly between 0 and 1.",
@@ -110,6 +182,19 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
   }
 
   if (target == "proportion") {
+    if (!is.null(sd)) {
+      warn_drawn(paste0(
+        "`sd` is not used for target = \"proportion\", whose spread comes ",
+        "from `p`. Give the expected proportion as `p`, and leave `sd` out."),
+        "drawn_irrelevant_argument")
+    }
+    if (margin >= 1) {
+      stop("`margin` is ", format_bad(margin), ", and a proportion lies ",
+           "between 0 and 1, so a margin of 1 or more says nothing. Give it ",
+           "as a proportion, such as ", format(margin / 100), " for ",
+           format(margin), " percentage point", if (margin != 1) "s", ".",
+           call. = FALSE)
+    }
     if (!is.numeric(p) || length(p) != 1L || is.na(p) || p < 0 || p > 1) {
       stop("`p` must be a single number in [0, 1].", call. = FALSE)
     }
@@ -119,10 +204,20 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
            "needed. Use a value strictly between 0 and 1.", call. = FALSE)
     }
     unit_margin <- margin
+    p_used <- p
   } else {
     if (is.null(sd)) {
       stop("`sd` is required for target = \"", target, "\". Use a pilot ",
-           "estimate, or a plausible range divided by four.", call. = FALSE)
+           "estimate, or a plausible range divided by four.",
+           if (!missing(p)) {
+             " To plan a proportion from `p`, use target = \"proportion\"."
+           }, call. = FALSE)
+    }
+    if (!missing(p)) {
+      warn_drawn(paste0(
+        "`p` is not used for target = \"", target, "\", whose spread is ",
+        "`sd`. To plan a proportion from `p`, use target = \"proportion\"; ",
+        "otherwise leave `p` out."), "drawn_irrelevant_argument")
     }
     spread <- check_pos(sd, "sd")
     if (target == "total") {
@@ -134,33 +229,106 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
     } else {
       unit_margin <- margin
     }
+    p_used <- NA_real_
   }
 
   z <- stats::qnorm(1 - (1 - level) / 2)
   n0 <- (z * spread / unit_margin)^2 * deff
-  n_eff <- if (is.finite(N)) n0 / (1 + (n0 - 1) / N) else n0
-  n_eff <- ceiling(n_eff)
-  if (is.finite(N)) n_eff <- min(n_eff, N)
-  n_draw <- ceiling(n_eff / response)
+  # n0 is the size for an unbounded frame. For a mean or a total, whose sd has
+  # the divisor N - 1, the smallest n with (1/n - 1/N) S^2 deff <=
+  # (margin/z)^2 is n0 / (1 + n0/N). For a proportion, whose p(1 - p) has the
+  # divisor N, it is n0 / (1 + (n0 - 1)/N). Both are written with n0 in a
+  # denominator, so an n0 too large for a double gives N, a census.
+  n_eff <- if (!is.finite(N)) {
+    n0
+  } else if (target == "proportion") {
+    N / (1 + (N - 1) / n0)
+  } else {
+    N / (1 + N / n0)
+  }
+  if (is.na(n_eff) || (!is.finite(N) && !is.finite(n_eff / response))) {
+    shown <- format(level)
+    if (shown == "1") shown <- format(level, digits = 17)
+    stop("`margin` = ", format_bad(margin), " with a spread of ",
+         format(signif(spread, 4)), " at `level` = ", shown, " needs more ",
+         "rows than a number can hold. Widen `margin` or lower `level`",
+         if (!is.finite(N)) ", or give a finite `N`", ".", call. = FALSE)
+  }
 
-  # Two different situations, and only one of them is a census. `capped` means
-  # the frame cannot reach the margin however hard you sample; `short` means it
-  # could, but not once non-response has taken its share.
-  capped <- is.finite(N) && n_eff >= N
-  short <- is.finite(N) && n_draw > N
+  # The tolerance keeps a rounding error from adding a row: 21 / 0.7 is
+  # 30.000000000000004 in floating point.
+  n_margin <- max(1, ceiling(n_eff - 1e-9))
+  if (is.finite(N)) n_margin <- min(n_margin, floor(N))
+  capped <- is.finite(N) && n_margin >= floor(N)
+  # One row meets a margin of about two standard deviations, but gives no
+  # variance and no interval.
+  raised <- n_margin < 2 && floor(N) >= 2
+  n_eff <- if (raised) 2 else n_margin
   n_needed <- n_eff
-  if (short) {
-    n_draw <- N
-    n_eff <- min(n_eff, floor(n_draw * response))
+  n_draw <- ceiling(n_eff / response - 1e-9)
+
+  # Two different situations, and only one of them is a census. `capped`
+  # means only a census meets the margin; `short` means a smaller sample
+  # would, but not once non-response has taken its share. Either way the
+  # frame is drawn whole, and fewer rows come back when response < 1.
+  short <- !capped && n_draw > floor(N)
+  if (n_draw > floor(N)) {
+    n_draw <- floor(N)
+    n_eff <- min(n_eff, floor(n_draw * response + 1e-9))
   }
 
   structure(
     list(n = n_draw, n_effective = n_eff, margin = margin, level = level,
          N = N, deff = deff, response = response, target = target,
-         spread = spread, capped = capped, short = short,
-         n_needed = n_needed),
+         spread = spread, p = p_used, capped = capped, short = short,
+         raised = raised, n_needed = n_needed),
     class = "drawn_plan"
   )
+}
+
+#' The design effect `plan_size()` inflates by
+#'
+#' `deff` is a number, or a result of `ht_mean()` or `ht_total()` whose own
+#' design effect is used. The estimate must be of the kind `target` plans,
+#' since a mean's design effect and a total's differ for the same sample. An
+#' `NA`, which `deff()` gives for a pilot without a variance, is refused with
+#' that reason. Any other number is left to `plan_size()`'s own check.
+#'
+#' @noRd
+plan_deff <- function(deff, target) {
+  na_fix <- paste0("Use a pilot that has a variance, or a design effect from ",
+                   "a similar survey.")
+  if (inherits(deff, c("drawn_mean", "drawn_ht"))) {
+    if (inherits(deff, "drawn_mean") && target == "total") {
+      stop("`deff` is a mean from ht_mean(), and `target` is \"total\". ",
+           "Pass ht_total() on the same pilot, since the design effects of a ",
+           "mean and a total can differ many times over for one sample. A ",
+           "total reported as N times a mean is planned as target = \"mean\" ",
+           "with `margin` divided by N.", call. = FALSE)
+    }
+    if (inherits(deff, "drawn_ht") && target != "total") {
+      stop("`deff` is a total from ht_total(), and `target` is \"", target,
+           "\". Pass ht_mean() on the same pilot, since the design effects ",
+           "of a total and a mean can differ many times over for one sample.",
+           call. = FALSE)
+    }
+    value <- deff[["deff"]]
+    if (length(value) != 1L || is.na(value)) {
+      stop("`deff` has a design effect of NA, which a pilot with no variance ",
+           "estimate or with one value of `y` gives. ", na_fix, call. = FALSE)
+    }
+    return(value)
+  }
+  if (!is.atomic(deff)) {
+    stop("`deff` is a `", class(deff)[1], "`. Give a design effect as a ",
+         "single positive number, or the result of ht_mean() or ht_total() ",
+         "for one variable without `by`.", call. = FALSE)
+  }
+  if (length(deff) == 1L && is.na(deff)) {
+    stop("`deff` is NA, which deff() gives for a pilot with no variance ",
+         "estimate or with one value of `y`. ", na_fix, call. = FALSE)
+  }
+  deff
 }
 
 #' @export
@@ -174,27 +342,43 @@ print.drawn_plan <- function(x, ...) {
   cat("  margin         +/- ",
       format(x$margin, big.mark = ",", scientific = FALSE), " at ",
       format(100 * x$level), "% confidence\n", sep = "")
-  cat("  assuming       sd ", signif(x$spread, 4),
+  spread <- if (identical(x$target, "proportion") && isTRUE(x$p >= 0)) {
+    paste0("p ", signif(x$p, 4))
+  } else {
+    paste0("sd ", signif(x$spread, 4))
+  }
+  frame <- if (!is.finite(x$N)) {
+    "unbounded"
+  } else if (x$N == floor(x$N)) {
+    fmt_n(x$N)
+  } else {
+    format(x$N, big.mark = ",")
+  }
+  cat("  assuming       ", spread,
       if (x$deff != 1) paste0(", deff ", signif(x$deff, 3)) else "",
-      ", N ", if (is.finite(x$N)) fmt_n(x$N) else "unbounded", "\n", sep = "")
+      ", N ", frame, "\n", sep = "")
   msg <- if (isTRUE(x$capped)) {
-    paste0("That is a census: the frame is not large enough to reach this ",
-           "margin by sampling, so every row is needed. ",
+    paste0("That is a census. No sample smaller than the frame meets this ",
+           "margin, so every row is needed. ",
            if (x$response < 1) paste0(
              "Even then only about ", fmt_n(x$n_effective), " will come back, ",
              "which will fall short of the margin asked for. "),
            "Widen `margin`, or accept the precision a full count gives.")
   } else if (isTRUE(x$short)) {
-    paste0("The frame can reach this margin -- ", fmt_n(x$n_needed),
-           " rows would do it -- but not at ", format(100 * x$response),
-           "% response, which would need more rows than the frame holds. ",
-           "Every row is drawn, and the margin achieved will be wider than ",
-           "the one asked for.")
+    paste0("The frame can reach this margin, with ", fmt_n(x$n_needed),
+           " rows, but not at ", format(100 * x$response), "% response, ",
+           "which would need more rows than the frame holds. Every row is ",
+           "drawn, and the margin achieved will be wider than the one asked ",
+           "for.")
   } else {
     NULL
   }
   if (!is.null(msg)) {
     cat_note(msg)
+  }
+  if (isTRUE(x$raised)) {
+    cat_note(paste0("One row meets this margin, but a standard error and an ",
+                    "interval need two, so the plan is for two."))
   }
   invisible(x)
 }
