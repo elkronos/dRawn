@@ -139,7 +139,9 @@ variation of 0.02 an interval that never covered the truth.}
 \item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
 well spread precisely because neighbours are rarely taken together, so
 this compares each sampled row with the local mean of its nearest
-sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).}
+sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).
+With \code{strata} it runs within each stratum, and the strata's variances
+are added.}
 \item{\code{"jackknife"}}{The delete-one-unit jackknife, by stratum (JKn) where
 the design has strata, and deleting whole clusters where it has them.
 Used when requested, and as the fallback under \code{variance = "auto"}.}

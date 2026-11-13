@@ -25,7 +25,7 @@ the rest.}
 \item{\code{\link[=design_temporal]{design_temporal()}}}{A share of each time interval.}
 \item{\code{\link[=design_spatial]{design_spatial()}}}{Rows inside a region.}
 \item{\code{\link[=design_spread]{design_spread()}}}{A sample spread evenly across a map or across
-auxiliary variables.}
+auxiliary variables, within strata if asked.}
 }
 }
 
@@ -39,10 +39,10 @@ group, and \code{\link[=design_cluster]{design_cluster()}} has no \code{n} at al
 follows from which clusters were selected.
 \item \code{allocation} always says how a total is split across groups:
 \code{"proportional"}, \code{"equal"} or, in \code{\link[=design_stratified]{design_stratified()}} only,
-\code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}} also takes the count for each stratum
-in place of a rule, and \code{n} is then their total. Splitting is exact: the
-largest-remainder method is used, so a request for 60 rows returns 60
-rather than drifting with per-group rounding.
+\code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}} and \code{\link[=design_spread]{design_spread()}} also take the
+count for each stratum in place of a rule, and \code{n} is then their total.
+Splitting is exact: the largest-remainder method is used, so a request
+for 60 rows returns 60 rather than drifting with per-group rounding.
 \item \code{na_rm} always decides whether rows with a missing key are dropped or raise
 an error. It is never silently assumed either way.
 \item Groups always come in key order, whether strata, \code{by} domains or the
@@ -73,7 +73,7 @@ before any sampling happens. \code{\link[=inclusion_prob]{inclusion_prob()}} giv
 probabilities and \code{\link[=sampling_weight]{sampling_weight()}} their reciprocals — the number of
 population rows each sampled row stands for, and \code{\link[=certainty_set]{certainty_set()}} the rows
 a design that selects in proportion to size takes with certainty.
-\code{\link[=allocation_table]{allocation_table()}} shows how a stratified design splits \code{n} over the
+\code{\link[=allocation_table]{allocation_table()}} shows how a design with strata splits \code{n} over the
 strata of a frame, and which strata it holds at the floor, takes whole or
 leaves empty. \code{\link[=joint_prob]{joint_prob()}} gives
 second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} turn a sample

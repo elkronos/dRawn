@@ -257,6 +257,13 @@
   from -60 to 60 degrees of latitude came back as the two polar caps and a
   strip 2 degrees wide. The parts are kept separate now, and a row inside any
   of them is inside the region.
+* **`design_spread()` never drew a row whose inclusion probability was below
+  `1e-9`.** The pivotal walk set such probabilities to 0 before it started,
+  while `inclusion_prob()` and the sample's weights still gave them their
+  value, so a Horvitz-Thompson total was biased by the whole of each such
+  row's `y`. Every row with a probability above 0 now takes part, however
+  small, and only the rounding error in a pooled probability is settled to
+  0 or 1.
 
 ## Refusals and clearer errors
 
@@ -570,6 +577,17 @@
   days and in seconds, so a sample can be spread over time and space
   together. `plot(type = "map")` gives them date axes. Any other column that
   is not numeric is refused with a pointer to `as.numeric()`.
+* `design_spread()` takes `strata`, to spread a sample within each stratum,
+  and `allocation`, to split `n` over them by `"proportional"` or `"equal"`
+  allocation or by a count for each stratum, as `design_stratified()` does.
+  Each stratum is scaled, sized and spread on its own. `ht_total()` and
+  `ht_mean()` add up the strata's local mean variances, count degrees of
+  freedom as for a stratified sample, and refuse by name a stratum with one
+  sampled row below certainty. `as_svydesign()` hands the strata to
+  `survey`, and `allocation_table()` and `sample_summary()` list them. The
+  help page advised spreading within strata for large frames without a way
+  to do it, and samples drawn stratum by stratum and bound with `rbind()`
+  are refused by the estimators.
 
 ## Speed and memory
 

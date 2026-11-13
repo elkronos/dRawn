@@ -131,14 +131,7 @@ design_stratified <- function(strata, n,
   if (is.numeric(allocation) || is.data.frame(allocation)) {
     strata <- check_columns(strata, "strata")
     allocation <- check_stratum_counts(allocation, strata)
-    total <- sum(as.numeric(stratum_counts(allocation)))
-    if (missing(n) || is.null(n)) n <- total
-    n <- check_count(n, "n")
-    if (n != total) {
-      stop("`n` (", n, ") is not the sum of the counts in `allocation` (",
-           total, "). Leave `n` out to draw the counts as given.",
-           call. = FALSE)
-    }
+    n <- counts_n(if (!missing(n)) n, allocation)
     min_per_stratum <- check_count(min_per_stratum, "min_per_stratum")
     if (min_per_stratum > 0L) {
       stop("`min_per_stratum` (", min_per_stratum, ") is a floor for an ",
@@ -289,6 +282,22 @@ check_stratum_counts <- function(allocation, strata) {
   stats::setNames(as.integer(n), names(allocation))
 }
 
+#' `n` for a design given per-stratum counts
+#'
+#' Their sum when `n` is `NULL`, and otherwise `n`, which must equal it.
+#'
+#' @noRd
+counts_n <- function(n, allocation) {
+  total <- sum(as.numeric(stratum_counts(allocation)))
+  n <- check_count(n %||% total, "n")
+  if (n != total) {
+    stop("`n` (", n, ") is not the sum of the counts in `allocation` (",
+         total, "). Leave `n` out to draw the counts as given.",
+         call. = FALSE)
+  }
+  n
+}
+
 #' The counts stored by a design built with counts, in the order given
 #' @noRd
 stratum_counts <- function(allocation) {
@@ -297,7 +306,9 @@ stratum_counts <- function(allocation) {
 
 #' Was the design given its per-stratum counts rather than a rule?
 #' @noRd
-has_counts <- function(design) !is.character(design$allocation)
+has_counts <- function(design) {
+  !is.null(design$allocation) && !is.character(design$allocation)
+}
 
 #' Per-stratum values for a design's printout and title
 #'
@@ -405,6 +416,10 @@ stratum_cost <- function(design, data, key = group_key(data, design$strata)) {
 #' is each stratum's cost per row when the design has costs, and `NULL`
 #' otherwise.
 #'
+#' [design_spread()] with `strata` splits its `n` here too. It has no
+#' `replace`, `min_per_stratum`, `allocation_by` or `cost`, and is treated as
+#' a design without replacement, with no floor.
+#'
 #' @noRd
 stratum_allocation <- function(design, data) {
   validate_data(data, required_columns = design$strata)
@@ -418,24 +433,26 @@ stratum_allocation <- function(design, data) {
   spread <- NULL
   cost <- NULL
 
+  replace <- isTRUE(design$replace)
   if (has_counts(design)) {
     n_alloc <- match_strata(design$allocation, data, design$strata,
                             "allocation", key = key)$n
     over <- which(n_alloc > sizes)
-    if (!design$replace && length(over)) {
+    if (!replace && length(over)) {
       h <- over[1]
       stop("Stratum `", group_label(levels(key)[h]), "` has ", sizes[h],
            " row(s) but `allocation` asks for ", n_alloc[h], ". Lower its ",
-           "count, or use replace = TRUE.", call. = FALSE)
+           "count", if (!is.null(design$replace)) ", or use replace = TRUE",
+           ".", call. = FALSE)
     }
   } else {
-    check_draw_size(design$n, sum(!bad), design$replace)
+    check_draw_size(design$n, sum(!bad), replace)
     spread <- stratum_spread(design, data, idx, key)
     cost <- stratum_cost(design, data, key)
     n_alloc <- unname(allocate(design$n, sizes, design$allocation,
-                               design$min_per_stratum, cap = !design$replace,
+                               design$min_per_stratum %||% 0L, cap = !replace,
                                spread = spread, cost = cost))
-    if (!design$replace) {
+    if (!replace) {
       over <- which(n_alloc > sizes)
       if (length(over)) {
         h <- over[1]
@@ -456,7 +473,7 @@ stratum_allocation <- function(design, data) {
        n_alloc = n_alloc, spread = spread, cost = cost)
 }
 
-#' How a stratified design splits its sample over the strata of a frame
+#' How a design splits its sample over the strata of a frame
 #'
 #' The rows [draw()] takes from each stratum, the inclusion probability that
 #' gives each row there, and the reason for any stratum held at the floor,
@@ -467,11 +484,11 @@ stratum_allocation <- function(design, data) {
 #' [inclusion_prob()], so they always agree with both.
 #'
 #' @param data A data frame.
-#' @param design [design_stratified()], or [design_certainty()] whose `rest`
-#'   is [design_stratified()]. For the latter the table describes `rest` over
-#'   the rows below the threshold, and the rows at or above it, which are
-#'   taken with certainty, are not counted in any stratum. Other designs are
-#'   refused.
+#' @param design [design_stratified()], [design_spread()] with `strata`, or
+#'   [design_certainty()] whose `rest` is one of these. For the last the
+#'   table describes `rest` over the rows below the threshold, and the rows
+#'   at or above it, which are taken with certainty, are not counted in any
+#'   stratum. Other designs are refused.
 #'
 #' @return A data frame with one row per stratum of `data`, in key order (see
 #'   [design_stratified()]): the `strata` columns, then
@@ -479,7 +496,9 @@ stratum_allocation <- function(design, data) {
 #'     \item{`N`}{Rows in the stratum.}
 #'     \item{`n`}{Rows drawn from it.}
 #'     \item{`prob`}{The inclusion probability of each of its rows, as
-#'       [inclusion_prob()] gives it.}
+#'       [inclusion_prob()] gives it. `NA` for [design_spread()] with `size`,
+#'       whose rows in one stratum have different probabilities; there
+#'       [inclusion_prob()] gives them row by row.}
 #'     \item{`sd`}{Under Neyman allocation, the stratum's standard deviation
 #'       that the split used: of the `allocation_by` column within the
 #'       stratum, or as given. `NA` under other allocations.}
@@ -509,7 +528,7 @@ stratum_allocation <- function(design, data) {
 #' table(draw(df, d, seed = 1)$site)
 #' tapply(inclusion_prob(df, d), df$site, unique)
 #'
-#' @seealso [design_stratified()], [inclusion_prob()]
+#' @seealso [design_stratified()], [design_spread()], [inclusion_prob()]
 #' @export
 allocation_table <- function(data, design) {
   if (!is_design(design)) {
@@ -518,26 +537,35 @@ allocation_table <- function(data, design) {
   }
   validate_data(data)
   if (inherits(design, "drawn_design_certainty") &&
-      inherits(design$rest, "drawn_design_stratified")) {
+      has_strata(design$rest)) {
     sp <- certainty_split(design, data)
     validate_data(data, required_columns = design$rest$strata)
     below <- sp$data[sp$rest, , drop = FALSE]
     return(in_rest(design, length(sp$rest),
                    stratum_table(design$rest, below)))
   }
-  if (!inherits(design, "drawn_design_stratified")) {
+  if (!has_strata(design)) {
     stop("`design` is ", design_label(design), ", which has no strata to ",
-         "allocate over. allocation_table() takes design_stratified(), or ",
-         "design_certainty() with a stratified `rest`.", call. = FALSE)
+         "allocate over. allocation_table() takes design_stratified(), ",
+         "design_spread() with `strata`, or design_certainty() with one of ",
+         "those as `rest`.", call. = FALSE)
   }
   stratum_table(design, data)
 }
 
-#' The table `allocation_table()` returns, for a stratified design
+#' Does the design split `n` over strata?
+#' @noRd
+has_strata <- function(design) {
+  inherits(design, "drawn_design_stratified") ||
+    (inherits(design, "drawn_design_spread") && !is.null(design$strata))
+}
+
+#' The table `allocation_table()` returns, for a design with strata
 #'
 #' A frame with no rows gives a table with no strata. Only a certainty
 #' design with no rows below its threshold, where `rest` draws nothing,
-#' passes one.
+#' passes one. A spread design's strata hold the rows it can draw, and have
+#' no floor.
 #'
 #' @noRd
 stratum_table <- function(design, data) {
@@ -554,22 +582,35 @@ stratum_table <- function(design, data) {
       N = integer(0), n = integer(0), prob = numeric(0), sd = numeric(0),
       cost = numeric(0), status = character(0))))
   }
-  al <- stratum_allocation(design, data)
+  if (inherits(design, "drawn_design_spread")) {
+    fr <- spread_frame(design, data)
+    al <- list(idx = lapply(fr$idx, function(i) fr$keep[i]),
+               sizes = fr$sizes, n_alloc = fr$n_alloc)
+    prob <- if (is.null(design$size)) {
+      fr$n_alloc / fr$sizes
+    } else {
+      rep(NA_real_, length(fr$sizes))
+    }
+  } else {
+    al <- stratum_allocation(design, data)
+    prob <- stratum_prob(design, al)
+  }
   k <- length(al$sizes)
   first <- vapply(al$idx, function(i) i[1L], integer(1))
   keys <- lapply(design$strata, function(col) data[[col]][first])
+  cap <- !isTRUE(design$replace)
   status <- if (has_counts(design)) {
     out <- rep("count", k)
-    if (!design$replace) out[al$n_alloc == al$sizes] <- "take-all"
+    if (cap) out[al$n_alloc == al$sizes] <- "take-all"
     out[al$n_alloc == 0L] <- "empty"
     out
   } else {
-    cap <- !design$replace
     allocation_status(
       design$n, al$n_alloc, al$sizes,
       share = allocation_share(design$allocation, al$sizes, al$spread,
                                al$cost),
-      lower = group_floor(design$min_per_stratum, al$sizes, cap), cap = cap)
+      lower = group_floor(design$min_per_stratum %||% 0L, al$sizes, cap),
+      cap = cap)
   }
   sd <- if (is.null(al$spread)) {
     rep(NA_real_, k)
@@ -579,7 +620,7 @@ stratum_table <- function(design, data) {
   table_frame(keys, design$strata, list(
     N = as.integer(al$sizes),
     n = as.integer(al$n_alloc),
-    prob = stratum_prob(design, al),
+    prob = prob,
     sd = sd,
     cost = if (is.null(al$cost)) rep(NA_real_, k) else as.numeric(al$cost),
     status = status))

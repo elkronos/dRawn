@@ -8,8 +8,7 @@
 #'
 #' The one test for certainty. `n * w / sum(w)` for a unit that is certain in
 #' exact arithmetic can come out a rounding error below 1, so a probability
-#' within `1e-9` of 1 counts as 1. The tolerance is the one the local pivotal
-#' method settles probabilities with.
+#' within `1e-9` of 1 counts as 1.
 #'
 #' @noRd
 is_certain <- function(p) {

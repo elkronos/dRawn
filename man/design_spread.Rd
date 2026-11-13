@@ -4,7 +4,15 @@
 \alias{design_spread}
 \title{Spatially balanced sampling}
 \usage{
-design_spread(across, n, size = NULL, scale = TRUE, na_rm = FALSE)
+design_spread(
+  across,
+  n,
+  size = NULL,
+  scale = TRUE,
+  na_rm = FALSE,
+  strata = NULL,
+  allocation = c("proportional", "equal")
+)
 }
 \arguments{
 \item{across}{Column names to spread the sample across: two coordinates for
@@ -12,7 +20,9 @@ a map, or any numeric auxiliary variables. At least one. A Date or
 date-time column, and a POINT geometry column, are read as numbers; see
 "Spreading over more than space".}
 
-\item{n}{Number of rows to draw. Fixed, not expected.}
+\item{n}{Number of rows to draw, the total across \code{strata} when given.
+Fixed, not expected. With counts in \code{allocation} it can be left out and
+is their sum; when given, it must equal that sum.}
 
 \item{size}{Optional column of positive size measures. When given, rows are
 included with probability proportional to size — \code{n * size / sum(size)},
@@ -22,8 +32,22 @@ with rows past certainty taken whole, exactly as
 \item{scale}{Standardise each column of \code{across} to unit standard deviation
 before measuring distance. See "Spreading over more than space".}
 
-\item{na_rm}{Drop rows with a missing value in \code{across} or \code{size} instead of
-raising an error.}
+\item{na_rm}{Drop rows with a missing value in \code{across}, \code{size} or
+\code{strata} instead of raising an error.}
+
+\item{strata}{Optional column name(s) defining strata, to spread the
+sample within each one. Several columns are cross-classified. See
+"Strata".}
+
+\item{allocation}{How \code{n} is split across \code{strata}: \code{"proportional"} to
+each stratum's size, or \code{"equal"}, by the largest-remainder method of
+\code{\link[=design_stratified]{design_stratified()}}, with a stratum that would get more rows than it
+holds taken whole; or the count for each stratum, as a named vector such
+as \code{c(north = 10, south = 5)} when \code{strata} is one column, or a data
+frame of the \code{strata} columns and \code{n}. Counts follow the rules of
+\code{\link[=design_stratified]{design_stratified()}}: every stratum of the frame needs one, a count for
+a stratum the frame does not have is refused, and no count may exceed
+the rows in its stratum. Only with \code{strata}.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -115,12 +139,39 @@ or because \code{n} is the whole frame, are in every sample and add no variance,
 so the estimator leaves them out.
 }
 
+\section{Strata}{
+
+With \code{strata}, \code{n} is split over the strata as \code{\link[=design_stratified]{design_stratified()}}
+splits it, by \code{allocation}, and each stratum is then spread on its own, as
+if it were a frame of its own: \code{scale} standardises the columns within the
+stratum, \code{size} sets probabilities proportional to size within it, and a
+row competes only with rows of its own stratum. \code{\link[=inclusion_prob]{inclusion_prob()}} gives
+\code{n_h / N_h} within stratum \code{h}, or \code{n_h * p_i} with \code{size}, exactly.
+
+The strata are drawn independently, so \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} add up
+the local mean variance of each stratum, and the degrees of freedom are
+the sampled rows below certainty less the strata that hold them. A stratum
+with one sampled row below certainty has no neighbour to compare it with,
+and the variance is refused with the stratum named, as a stratified
+sample's is; draw at least two rows in every stratum. \code{\link[=as_svydesign]{as_svydesign()}}
+hands the strata to \code{survey}, \code{\link[=allocation_table]{allocation_table()}} shows the split before
+anything is drawn, and \code{\link[=sample_summary]{sample_summary()}} lists the rows drawn from each
+stratum.
+
+Drawing each stratum with a design of its own and binding the samples with
+\code{\link[=rbind]{rbind()}} does not give a sample to estimate from. The bound sample keeps
+the first draw's frame and design, so \code{\link[=ht_total]{ht_total()}} refuses it; use
+\code{strata} instead.
+}
+
 \section{Cost}{
 
 Each step finds a nearest neighbour among the rows still undecided, so the
 draw takes time proportional to \code{N^2}: under a second for 5,000 rows, and
-several seconds at 20,000. For much larger frames, spread within strata or
-thin the frame first.
+several seconds at 20,000. With \code{strata}, the walk runs within each
+stratum and the time grows with the square of each stratum's size: 20,000
+rows in four strata of 5,000 took under a third of the time they took as
+one frame. For much larger frames, use strata, or thin the frame first.
 }
 
 \examples{
@@ -146,6 +197,13 @@ plot(design_simple(n = 40), plots, type = "map", coords = c("x", "y"),
 plot(spread, plots, type = "map", seed = 1)
 par(op)
 
+# Spread within two regions, each given rows in proportion to its size
+plots$region <- ifelse(plots$x < 0.5, "west", "east")
+by_region <- design_spread(c("x", "y"), n = 40, scale = FALSE,
+                           strata = "region")
+allocation_table(plots, by_region)
+ht_total(draw(plots, by_region, seed = 1, weights = TRUE), "biomass")
+
 }
 \references{
 Deville, J.-C. and Tillé, Y. (1998). Unequal probability sampling without
@@ -167,7 +225,8 @@ natural resources. \emph{Journal of the American Statistical Association}, 99,
 }
 \seealso{
 \code{\link[=draw]{draw()}}, \code{\link[=design_spatial]{design_spatial()}} to restrict sampling to a region,
-\code{\link[=design_weighted]{design_weighted()}} for size-proportional selection without spreading.
+\code{\link[=design_weighted]{design_weighted()}} for size-proportional selection without spreading,
+\code{\link[=design_stratified]{design_stratified()}} for the allocation rules, \code{\link[=allocation_table]{allocation_table()}}.
 
 Other designs: 
 \code{\link{design_bootstrap}()},

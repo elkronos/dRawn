@@ -80,25 +80,64 @@
 #' or because `n` is the whole frame, are in every sample and add no variance,
 #' so the estimator leaves them out.
 #'
+#' @section Strata:
+#' With `strata`, `n` is split over the strata as [design_stratified()]
+#' splits it, by `allocation`, and each stratum is then spread on its own, as
+#' if it were a frame of its own: `scale` standardises the columns within the
+#' stratum, `size` sets probabilities proportional to size within it, and a
+#' row competes only with rows of its own stratum. [inclusion_prob()] gives
+#' `n_h / N_h` within stratum `h`, or `n_h * p_i` with `size`, exactly.
+#'
+#' The strata are drawn independently, so [ht_total()] and [ht_mean()] add up
+#' the local mean variance of each stratum, and the degrees of freedom are
+#' the sampled rows below certainty less the strata that hold them. A stratum
+#' with one sampled row below certainty has no neighbour to compare it with,
+#' and the variance is refused with the stratum named, as a stratified
+#' sample's is; draw at least two rows in every stratum. [as_svydesign()]
+#' hands the strata to `survey`, [allocation_table()] shows the split before
+#' anything is drawn, and [sample_summary()] lists the rows drawn from each
+#' stratum.
+#'
+#' Drawing each stratum with a design of its own and binding the samples with
+#' [rbind()] does not give a sample to estimate from. The bound sample keeps
+#' the first draw's frame and design, so [ht_total()] refuses it; use
+#' `strata` instead.
+#'
 #' @section Cost:
 #' Each step finds a nearest neighbour among the rows still undecided, so the
 #' draw takes time proportional to `N^2`: under a second for 5,000 rows, and
-#' several seconds at 20,000. For much larger frames, spread within strata or
-#' thin the frame first.
+#' several seconds at 20,000. With `strata`, the walk runs within each
+#' stratum and the time grows with the square of each stratum's size: 20,000
+#' rows in four strata of 5,000 took under a third of the time they took as
+#' one frame. For much larger frames, use strata, or thin the frame first.
 #'
 #' @param across Column names to spread the sample across: two coordinates for
 #'   a map, or any numeric auxiliary variables. At least one. A Date or
 #'   date-time column, and a POINT geometry column, are read as numbers; see
 #'   "Spreading over more than space".
-#' @param n Number of rows to draw. Fixed, not expected.
+#' @param n Number of rows to draw, the total across `strata` when given.
+#'   Fixed, not expected. With counts in `allocation` it can be left out and
+#'   is their sum; when given, it must equal that sum.
 #' @param size Optional column of positive size measures. When given, rows are
 #'   included with probability proportional to size — `n * size / sum(size)`,
 #'   with rows past certainty taken whole, exactly as
 #'   [design_weighted()] — and spread at the same time.
 #' @param scale Standardise each column of `across` to unit standard deviation
 #'   before measuring distance. See "Spreading over more than space".
-#' @param na_rm Drop rows with a missing value in `across` or `size` instead of
-#'   raising an error.
+#' @param na_rm Drop rows with a missing value in `across`, `size` or
+#'   `strata` instead of raising an error.
+#' @param strata Optional column name(s) defining strata, to spread the
+#'   sample within each one. Several columns are cross-classified. See
+#'   "Strata".
+#' @param allocation How `n` is split across `strata`: `"proportional"` to
+#'   each stratum's size, or `"equal"`, by the largest-remainder method of
+#'   [design_stratified()], with a stratum that would get more rows than it
+#'   holds taken whole; or the count for each stratum, as a named vector such
+#'   as `c(north = 10, south = 5)` when `strata` is one column, or a data
+#'   frame of the `strata` columns and `n`. Counts follow the rules of
+#'   [design_stratified()]: every stratum of the frame needs one, a count for
+#'   a stratum the frame does not have is refused, and no count may exceed
+#'   the rows in its stratum. Only with `strata`.
 #'
 #' @return A design object, for use with [draw()].
 #'
@@ -143,15 +182,55 @@
 #' plot(spread, plots, type = "map", seed = 1)
 #' par(op)
 #'
+#' # Spread within two regions, each given rows in proportion to its size
+#' plots$region <- ifelse(plots$x < 0.5, "west", "east")
+#' by_region <- design_spread(c("x", "y"), n = 40, scale = FALSE,
+#'                            strata = "region")
+#' allocation_table(plots, by_region)
+#' ht_total(draw(plots, by_region, seed = 1, weights = TRUE), "biomass")
+#'
 #' @family designs
 #' @seealso [draw()], [design_spatial()] to restrict sampling to a region,
-#'   [design_weighted()] for size-proportional selection without spreading.
+#'   [design_weighted()] for size-proportional selection without spreading,
+#'   [design_stratified()] for the allocation rules, [allocation_table()].
 #' @export
 design_spread <- function(across, n, size = NULL, scale = TRUE,
-                          na_rm = FALSE) {
+                          na_rm = FALSE, strata = NULL,
+                          allocation = c("proportional", "equal")) {
+  across <- check_columns(across, "across")
+  if (is.null(strata)) {
+    if (!missing(allocation)) {
+      stop("`allocation` splits `n` over strata, and `strata` is NULL. Name ",
+           "the strata columns in `strata`, or leave `allocation` out.",
+           call. = FALSE)
+    }
+    allocation <- NULL
+    n <- check_count(n, "n")
+  } else {
+    strata <- check_columns(strata, "strata")
+    if (is.numeric(allocation) || is.data.frame(allocation)) {
+      allocation <- check_stratum_counts(allocation, strata)
+      n <- counts_n(if (!missing(n)) n, allocation)
+    } else {
+      if (!is.character(allocation)) {
+        stop("`allocation` must be \"proportional\", \"equal\" or the count ",
+             "for each stratum, not ", format_bad(allocation), ".",
+             call. = FALSE)
+      }
+      allocation <- check_choice(allocation, c("proportional", "equal"),
+                                 "allocation")
+      if (missing(n) || is.null(n)) {
+        stop("`n` is missing. Give the total number of rows to draw, or the ",
+             "count for each stratum in `allocation`.", call. = FALSE)
+      }
+      n <- check_count(n, "n")
+    }
+  }
   new_design("spread", list(
-    across = check_columns(across, "across"),
-    n = check_count(n, "n"),
+    across = across,
+    strata = strata,
+    n = n,
+    allocation = allocation,
     size = if (is.null(size)) NULL else check_columns(size, "size", 1L),
     scale = check_flag(scale, "scale"),
     na_rm = check_flag(na_rm, "na_rm")
@@ -164,12 +243,24 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
 #' agree on which rows are dropped, how the columns are scaled, and what each
 #' row's probability is.
 #'
+#' `keep` holds the frame rows the design can use, and `x` and `pi` the
+#' scaled positions and target probabilities of those rows. The rest is by
+#' position in `keep`: `idx` lists the rows of each stratum, in key order,
+#' `code` gives each row's stratum as a position in `labels`, `sizes` and
+#' `n_alloc`, and `n_alloc` is the rows drawn from each stratum. A design
+#' without `strata` has one stratum, with no `code` or `labels`. Each stratum
+#' is scaled and sized on its own, as a frame of its own would be, and its
+#' split of `n` comes from `stratum_allocation()`, as a stratified design's
+#' does.
+#'
 #' @noRd
 spread_frame <- function(design, data) {
   cols <- c(design$across, design$size)
-  validate_data(data, required_columns = cols)
+  strata <- design$strata
+  validate_data(data, required_columns = c(cols, strata))
   geom <- vapply(cols, function(nm) inherits(data[[nm]], "sfc"), logical(1))
   check_key_columns(data, cols[!geom], "across")
+  if (!is.null(strata)) check_key_columns(data, strata, "strata")
   for (nm in design$across) {
     col <- data[[nm]]
     if (!is.numeric(col) && !inherits(col, c("Date", "POSIXt", "sfc"))) {
@@ -186,9 +277,10 @@ spread_frame <- function(design, data) {
   x_cols <- coordinate_columns(data, design$across, "across", time = TRUE)
   bad <- spread_missing(x_cols,
                         if (!is.null(design$size)) data[[design$size]])
+  if (!is.null(strata)) bad <- bad | is.na(group_key(data, strata))
   check_na_policy(bad, design$na_rm,
                   paste0("a missing value in ",
-                         paste0("`", cols, "`", collapse = ", ")))
+                         paste0("`", c(cols, strata), "`", collapse = ", ")))
   keep <- which(!bad)
   if (!length(keep)) stop("Every row has a missing value.", call. = FALSE)
 
@@ -198,24 +290,40 @@ spread_frame <- function(design, data) {
   if (any(!is.finite(x))) {
     stop("`across` contains non-finite values.", call. = FALSE)
   }
-  if (design$scale) {
-    s <- apply(x, 2, stats::sd)
-    s[!is.finite(s) | s == 0] <- 1
-    x <- sweep(x, 2, s, "/")
-  }
 
-  if (design$n > length(keep)) {
-    stop("`n` (", design$n, ") cannot exceed the number of rows (",
-         length(keep), ").", call. = FALSE)
-  }
-  pi <- if (is.null(design$size)) {
-    rep(design$n / length(keep), length(keep))
+  if (is.null(strata)) {
+    if (design$n > length(keep)) {
+      stop("`n` (", design$n, ") cannot exceed the number of rows (",
+           length(keep), ").", call. = FALSE)
+    }
+    al <- list(idx = list(seq_along(keep)), sizes = length(keep),
+               n_alloc = design$n)
   } else {
+    al <- stratum_allocation(design, table_frame(
+      lapply(strata, function(col) data[[col]][keep]), strata, list()))
+  }
+  w <- NULL
+  if (!is.null(design$size)) {
     w <- data[[design$size]][keep]
     check_weights(w, design$size)
-    pps_pi(w, design$n)
   }
-  list(keep = keep, x = x, pi = pi)
+
+  pi <- numeric(length(keep))
+  for (h in seq_along(al$idx)) {
+    i <- al$idx[[h]]
+    if (design$scale) {
+      s <- apply(x[i, , drop = FALSE], 2, stats::sd)
+      s[!is.finite(s) | s == 0] <- 1
+      x[i, ] <- sweep(x[i, , drop = FALSE], 2, s, "/")
+    }
+    pi[i] <- if (is.null(w)) {
+      al$n_alloc[h] / length(i)
+    } else {
+      pps_pi(w[i], al$n_alloc[h])
+    }
+  }
+  list(keep = keep, x = x, pi = pi, idx = al$idx, code = al$code,
+       labels = al$labels, sizes = al$sizes, n_alloc = al$n_alloc)
 }
 
 #' Rows with a missing value in any column a spread design reads
@@ -231,7 +339,17 @@ spread_missing <- function(x_cols, size = NULL) {
 #' @export
 draw_design.drawn_design_spread <- function(design, data) {
   fr <- spread_frame(design, data)
-  picked <- local_pivotal(fr$pi, fr$x)
+  if (!is.null(design$strata)) {
+    warn_empty_groups(fr$n_alloc, fr$sizes, fr$labels, fix = paste0(
+      if (has_counts(design)) "Give " else "Raise `n`, or give ",
+      "each stratum a count of at least 1 in `allocation` (or 2, so each ",
+      "stratum also supports a variance)."))
+  }
+  # Strata are drawn one after another in key order, each by its own
+  # pivotal walk.
+  picked <- unlist(lapply(fr$idx, function(i) {
+    i[local_pivotal(fr$pi[i], fr$x[i, , drop = FALSE])]
+  }), use.names = FALSE)
   reindex(data, fr$keep[picked], sort = TRUE)
 }
 
@@ -244,13 +362,18 @@ draw_design.drawn_design_spread <- function(design, data) {
 #' therefore exactly its target, while neighbours rarely end up in the sample
 #' together. Ties for nearest neighbour are broken at random.
 #'
+#' Every row with a target above 0 competes, however small the target. Each
+#' step settles one of the pair at exactly 0 or 1, so the loop ends after at
+#' most one step per row. A pooled probability less than `eps` below 1 is
+#' the rounding error of a sum that is 1 in exact arithmetic and is settled
+#' at 1, and a remainder less than `eps` above 1 is settled at 0 for the same
+#' reason. A small pooled probability is kept, so two rows of `1e-13` pool to
+#' `2e-13` and not to 0.
+#'
 #' @noRd
-local_pivotal <- function(pi, x, eps = 1e-9) {
+local_pivotal <- function(pi, x, eps = 1e-12) {
   p <- pi
-  p[p < eps] <- 0
-  p[p > 1 - eps] <- 1
-  open <- p > 0 & p < 1
-  idx <- which(open)
+  idx <- which(p > 0 & p < 1)
   while (length(idx) > 1L) {
     i <- idx[sample.int(length(idx), 1L)]
     others <- idx[idx != i]
@@ -260,21 +383,19 @@ local_pivotal <- function(pi, x, eps = 1e-9) {
          else nearest
     s <- p[i] + p[j]
     if (s < 1) {
+      pooled <- if (s > 1 - eps) 1 else s
       if (stats::runif(1) < p[j] / s) {
-        p[j] <- s; p[i] <- 0
+        p[j] <- pooled; p[i] <- 0
       } else {
-        p[i] <- s; p[j] <- 0
+        p[i] <- pooled; p[j] <- 0
       }
     } else {
+      left <- if (s - 1 < eps) 0 else s - 1
       if (stats::runif(1) < (1 - p[j]) / (2 - s)) {
-        p[i] <- 1; p[j] <- s - 1
+        p[i] <- 1; p[j] <- left
       } else {
-        p[j] <- 1; p[i] <- s - 1
+        p[j] <- 1; p[i] <- left
       }
-    }
-    for (k in c(i, j)) {
-      if (p[k] < eps) p[k] <- 0
-      if (p[k] > 1 - eps) p[k] <- 1
     }
     idx <- idx[p[idx] > 0 & p[idx] < 1]
   }
@@ -371,6 +492,10 @@ local_neighbours <- function(x, k = 4L) {
 #' true variance. They are left out, both as rows and as neighbours, and the
 #' estimator runs over the rest.
 #'
+#' With `strata`, each stratum is a spread sample of its own, drawn
+#' independently of the others, so the variance is the sum of the strata's
+#' local mean variances, with neighbours found within each stratum.
+#'
 #' @noRd
 ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i,
                                             domain = NULL, ctx = NULL) {
@@ -383,6 +508,10 @@ ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i,
   }
   free <- !is_certain(pi_i)
   if (!any(free)) return(all_certain())
+  if (!is.null(design$strata)) {
+    return(spread_strata_variance(design, data, fr, rows, pos, y, pi_i, free,
+                                  domain, ctx))
+  }
   if (sum(free) < 2L) {
     return(list(variance = NA_real_, method = "local mean", note = paste0(
       "Only one sampled row was not taken with certainty, so the local mean ",
@@ -391,4 +520,45 @@ ht_variance.drawn_design_spread <- function(design, data, rows, y, pi_i,
   x <- fr$x[pos[free], , drop = FALSE]
   local_mean_variance(x, y[free], pi_i[free],
                       nb = from_context(ctx, "neighbours", local_neighbours(x)))
+}
+
+#' The local mean variance of a spread sample with strata
+#'
+#' The sum over strata of `local_mean_variance()` on each stratum's sampled
+#' rows below certainty. A stratum with one such row has no neighbour to
+#' compare it with, and is refused by `lonely_note()`, unless `domain` shows
+#' it holds no unit of the domain, when it adds 0. `fr` is `spread_frame()`
+#' of the frame `data`, `pos` the sampled rows' positions in `fr$keep`, and
+#' `free` marks the sampled rows below certainty.
+#'
+#' @noRd
+spread_strata_variance <- function(design, data, fr, rows, pos, y, pi_i,
+                                   free, domain = NULL, ctx = NULL) {
+  k <- length(fr$sizes)
+  # Each frame row's stratum, counting only the rows below certainty.
+  code <- rep(NA_integer_, nrow(data))
+  open <- !is_certain(fr$pi)
+  code[fr$keep[open]] <- fr$code[open]
+  group <- structure(code, levels = fr$labels, class = "factor")
+  note <- lonely_note(group, rows, c("stratum", "strata"), lonely_fix(design),
+                      domain)
+  if (!is.null(note)) {
+    return(list(variance = NA_real_, method = "local mean", note = note))
+  }
+  h <- fr$code[pos]
+  by_stratum <- lapply(seq_len(k), function(g) which(free & h == g))
+  nb <- from_context(ctx, "neighbours", lapply(by_stratum, function(i) {
+    if (length(i) >= 2L) local_neighbours(fr$x[pos[i], , drop = FALSE])
+  }))
+  v <- 0
+  for (g in seq_len(k)) {
+    i <- by_stratum[[g]]
+    if (length(i) < 2L) next
+    v <- v + local_mean_variance(fr$x[pos[i], , drop = FALSE], y[i],
+                                 pi_i[i], nb = nb[[g]])$variance
+  }
+  list(variance = v, method = "local mean",
+       note = paste0("Local mean approximation for a spatially balanced ",
+                     "sample, summed over strata: the local pivotal method ",
+                     "has no closed-form joint inclusion probabilities."))
 }

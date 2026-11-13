@@ -21,7 +21,7 @@
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size \tab identical \cr
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab close for totals, less so for means \cr
-#'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size` \tab **`survey`'s is larger** \cr
+#'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size`; with `strata`, `strata` from the strata columns and `fpc` each stratum's size, or Brewer's within them \tab **`survey`'s is larger** \cr
 #'   [design_systematic()] \tab `ids = ~1` with `fpc` the rows the walk can reach \tab **differ** \cr
 #' }
 #'
@@ -276,6 +276,10 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       # to `survey` as the unequal- or equal-probability draw it is at first
       # order, which does not credit the spreading and so errs conservative.
       fr <- spread_frame(design, pop)
+      if (!is.null(design$strata)) {
+        return(spread_strata_parts(design, dat, nrow(pop), fr, prefix,
+                                   by_group))
+      }
       if (is.null(design$size)) {
         list(stratum = NULL, fpc = rep(length(fr$keep), nrow(dat)), ids = one)
       } else {
@@ -323,6 +327,36 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
     },
     list(stratum = NULL, fpc = rep(nrow(pop), nrow(dat)), ids = one)
   )
+}
+
+#' A spread design with strata, as stratified sampling or stratified PPS
+#'
+#' Each stratum is handed over as the draw it is at first order: without
+#' `size`, a simple random sample of its rows, and with it, Brewer's
+#' approximation over their probabilities. Rows a `size` column takes with
+#' certainty go in a stratum of their own, `(certain)`, as `pps_parts()` puts
+#' them, so that Brewer's approximation runs over the other rows. `by_group`
+#' is the helper of `survey_parts()`, which reads the sampled frame rows, and
+#' `n_pop` the number of rows in the frame.
+#'
+#' @noRd
+spread_strata_parts <- function(design, dat, n_pop, fr, prefix, by_group) {
+  # Each frame row's stratum; rows the design drops count in none.
+  code <- rep(NA_integer_, n_pop)
+  code[fr$keep] <- fr$code
+  labels <- unique_labels(structure(integer(0), levels = fr$labels,
+                                    class = "factor"))
+  out <- by_group(code, labels)
+  if (is.null(design$size)) return(out)
+  certain <- is_certain(dat$.prob)
+  # A stratum of the frame could be called `(certain)` too.
+  cert <- paste0(prefix, "(certain)")
+  while (cert %in% paste0(prefix, labels)) cert <- paste0(cert, " ")
+  out$stratum[certain] <- cert
+  out$fpc <- ifelse(certain, 1, dat$.prob)
+  out$whole <- certain
+  out$extra <- list(pps = "brewer")
+  out
 }
 
 #' Which rows lie in a stratum taken whole

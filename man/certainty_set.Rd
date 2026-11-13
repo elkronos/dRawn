@@ -20,10 +20,12 @@ is 1, in frame order, the same rows as
 \code{which(inclusion_prob(data, design) == 1)}. Its attribute \code{threshold} is
 the smallest size among them, or \code{NA} when there are none. Of the rows
 the design can select, those whose size is at least \code{threshold} are the
-set. For \code{\link[=design_weighted]{design_weighted()}}, \code{\link[=design_certainty]{design_certainty()}} with that \code{threshold}
-on the weights column therefore takes the same rows with certainty, and a
-\code{rest} of the same method with \code{n} reduced by the number of rows in the
-set gives the other rows the same probabilities too.
+set. \code{\link[=design_spread]{design_spread()}} with \code{strata} puts the cut-off in each stratum
+at its own size, so there \code{threshold} is \code{NA}. For \code{\link[=design_weighted]{design_weighted()}},
+\code{\link[=design_certainty]{design_certainty()}} with that \code{threshold} on the weights column
+therefore takes the same rows with certainty, and a \code{rest} of the same
+method with \code{n} reduced by the number of rows in the set gives the other
+rows the same probabilities too.
 }
 \description{
 A design whose inclusion probabilities are proportional to size gives a

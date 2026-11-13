@@ -26,7 +26,8 @@ design could never have selected them. \code{NA} if the design has no
 closed-form inclusion probability.}
 \item{\code{by_group}}{A data frame of \code{group}, \code{drawn}, \code{in_frame} and
 \code{rate} per stratum or cluster, or \code{NULL} for a design with no
-grouping.}
+grouping. The strata are those of \code{\link[=design_stratified]{design_stratified()}}, and of
+\code{\link[=design_spread]{design_spread()}} when it has \code{strata}.}
 \item{\code{group_col}}{The column(s) \code{by_group} is keyed on.}
 }
 }

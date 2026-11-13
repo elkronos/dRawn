@@ -20,7 +20,7 @@
 #'   \item{[design_temporal()]}{A share of each time interval.}
 #'   \item{[design_spatial()]}{Rows inside a region.}
 #'   \item{[design_spread()]}{A sample spread evenly across a map or across
-#'     auxiliary variables.}
+#'     auxiliary variables, within strata if asked.}
 #' }
 #'
 #' @section What every design guarantees:
@@ -32,10 +32,10 @@
 #'   follows from which clusters were selected.
 #' * `allocation` always says how a total is split across groups:
 #'   `"proportional"`, `"equal"` or, in [design_stratified()] only,
-#'   `"neyman"`. [design_stratified()] also takes the count for each stratum
-#'   in place of a rule, and `n` is then their total. Splitting is exact: the
-#'   largest-remainder method is used, so a request for 60 rows returns 60
-#'   rather than drifting with per-group rounding.
+#'   `"neyman"`. [design_stratified()] and [design_spread()] also take the
+#'   count for each stratum in place of a rule, and `n` is then their total.
+#'   Splitting is exact: the largest-remainder method is used, so a request
+#'   for 60 rows returns 60 rather than drifting with per-group rounding.
 #' * `na_rm` always decides whether rows with a missing key are dropped or raise
 #'   an error. It is never silently assumed either way.
 #' * Groups always come in key order, whether strata, `by` domains or the
@@ -63,7 +63,7 @@
 #' probabilities and [sampling_weight()] their reciprocals — the number of
 #' population rows each sampled row stands for, and [certainty_set()] the rows
 #' a design that selects in proportion to size takes with certainty.
-#' [allocation_table()] shows how a stratified design splits `n` over the
+#' [allocation_table()] shows how a design with strata splits `n` over the
 #' strata of a frame, and which strata it holds at the floor, takes whole or
 #' leaves empty. [joint_prob()] gives
 #' second-order probabilities, and [ht_total()] and [ht_mean()] turn a sample

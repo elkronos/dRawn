@@ -58,7 +58,9 @@
 #'   \item{`"local mean"`}{[design_spread()]. A spatially balanced sample is
 #'     well spread precisely because neighbours are rarely taken together, so
 #'     this compares each sampled row with the local mean of its nearest
-#'     sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).}
+#'     sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).
+#'     With `strata` it runs within each stratum, and the strata's variances
+#'     are added.}
 #'   \item{`"jackknife"`}{The delete-one-unit jackknife, by stratum (JKn) where
 #'     the design has strata, and deleting whole clusters where it has them.
 #'     Used when requested, and as the fallback under `variance = "auto"`.}
@@ -635,8 +637,9 @@ overflow_note <- function() {
 #'
 #' `as_svydesign()` hands each group of certain units to `survey` as one
 #' primary sampling unit in a stratum of its own, so `survey::degf()` gives the
-#' same count. Strata and clusters are read from `units`, the frame's copy of
-#' the sampled rows; `pi_i` holds their inclusion probabilities.
+#' same count. Strata, those of a stratified or spread design or a temporal
+#' design's intervals, and clusters are read from `units`, the frame's copy
+#' of the sampled rows; `pi_i` holds their inclusion probabilities.
 #'
 #' @noRd
 design_df <- function(design, units, pop, rows, pi_i) {
@@ -656,10 +659,13 @@ design_df <- function(design, units, pop, rows, pi_i) {
     seq_len(n)
   )
   stratum <- switch(design_type(design),
-    stratified = as.integer(group_key(units, design$strata)),
+    stratified = ,
+    spread = if (!is.null(design$strata)) {
+      as.integer(group_key(units, design$strata))
+    },
     temporal = temporal_bucket(design, units),
-    rep("all", n)
-  )
+    NULL
+  ) %||% rep("all", n)
   random <- psu %in% psu[!is_certain(pi_i)]
   if (!any(random)) return(Inf)
   max(length(unique(psu[random])) - length(unique(stratum[random])), 0)
@@ -969,6 +975,11 @@ lonely_text <- function(lonely, noun, fix, domain = NULL) {
 lonely_fix <- function(design) {
   if (inherits(design, "drawn_design_temporal")) {
     return("Draw at least two rows per interval (per_interval = 2).")
+  }
+  if (inherits(design, "drawn_design_spread")) {
+    return(paste0("Draw at least two rows below certainty per stratum (",
+                  if (!has_counts(design)) "a larger `n`, or ",
+                  "a count of 2 or more for each in `allocation`)."))
   }
   if (has_counts(design)) {
     return(paste0("Draw at least two rows per stratum (a count of 2 or more ",
@@ -1489,12 +1500,13 @@ jackknife_refusal <- function(design) {
 
 #' Strata for the jackknife, and each stratum's finite population correction
 #'
-#' Stratified and temporal designs delete within strata, with each stratum's
-#' own `1 - n_h / N_h`. Everything else is a single stratum, corrected by
-#' `jackknife_fpc()`. Only strata holding a unit that is not `fixed` are
-#' listed, and both counts leave the fixed units out. A unit taken with
-#' certainty is in every sample, so the fixed units in the frame are the ones
-#' in the sample. A stratum taken whole drops out.
+#' Stratified and temporal designs, and spread designs with `strata`, delete
+#' within strata, with each stratum's own `1 - n_h / N_h`. A spread design's
+#' strata count only the rows it can draw. Everything else is a single
+#' stratum, corrected by `jackknife_fpc()`. Only strata holding a unit that
+#' is not `fixed` are listed, and both counts leave the fixed units out. A
+#' unit taken with certainty is in every sample, so the fixed units in the
+#' frame are the ones in the sample. A stratum taken whole drops out.
 #'
 #' Returns each row's `stratum`, the `levels` listed, their `labels`, `fpc`
 #' and `in_domain`, in the same order. The levels are integer codes in key
@@ -1508,9 +1520,18 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
                              ctx = NULL) {
   # Integer codes, shared by the sampled rows and the frame.
   grp <- from_context(ctx, "strata", switch(design_type(design),
-    stratified = {
+    stratified = ,
+    spread = if (!is.null(design$strata)) {
       key <- group_key2(units, pop, design$strata)
-      list(sample = as.integer(key$x), pop = as.integer(key$table),
+      pop_code <- as.integer(key$table)
+      if (inherits(design, "drawn_design_spread")) {
+        # Rows the design drops have no stratum to count in.
+        fr <- from_context(ctx, "spread", spread_frame(design, pop))
+        out <- rep(TRUE, nrow(pop))
+        out[fr$keep] <- FALSE
+        pop_code[out] <- NA_integer_
+      }
+      list(sample = as.integer(key$x), pop = pop_code,
            labels = levels(key$x))
     },
     temporal = {
@@ -1607,9 +1628,15 @@ reachable_rows <- function(design, pop) {
     temporal = sum(!is.na(temporal_bucket(design, pop))),
     systematic = sum(!is.na(systematic_positions(design, pop))),
     weighted = keyed(design$weights),
-    spread = sum(!spread_missing(
-      coordinate_columns(pop, design$across, "across", time = TRUE),
-      if (!is.null(design$size)) pop[[design$size]])),
+    spread = {
+      bad <- spread_missing(
+        coordinate_columns(pop, design$across, "across", time = TRUE),
+        if (!is.null(design$size)) pop[[design$size]])
+      if (!is.null(design$strata)) {
+        bad <- bad | is.na(group_key(pop, design$strata))
+      }
+      sum(!bad)
+    },
     stratified = keyed(design$strata),
     cluster = ,
     multistage = keyed(design$clusters),

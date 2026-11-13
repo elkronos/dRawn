@@ -261,3 +261,243 @@ test_that("Date and date-time columns spread as days and seconds", {
   expect_equal(inclusion_prob(d, design_spread("day", n = 6,
                                                na_rm = TRUE))[4], 0)
 })
+
+# ---- strata -----------------------------------------------------------------
+
+strata_pop <- function(N = 150, sizes = c(70, 50, 30)) {
+  i <- seq_len(N)
+  d <- data.frame(id = i, x = (i * 0.618034) %% 1, y = (i * 0.414214) %% 1,
+                  g = rep(c("north", "south", "east"), sizes))
+  d$v <- 100 + 80 * d$x + 60 * sin(4 * d$y) + 5 * sin(7 * i)
+  d$w <- 1 + (i %% 9)
+  d
+}
+
+test_that("strata get their allocation, each spread on its own", {
+  d <- strata_pop()
+  des <- design_spread(c("x", "y"), n = 30, strata = "g")
+  expect_output(print(des), "strata +\"g\"")
+  for (i in 1:10) {
+    s <- draw(d, des, seed = i)
+    expect_equal(as.vector(table(factor(s$g, c("east", "north", "south")))),
+                 c(6L, 14L, 10L))
+    expect_identical(s$id, sort(s$id))
+  }
+  eq <- draw(d, design_spread(c("x", "y"), n = 30, strata = "g",
+                              allocation = "equal"), seed = 1)
+  expect_equal(as.vector(table(eq$g)), c(10L, 10L, 10L))
+
+  counts <- design_spread(c("x", "y"), strata = "g",
+                          allocation = c(north = 4, south = 3, east = 2))
+  expect_equal(counts$n, 9L)
+  expect_equal(as.vector(table(draw(d, counts, seed = 1)$g)), c(2L, 4L, 3L))
+
+  tab <- allocation_table(d, des)
+  expect_equal(tab$g, c("east", "north", "south"))
+  expect_equal(tab$n, c(6L, 14L, 10L))
+  expect_equal(tab$prob, c(0.2, 0.2, 0.2))
+  expect_equal(tab$status, rep("rule", 3))
+  expect_equal(allocation_table(d, counts)$status, rep("count", 3))
+
+  # Each stratum is the design without strata on that stratum's rows alone.
+  north <- d[d$g == "north", ]
+  expect_equal(inclusion_prob(d, des)[d$g == "north"],
+               inclusion_prob(north, design_spread(c("x", "y"), n = 14)))
+})
+
+test_that("inclusion probabilities with strata and size are exact", {
+  d <- strata_pop()
+  d$w[c(5, 80)] <- 60
+  des <- design_spread(c("x", "y"), n = 30, strata = "g", size = "w")
+  ex <- inclusion_prob(d, des)
+  expect_equal(as.vector(tapply(ex, d$g, sum)), c(6, 14, 10))
+  north <- d$g == "north"
+  expect_equal(ex[north],
+               inclusion_prob(d[north, ], design_spread(c("x", "y"), n = 14,
+                                                        size = "w")))
+  expect_equal(as.vector(certainty_set(d, des)), c(5L, 80L))
+  expect_true(is.na(attr(certainty_set(d, des), "threshold")))
+
+  skip_on_cran()
+  small <- strata_pop(90, c(40, 30, 20))
+  small$w[c(5, 50)] <- 40
+  des <- design_spread(c("x", "y"), n = 18, strata = "g", size = "w")
+  ex <- inclusion_prob(small, des)
+  sim <- inclusion_prob(small, des, simulate = TRUE, R = 1500, seed = 1)
+  z <- (sim - ex) / sqrt(ex * (1 - ex) / 1500)
+  expect_lt(max(abs(z[ex < 1])), 4.5)
+  expect_equal(sim[ex == 1], rep(1, sum(ex == 1)))
+})
+
+test_that("the variance sums the strata's local mean variances", {
+  d <- strata_pop()
+  d$w[c(5, 80)] <- 60
+  for (size in list(NULL, "w")) {
+    des <- design_spread(c("x", "y"), n = 30, strata = "g", size = size)
+    s <- draw(d, des, seed = 3, weights = TRUE)
+    # Each stratum's own estimator, on that stratum alone as a frame.
+    parts <- vapply(c("east", "north", "south"), function(h) {
+      sub <- d[d$g == h, ]
+      own <- design_spread(c("x", "y"), n = sum(s$g == h), size = size)
+      in_h <- s$g == h
+      drawn:::ht_variance(own, sub, match(s$id[in_h], sub$id), s$v[in_h],
+                  s$.prob[in_h])$variance
+    }, numeric(1))
+    r <- ht_total(s, "v")
+    expect_equal(r$method, "local mean")
+    expect_equal(r$variance, sum(parts))
+    expect_equal(r$df, sum(s$.prob < 1) - 3)
+
+    by <- ht_total(s, "v", by = "g")
+    expect_equal(by$se^2, unname(parts))
+  }
+
+  jk <- ht_total(s, "v", variance = "jackknife")
+  expect_match(jk$note, "in 3 strata")
+})
+
+test_that("a stratum with one sampled row below certainty is refused", {
+  d <- strata_pop()
+  des <- design_spread(c("x", "y"), strata = "g",
+                       allocation = c(north = 4, south = 1, east = 3))
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  a <- ht_total(s, "v", variance = "analytic")
+  expect_true(is.na(a$variance))
+  expect_match(a$note, "The stratum `south` has a single sampled row")
+  expect_match(a$note, "a count of 2 or more for each in `allocation`")
+  expect_true(is.na(ht_total(s, "v")$variance))
+
+  # A domain with no unit in that stratum is measured without it.
+  by <- ht_total(s, "v", by = "g")
+  expect_true(all(is.finite(by$se[by$g != "south"])))
+  expect_true(is.na(by$se[by$g == "south"]))
+})
+
+test_that("strata are refused or warned about as stratified designs are", {
+  expect_error(design_spread(c("x", "y"), n = 5, allocation = "equal"),
+               "`allocation` splits `n` over strata, and `strata` is NULL")
+  expect_error(design_spread(c("x", "y"), n = 5, strata = "g",
+                             allocation = "neyman"),
+               "must be one of \"proportional\" or \"equal\"")
+  expect_error(design_spread(c("x", "y"), strata = "g"), "`n` is missing")
+  expect_error(design_spread(c("x", "y"), n = 7, strata = "g",
+                             allocation = c(north = 2, south = 3)),
+               "is not the sum of the counts")
+  d <- strata_pop()
+  expect_error(draw(d, design_spread(c("x", "y"), strata = "g",
+                                     allocation = c(north = 2, south = 3))),
+               "no entry for 1 stratum of `data`: `east`")
+  expect_error(draw(d, design_spread(c("x", "y"), strata = "g",
+                                     allocation = c(north = 2, south = 3,
+                                                    east = 31))),
+               "Stratum `east` has 30 row(s) but `allocation` asks for 31. ",
+               fixed = TRUE)
+  expect_error(inclusion_prob(d, design_spread(c("x", "y"), n = 151,
+                                               strata = "g")),
+               "cannot exceed the number of rows")
+  expect_warning(draw(d, design_spread(c("x", "y"), n = 2, strata = "g"),
+                      seed = 1),
+                 class = "drawn_empty_stratum")
+
+  d$g[3] <- NA
+  des <- design_spread(c("x", "y"), n = 30, strata = "g")
+  expect_error(draw(d, des), "a missing value in `x`, `y`, `g`")
+  kept <- design_spread(c("x", "y"), n = 30, strata = "g", na_rm = TRUE)
+  p <- inclusion_prob(d, kept)
+  expect_equal(p[3], 0)
+  expect_equal(p[d$g %in% "north"], rep(14 / 69, 69))
+  expect_equal(sample_summary(draw(d, kept, seed = 1, weights = TRUE))$N_reachable,
+               149L)
+
+  # A row dropped for a missing coordinate is in no stratum's count, so the
+  # sample and its variances are those of the frame without it.
+  d <- strata_pop()
+  d$x[10] <- NA
+  s1 <- draw(d, kept, seed = 1, weights = TRUE)
+  s2 <- draw(d[-10, ], kept, seed = 1, weights = TRUE)
+  expect_identical(s1$id, s2$id)
+  for (v in c("analytic", "jackknife")) {
+    expect_equal(ht_total(s1, "v", variance = v)$variance,
+                 ht_total(s2, "v", variance = v)$variance)
+  }
+})
+
+test_that("sample_summary() and allocation_table() show the strata", {
+  d <- strata_pop()
+  s <- draw(d, design_spread(c("x", "y"), n = 30, strata = "g"), seed = 1,
+            weights = TRUE)
+  b <- sample_summary(s)$by_group
+  expect_equal(b$group, c("east", "north", "south"))
+  expect_equal(b$drawn, c(6L, 14L, 10L))
+  expect_equal(b$in_frame, c(30L, 70L, 50L))
+
+  d$w[c(5, 80)] <- 60
+  sized <- design_spread(c("x", "y"), n = 30, strata = "g", size = "w")
+  expect_true(all(is.na(allocation_table(d, sized)$prob)))
+  expect_error(allocation_table(d, design_spread(c("x", "y"), n = 30)),
+               "which has no strata to allocate over")
+
+  cert <- design_certainty("w", 60, rest = design_spread(
+    c("x", "y"), n = 20, strata = "g"))
+  tab <- allocation_table(d, cert)
+  expect_equal(tab$N, c(30L, 69L, 49L))
+  expect_equal(sum(tab$n), 20L)
+})
+
+test_that("a spread sample with strata hands its strata to survey", {
+  skip_if_not_installed("survey")
+  d <- strata_pop()
+  s <- draw(d, design_spread(c("x", "y"), n = 30, strata = "g"), seed = 1,
+            weights = TRUE)
+  svd <- as_svydesign(s)
+  r <- ht_total(s, "v")
+  expect_equal(as.numeric(survey::svytotal(~v, svd)), r$total)
+  expect_equal(survey::degf(svd), r$df)
+  expect_equal(sort(unique(as.character(svd$strata[, 1]))),
+               c("east", "north", "south"))
+
+  d$w[c(5, 80)] <- 60
+  s <- draw(d, design_spread(c("x", "y"), n = 30, strata = "g", size = "w"),
+            seed = 2, weights = TRUE)
+  svd <- as_svydesign(s)
+  r <- ht_total(s, "v")
+  expect_equal(as.numeric(survey::svytotal(~v, svd)), r$total)
+  expect_equal(survey::degf(svd), r$df)
+  expect_equal(as.character(svd$strata[s$.prob == 1, 1]),
+               c("(certain)", "(certain)"))
+
+  # A stratum of the frame named `(certain)` stays apart from the certain rows.
+  d$g[d$g == "east"] <- "(certain)"
+  s <- draw(d, design_spread(c("x", "y"), n = 30, strata = "g", size = "w"),
+            seed = 2, weights = TRUE)
+  svd <- as_svydesign(s)
+  expect_equal(length(unique(svd$strata[, 1])), 4L)
+  expect_equal(survey::degf(svd), ht_total(s, "v")$df)
+
+  cert <- design_certainty("w", 60, rest = design_spread(
+    c("x", "y"), n = 20, strata = "g"))
+  s <- draw(d, cert, seed = 1, weights = TRUE)
+  expect_equal(survey::degf(as_svydesign(s)), ht_total(s, "v")$df)
+})
+
+test_that("a row with a tiny target probability still competes", {
+  # Targets below 1e-9 were set to 0 before the pivotal walk, so such a row
+  # could never be drawn although inclusion_prob() gave it a probability.
+  # The walk now snaps only rounding error, at a tolerance `eps`; a target
+  # far below it, here 0.01 against 0.05, is drawn at its own rate.
+  x <- matrix(c(0, 1), ncol = 1)
+  hits <- drawn:::with_seed(1, vapply(1:2000, function(i) {
+    1L %in% drawn:::local_pivotal(c(0.01, 0.99), x, eps = 0.05)
+  }, logical(1)))
+  expect_gt(sum(hits), 5)
+  expect_lt(sum(hits), 40)
+  sizes <- drawn:::with_seed(2, vapply(1:200, function(i) {
+    length(drawn:::local_pivotal(c(1e-10, 1 - 1e-10), x))
+  }, integer(1)))
+  expect_equal(sizes, rep(1L, 200))
+
+  d <- data.frame(x = 1:20, y = 0, w = c(2e-9, rep(1, 19)))
+  des <- design_spread(c("x", "y"), n = 5, size = "w")
+  expect_equal(inclusion_prob(d, des)[1], 5 * 2e-9 / sum(d$w))
+  expect_equal(nrow(draw(d, des, seed = 1)), 5L)
+})
