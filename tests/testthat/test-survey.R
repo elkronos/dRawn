@@ -202,6 +202,38 @@ test_that("a multistage design is handed over as two stages, and agrees exactly"
   expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8)
 })
 
+test_that("a sample weighted conditional on its clusters agrees with survey", {
+  skip_if_not_installed("survey")
+  sizes <- rep(c(5, 9, 14, 7, 11), 4)
+  d <- data.frame(id = seq_len(sum(sizes)),
+                  cl = rep(sprintf("k%02d", 1:20), times = sizes))
+  d$y <- rep((1:20 * 17) %% 23 * 3, times = sizes) + d$id %% 9
+  d$g <- ifelse(d$id %% 3 == 0, "u", "v")
+  designs <- list(
+    design_cluster("cl", n_clusters = 5, balanced = TRUE),
+    design_multistage("cl", n_clusters = 5, n = 23),
+    design_multistage("cl", n_clusters = 5, n = 25,
+                      allocation = "proportional", min_per_cluster = 2)
+  )
+  for (des in designs) {
+    s <- draw(d, des, seed = 4, weights = TRUE)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "y")
+    theirs <- survey::svytotal(~y, sv)
+    expect_equal(as.numeric(theirs), ours$total, tolerance = 1e-8)
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8)
+    expect_equal(survey::degf(sv), ours$df)
+    m_ours <- ht_mean(s, "y")
+    m_theirs <- survey::svymean(~y, sv)
+    expect_equal(as.numeric(survey::SE(m_theirs)), m_ours$se,
+                 tolerance = 1e-8)
+    by_ours <- ht_total(s, "y", by = "g")
+    by_theirs <- survey::svyby(~y, ~g, sv, survey::svytotal)
+    expect_equal(by_ours$se, as.numeric(survey::SE(by_theirs)),
+                 tolerance = 1e-8)
+  }
+})
+
 test_that("a capped reservoir's population is the rows the stream reached", {
   skip_if_not_installed("survey")
   set.seed(1)

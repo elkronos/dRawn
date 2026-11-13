@@ -484,12 +484,11 @@ control both.
 
 ## Which designs can be estimated from
 
-Most designs have exact inclusion probabilities. Five situations do not, and the
+Most designs have exact inclusion probabilities. Four situations do not, and the
 package says so rather than approximating:
 
 ```{r}
 no_form <- list(
-  `balanced clusters`      = design_cluster("team", n_clusters = 4, balanced = TRUE),
   `proportional multistage`= design_multistage("team", n_clusters = 6, n = 60,
                                                allocation = "proportional"),
   `uneven multistage`      = design_multistage("team", n_clusters = 6, n = 61),
@@ -510,16 +509,50 @@ on, because the arithmetic looks innocent. The second-stage allocation runs over
 the clusters that were *selected*, so a leftover row goes to the largest of
 them, and a cluster smaller than its target is capped with the shortfall dealt
 to whichever clusters came with it. A row's chance therefore depends on the
-company it keeps. Averaging over the possibilities is not a closed form, and the
-average is not the answer.
+company it keeps. Its exact probability is its chance given the clusters
+selected, averaged over every possible selection, and no formula gives that
+average.
+
+Estimation does not need it. `draw(weights = TRUE)` weights such a sample
+conditional on the clusters it selected: with `a` of `A` clusters selected and
+`m_i` of the `N_i` rows of cluster `i` taken, `.prob` is `(a / A) * m_i / N_i`.
+The total built from those weights is unbiased whichever clusters were
+selected, and so over every selection, and `ht_total()` gives it the
+two-stage standard error:
+
+```{r}
+uneven <- draw(invoices, no_form$`uneven multistage`, seed = 1, weights = TRUE)
+table(uneven$team)
+ht_total(uneven, "value")
+```
+
+Proportional allocation needs `min_per_cluster = 1` or more for this, because a
+selected cluster given no rows would count as a cluster total of 0.
+
+Balanced clusters, which take from each selected cluster as many rows as the
+smallest of them holds, are not on the list. Their take is random too, but its
+average for each cluster has an exact form, which `inclusion_prob()` uses. With
+two of the four sites selected:
+
+```{r}
+balanced <- design_cluster("site", n_clusters = 2, balanced = TRUE)
+round(cbind(
+  exact     = tapply(inclusion_prob(invoices, balanced), invoices$site, mean),
+  simulated = tapply(inclusion_prob(invoices, balanced, simulate = TRUE,
+                                    R = 1000, seed = 1), invoices$site, mean)
+), 3)
+```
+
+`draw(weights = TRUE)` weights a balanced sample conditional on its clusters as
+well, so that `ht_total()` can use the same two-stage standard error.
 
 Where you need a number anyway, ask for a simulation and accept the Monte Carlo
 error:
 
 ```{r}
-sim <- inclusion_prob(invoices, no_form$`balanced clusters`,
+sim <- inclusion_prob(invoices, no_form$`uneven multistage`,
                       simulate = TRUE, R = 200, seed = 1)
-round(tapply(sim, invoices$team, unique)[1:5], 3)
+round(tapply(sim, invoices$team, mean)[1:5], 3)
 ```
 
 The one thing simulation cannot rescue is the bootstrap, and it is refused

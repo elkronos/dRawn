@@ -217,6 +217,10 @@ print.drawn_plan <- function(x, ...) {
 #'     \item{`weight_range`}{The smallest and largest design weight.}
 #'     \item{`weight_cv`}{Their coefficient of variation. Large values mean a
 #'       few rows carry most of the estimate.}
+#'     \item{`conditional`}{The number of clusters selected, when the
+#'       weights are conditional on them, as for [design_cluster()] with
+#'       `balanced = TRUE` (see "Design weights" in [draw()]); otherwise
+#'       `NA`.}
 #'     \item{`unreachable`}{Frame rows with inclusion probability 0 — the
 #'       design could never have selected them. `NA` if the design has no
 #'       closed-form inclusion probability.}
@@ -282,12 +286,25 @@ sample_summary <- function(sample) {
     design = design_type(design),
     n = nrow(sample),
     N = nrow(pop),
-    N_reachable = if (is.null(pi_all)) NA_integer_ else sum(pi_all > 0),
+    N_reachable = if (is.null(pi_all)) {
+      NA_integer_
+    } else {
+      sum(reachable(pi_all))
+    },
     weight_range = if (length(w)) range(w, na.rm = TRUE) else c(NA, NA),
     weight_cv = if (length(w) > 1L && mean(w, na.rm = TRUE) > 0) {
       stats::sd(w, na.rm = TRUE) / mean(w, na.rm = TRUE)
     } else NA_real_,
-    unreachable = if (is.null(pi_all)) NA_integer_ else sum(pi_all == 0),
+    conditional = if (is.null(state$selection)) {
+      NA_integer_
+    } else {
+      length(state$selection)
+    },
+    unreachable = if (is.null(pi_all)) {
+      NA_integer_
+    } else {
+      sum(!reachable(pi_all))
+    },
     by_group = by_group,
     group_col = grp_col
   ), class = "drawn_summary")
@@ -313,6 +330,10 @@ print.drawn_summary <- function(x, ...) {
       cat("   (cv ", signif(x$weight_cv, 3), ")", sep = "")
     }
     cat("\n")
+  }
+  if (isTRUE(x$conditional > 0)) {
+    cat("                     conditional on the ", x$conditional,
+        " clusters selected\n", sep = "")
   }
   if (isTRUE(x$unreachable > 0)) {
     cat("  unreachable rows   ", fmt_n(x$unreachable),

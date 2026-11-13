@@ -10,6 +10,12 @@
 # that the design still gives the frame those probabilities. Design keys
 # (strata, clusters, time) are read from the frame's copy of each sampled row,
 # never from the sample's own columns, which the caller can rename or edit.
+#
+# A sample weighted conditional on its clusters (see conditional_design())
+# also carries the codes of the clusters selected (`drawn_selection`), and
+# its `drawn_pi` holds the probabilities given that selection: `NA` for the
+# rows of the clusters not selected, whose probability the selection does
+# not fix. Such a row could have been drawn, so reachable() counts it.
 
 #' Copy a data frame column by column
 #'
@@ -78,8 +84,11 @@ format_rows <- function(x) {
 #' Returns `design`, `pop` (the frame as it was at draw time), `rows` (the
 #' frame row of each sample row, in the sample's current order), `pi_all`
 #' (every frame row's inclusion probability at draw time, `NULL` for a sample
-#' saved by drawn 0.2.0) and `units` (`pop[rows, ]`, the frame's copy of each
-#' sample row).
+#' saved by drawn 0.2.0), `units` (`pop[rows, ]`, the frame's copy of each
+#' sample row) and `selection` (the codes of the clusters selected, for a
+#' sample weighted conditional on them, else `NULL`). In a conditional
+#' sample, `pi_all` is `NA` for the rows of clusters not selected; count the
+#' rows a design can reach with reachable().
 #'
 #' `rows` comes from the `.row` column, so reordering a sample, by `[`,
 #' dplyr::arrange() or data.table::setorder(), changes nothing. A subset, a
@@ -97,6 +106,8 @@ format_rows <- function(x) {
 #' than it did then. The joint probabilities and variance are recomputed in
 #' this session, so they would otherwise describe another design. Samples saved
 #' by drawn 0.2.0 get neither check: they record no probabilities to compare.
+#' A conditional sample's probabilities are worked out again from its stored
+#' selection.
 #'
 #' @noRd
 drawn_state <- function(sample, arg = "sample") {
@@ -124,14 +135,59 @@ drawn_state <- function(sample, arg = "sample") {
         arg)
     }
     return(list(design = design, pop = pop, rows = drawn, pi_all = NULL,
-                units = pop[drawn, , drop = FALSE]))
+                units = pop[drawn, , drop = FALSE], selection = NULL))
   }
 
   rows <- sample_rows(sample, drawn, nrow(pop), arg)
   check_prob(sample, pi_all[rows], arg)
-  check_drift(design, pop, pi_all, arg)
+  selection <- check_selection(sample, design, pop, arg)
+  check_drift(design, pop, pi_all, arg, selection)
   list(design = design, pop = pop, rows = rows, pi_all = pi_all,
-       units = pop[rows, , drop = FALSE])
+       units = pop[rows, , drop = FALSE], selection = selection)
+}
+
+#' Frame rows a sample's design could have drawn
+#'
+#' Rows with a draw-time probability above 0, and the rows of the clusters a
+#' conditional sample did not select, whose probability is `NA` but which
+#' another selection could have drawn.
+#'
+#' @noRd
+reachable <- function(pi_all) {
+  is.na(pi_all) | pi_all > 0
+}
+
+#' The clusters a conditional sample selected, checked against its frame
+#'
+#' `NULL` for a design that is not weighted conditional on its clusters,
+#' whose probabilities do not depend on them. Otherwise the stored codes
+#' must be `n_clusters` distinct clusters of the frame; a sample that lost
+#' them cannot have its probabilities checked or its variance worked out.
+#'
+#' @noRd
+check_selection <- function(sample, design, pop, arg = "sample") {
+  if (!conditional_design(design, pop)) return(NULL)
+  selection <- attr(sample, "drawn_selection", exact = TRUE)
+  fix <- paste0(" `.prob` is conditional on the clusters draw() selected, ",
+                "which it records with the sample. Estimate from the sample ",
+                "as draw() returned it.")
+  if (is.null(selection)) {
+    stop_not_drawn(paste0("does not record which clusters were selected, ",
+                          "so its probabilities cannot be checked.", fix),
+                   arg)
+  }
+  total <- count_clusters(design, pop)$total
+  ok <- is.numeric(selection) && !anyNA(selection) &&
+    length(selection) == design$n_clusters &&
+    all(selection == trunc(selection) & selection >= 1 &
+          selection <= total) &&
+    !anyDuplicated(selection)
+  if (!ok) {
+    stop_not_drawn(paste0("records clusters that are not ",
+                          design$n_clusters, " distinct clusters of the ",
+                          total, " in its frame.", fix), arg)
+  }
+  as.integer(selection)
 }
 
 #' Do two vectors of probabilities agree, element by element?
@@ -201,11 +257,17 @@ check_prob <- function(sample, expected = NULL, arg = "sample") {
 #' rows lie inside its region under the current [sf::sf_use_s2()], so turning
 #' spherical geometry on or off between drawing and estimating is enough.
 #' Reading a sample saved with saveRDS() into a new session, where s2 is on
-#' again, does the same.
+#' again, does the same. A sample weighted conditional on its clusters is
+#' checked against the probabilities given the stored `selection`.
 #'
 #' @noRd
-check_drift <- function(design, pop, pi_all, arg = "sample") {
-  now <- exact_inclusion(design, pop)
+check_drift <- function(design, pop, pi_all, arg = "sample",
+                        selection = NULL) {
+  now <- if (is.null(selection)) {
+    exact_inclusion(design, pop)
+  } else {
+    conditional_inclusion(design, pop, selection)
+  }
   differ <- if (length(now) != length(pi_all)) {
     rep(TRUE, max(length(now), length(pi_all)))
   } else {

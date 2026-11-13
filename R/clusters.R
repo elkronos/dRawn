@@ -53,7 +53,8 @@ cluster_values <- function(labels) {
 #' @param data The population.
 #' @param cl `cluster_setup(design, data)`, when the caller has it already.
 #' @return A list of `data` (with NA labels handled), the row indices of each
-#'   selected cluster, their sizes, and their labels.
+#'   selected cluster, their sizes, their labels, and their codes in
+#'   `chosen`, all in the order the clusters were selected.
 #' @noRd
 select_clusters <- function(design, data, cl = cluster_setup(design, data)) {
   # Dropping rows with no label leaves every other row's code unchanged, since
@@ -76,7 +77,7 @@ select_clusters <- function(design, data, cl = cluster_setup(design, data)) {
   names(idx) <- NULL
 
   list(data = data, idx_by_cluster = idx, sizes = lengths(idx),
-       labels = labels[match(chosen, code)])
+       labels = labels[match(chosen, code)], chosen = as.integer(chosen))
 }
 
 #' Each row's cluster, and how many distinct clusters the population holds
@@ -135,4 +136,106 @@ cluster_setup <- function(design, data) {
          " cluster(s) available.", call. = FALSE)
   }
   cl
+}
+
+# ---- weights conditional on the clusters selected ----------------------------
+
+#' Does draw(weights = TRUE) weight a design conditional on its clusters?
+#'
+#' Balanced cluster sampling takes from each selected cluster as many rows as
+#' the smallest of them holds, and a multistage design without `size` splits
+#' `n` over the clusters it selected. When that split is not the same for
+#' every selection, under proportional allocation, an `n` that `n_clusters`
+#' does not divide, or a cluster smaller than `n / n_clusters`, a row's
+#' probability depends on which other clusters were selected. Such a design
+#' is weighted conditional on the clusters selected; see
+#' `conditional_inclusion()`. A design drawn with replacement is not, since
+#' draw() refuses it weights.
+#'
+#' @noRd
+conditional_design <- function(design, data) {
+  if (inherits(design, "drawn_design_cluster")) {
+    return(isTRUE(design$balanced))
+  }
+  if (!inherits(design, "drawn_design_multistage") ||
+      !is.null(design$size) || design$replace) {
+    return(FALSE)
+  }
+  cl <- count_clusters(design, data)
+  !multistage_fixed(design, tabulate(cl$code, cl$total))
+}
+
+#' Refuse a conditionally weighted draw before anything is sampled
+#'
+#' The checks of the design's own setup, and a floor of one row per selected
+#' cluster. Proportional allocation with `min_per_cluster = 0` can give a
+#' selected cluster no rows, and weights conditional on the selection would
+#' then count that cluster's total as 0 while scaling the others by
+#' `A / a` as if it had been measured. Returns the setup.
+#'
+#' @noRd
+conditional_setup <- function(design, data) {
+  if (inherits(design, "drawn_design_multistage") &&
+      design$allocation == "proportional" && design$min_per_cluster < 1L) {
+    stop("`min_per_cluster` is 0, so proportional allocation can give a ",
+         "selected cluster no rows, and `weights = TRUE` weights each row ",
+         "conditional on the clusters selected, which would count that ",
+         "cluster's total as 0. Set min_per_cluster = 1 or more.",
+         call. = FALSE)
+  }
+  if (inherits(design, "drawn_design_multistage")) {
+    multistage_setup(design, data)
+  } else {
+    cluster_setup(design, data)
+  }
+}
+
+#' The rows each selected cluster gives
+#'
+#' `sizes` holds the selected clusters' row counts, in the order they were
+#' selected. A balanced cluster design takes the smallest of them from every
+#' cluster, a whole-cluster design takes them all, and a multistage design
+#' splits `n` with `multistage_takes()`.
+#'
+#' @noRd
+cluster_takes <- function(design, sizes) {
+  if (inherits(design, "drawn_design_multistage")) {
+    return(multistage_takes(design, sizes))
+  }
+  if (design$balanced) rep(min(sizes), length(sizes)) else sizes
+}
+
+#' Inclusion probabilities conditional on the clusters selected
+#'
+#' For a design that `conditional_design()` accepts, `selection` holds the
+#' codes of the clusters a draw selected, in the order it selected them,
+#' which is the order the allocation breaks ties in. A row of selected
+#' cluster `i`, of `N_i` rows, gets `(a / A) * m_i / N_i`: the chance that
+#' its cluster is selected, times the chance that it is drawn once these
+#' clusters are, with `m_i` the rows the design takes from cluster `i` given
+#' this selection. Weighting by its reciprocal turns each selected cluster's
+#' rows into `A / a` times an unbiased estimate of the cluster's total, so
+#' the estimate of the total is unbiased given the selection, and therefore
+#' over every selection.
+#'
+#' A row of a cluster that was not selected gets `NA`. The selection does not
+#' fix its probability, and the design has no closed form for it. A row the
+#' design drops, for a missing cluster label, gets 0.
+#'
+#' @noRd
+conditional_inclusion <- function(design, data, selection) {
+  cl <- conditional_setup(design, data)
+  sizes <- tabulate(cl$code, cl$total)
+  take <- cluster_takes(design, sizes[selection])
+  if (any(take < 1L)) {
+    stop("The allocation gives ", sum(take < 1L), " of the clusters ",
+         "selected no rows, so weights conditional on the selection would ",
+         "count their totals as 0. Set min_per_cluster = 1 or more.",
+         call. = FALSE)
+  }
+  p <- rep(NA_real_, cl$total)
+  p[selection] <- design$n_clusters / cl$total * take / sizes[selection]
+  out <- numeric(nrow(data))
+  out[cl$present] <- p[cl$code[cl$present]]
+  out
 }

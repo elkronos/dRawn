@@ -21,6 +21,10 @@ probability, and the fraction is then \code{n / N}.}
 \item{\code{weight_range}}{The smallest and largest design weight.}
 \item{\code{weight_cv}}{Their coefficient of variation. Large values mean a
 few rows carry most of the estimate.}
+\item{\code{conditional}}{The number of clusters selected, when the
+weights are conditional on them, as for \code{\link[=design_cluster]{design_cluster()}} with
+\code{balanced = TRUE} (see "Design weights" in \code{\link[=draw]{draw()}}); otherwise
+\code{NA}.}
 \item{\code{unreachable}}{Frame rows with inclusion probability 0 — the
 design could never have selected them. \code{NA} if the design has no
 closed-form inclusion probability.}

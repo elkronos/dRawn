@@ -848,7 +848,7 @@ ht_prepare <- function(sample, y, level, df = NULL) {
       stop("`sample` has no rows, so there is nothing to estimate from.",
            call. = FALSE)
     }
-    if (!any(state$pi_all > 0)) {
+    if (!any(reachable(state$pi_all))) {
       stop("`sample` has no rows, and its design gives every row of the ",
            "frame a probability of 0, so there is nothing to estimate from. ",
            "Give the design a sample size above 0.", call. = FALSE)
@@ -891,8 +891,10 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   if (is.null(state$pi_all)) check_prob(sample)
   warn_weight_edited(sample)
   # The rows the design can reach: those with a probability above 0 at draw
-  # time. A sample saved by drawn 0.2.0 has no such record, so its count is
-  # read from the design's columns and the unreachable rows are unknown.
+  # time, or none recorded because the sample is conditional on clusters
+  # that left them out. A sample saved by drawn 0.2.0 has no such record, so
+  # its count is read from the design's columns and the unreachable rows are
+  # unknown.
   pi_all <- state$pi_all
   list(design = state$design, rows = state$rows, pop = state$pop,
        units = state$units, pi_all = pi_all, y = yv, pi = sample$.prob,
@@ -902,9 +904,13 @@ ht_prepare <- function(sample, y, level, df = NULL) {
        reach = if (is.null(pi_all)) {
          reachable_rows(state$design, state$pop)
        } else {
-         sum(pi_all > 0)
+         sum(reachable(pi_all))
        },
-       unreachable = if (is.null(pi_all)) NA_integer_ else sum(pi_all == 0))
+       unreachable = if (is.null(pi_all)) {
+         NA_integer_
+       } else {
+         sum(!reachable(pi_all))
+       })
 }
 
 #' Warn when `.weight` is no longer `1 / .prob`

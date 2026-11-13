@@ -57,7 +57,7 @@ Most do, and those are computed exactly:
 \code{\link[=design_simple]{design_simple()}}      \tab \code{n / N} \cr
 \code{\link[=design_stratified]{design_stratified()}}  \tab \code{n_h / N_h} within each stratum \cr
 \code{\link[=design_systematic]{design_systematic()}}  \tab \code{1 / interval} with a random \code{start}, or \code{n / N} with \code{n}, for every row walked, exactly \cr
-\code{\link[=design_cluster]{design_cluster()}}     \tab \code{n_clusters / N_clusters} \cr
+\code{\link[=design_cluster]{design_cluster()}}     \tab \code{n_clusters / N_clusters}; with \code{balanced = TRUE}, that times the cluster's average take over its size, worked out exactly (see \code{\link[=design_cluster]{design_cluster()}}) \cr
 \code{\link[=design_multistage]{design_multistage()}}  \tab \code{(n_clusters / N_clusters) * (n_h / N_h)}, when the per-cluster take \code{n_h} is constant; with replacement, \code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)}; with \code{size}, the cluster's \code{pi_h = n_clusters * M_h / sum(M)} in place of \code{n_clusters / N_clusters} \cr
 \code{\link[=design_weighted]{design_weighted()}}    \tab \code{n * p_i} for the \code{"systematic"} and \code{"poisson"} methods; with \code{strata}, \code{n_h * p_i} within each stratum \cr
 \code{\link[=design_certainty]{design_certainty()}}   \tab \code{1} above the threshold, \code{rest}'s own below it \cr
@@ -67,12 +67,8 @@ Most do, and those are computed exactly:
 \code{\link[=design_spread]{design_spread()}}      \tab \code{n / N}, or \code{n * p_i} with a \code{size} column; with \code{strata}, the same within each stratum \cr
 }
 
-Five cases have no closed form, and the package refuses to invent one:
+Four cases have no closed form, and the package refuses to invent one:
 \itemize{
-\item \code{design_cluster(balanced = TRUE)} — the per-cluster take is the smallest
-\emph{selected} cluster's size, which is itself random. Simulation on clusters of
-2/4/6/8 gives 0.50, 0.41, 0.34, 0.25, against the 0.50 a naive
-\code{n_clusters / N_clusters} would claim for every row.
 \item \code{design_multistage(allocation = "proportional")} — the stage-two allocation
 depends on which clusters were selected. Simulation on clusters of 3/5/7/9
 gives 0.17, 0.20, 0.17, 0.15, against a naive 0.33, 0.20, 0.14, 0.11.
@@ -84,6 +80,12 @@ with its shortfall dealt to whichever clusters came with it. A row's
 probability then depends on the company it keeps. On clusters of
 20/10/8/6 with \code{n = 7} over 2 clusters, the average take is out by up to
 17\%, and a cluster smaller than the take can push the figure above 1.
+
+For these two, the exact probability is the probability given the
+clusters selected, averaged over every possible selection, and that
+average has no formula. \code{draw(weights = TRUE)} weights the sample
+conditional on the clusters it selected instead, which gives an
+unbiased total without the average; see "Design weights" in \code{\link[=draw]{draw()}}.
 \item \code{design_weighted(method = "successive")} — the default. Successive sampling
 has no closed-form inclusion probability; this is the whole reason the other
 two methods exist. Note that its realised probabilities are not merely

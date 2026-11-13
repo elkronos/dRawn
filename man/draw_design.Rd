@@ -12,7 +12,10 @@ draw_design(design, data)
 \item{data}{The data to sample from.}
 }
 \value{
-The sampled rows.
+The sampled rows. The cluster and multistage methods attach the
+codes of the clusters they selected as the attribute \code{drawn_selection},
+which \code{\link[=draw]{draw()}} removes or, for a sample weighted conditional on its
+clusters, keeps.
 }
 \description{
 Design-specific draw method

@@ -53,6 +53,16 @@ They come from the design applied to the population, not from the drawn
 sample, and some designs have no closed form for them. \code{\link[=inclusion_prob]{inclusion_prob()}}
 documents which, why, and what to do instead.
 
+Two kinds of design are weighted conditional on the clusters the draw
+selected: \code{\link[=design_cluster]{design_cluster()}} with \code{balanced = TRUE}, and
+\code{\link[=design_multistage]{design_multistage()}} without \code{size} when the rows taken from a cluster
+depend on which other clusters were selected. With \code{a} of \code{A} clusters
+selected and \code{m_i} of the \code{N_i} rows of cluster \code{i} taken, \code{.prob} is
+\code{(a / A) * m_i / N_i}, the chance of the cluster being selected times the
+chance of the row being drawn given these clusters. The total estimated
+from it is unbiased given the clusters selected, and so over every
+selection. \code{\link[=sample_summary]{sample_summary()}} says when a sample is weighted this way.
+
 Keep \code{.prob} as it is: \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}} and \code{\link[=as_svydesign]{as_svydesign()}} refuse
 a sample whose \code{.prob} was changed. Weights adjusted after the draw, for
 nonresponse say, go in \code{.weight}, and \code{\link[=as_svydesign]{as_svydesign()}} is the way to

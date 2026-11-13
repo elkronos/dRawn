@@ -82,9 +82,11 @@ test_that("designs with no closed form refuse rather than invent one", {
 
   expect_error(inclusion_prob(df, design_weighted("w", n = 3)),
                "no closed-form inclusion probability")
-  expect_error(
+  # Balanced clusters have one: with clusters of equal size every selected
+  # cluster is taken whole.
+  expect_equal(
     inclusion_prob(df, design_cluster("cl", n_clusters = 2, balanced = TRUE)),
-    "no closed-form inclusion probability"
+    rep(0.5, 20)
   )
   expect_error(
     inclusion_prob(df, design_multistage("cl", n_clusters = 2, n = 4,

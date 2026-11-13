@@ -17,7 +17,7 @@
 #'   [design_simple()]      \tab `n / N` \cr
 #'   [design_stratified()]  \tab `n_h / N_h` within each stratum \cr
 #'   [design_systematic()]  \tab `1 / interval` with a random `start`, or `n / N` with `n`, for every row walked, exactly \cr
-#'   [design_cluster()]     \tab `n_clusters / N_clusters` \cr
+#'   [design_cluster()]     \tab `n_clusters / N_clusters`; with `balanced = TRUE`, that times the cluster's average take over its size, worked out exactly (see [design_cluster()]) \cr
 #'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)`; with `size`, the cluster's `pi_h = n_clusters * M_h / sum(M)` in place of `n_clusters / N_clusters` \cr
 #'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods; with `strata`, `n_h * p_i` within each stratum \cr
 #'   [design_certainty()]   \tab `1` above the threshold, `rest`'s own below it \cr
@@ -27,12 +27,8 @@
 #'   [design_spread()]      \tab `n / N`, or `n * p_i` with a `size` column; with `strata`, the same within each stratum \cr
 #' }
 #'
-#' Five cases have no closed form, and the package refuses to invent one:
+#' Four cases have no closed form, and the package refuses to invent one:
 #'
-#' * `design_cluster(balanced = TRUE)` — the per-cluster take is the smallest
-#'   *selected* cluster's size, which is itself random. Simulation on clusters of
-#'   2/4/6/8 gives 0.50, 0.41, 0.34, 0.25, against the 0.50 a naive
-#'   `n_clusters / N_clusters` would claim for every row.
 #' * `design_multistage(allocation = "proportional")` — the stage-two allocation
 #'   depends on which clusters were selected. Simulation on clusters of 3/5/7/9
 #'   gives 0.17, 0.20, 0.17, 0.15, against a naive 0.33, 0.20, 0.14, 0.11.
@@ -44,6 +40,12 @@
 #'   probability then depends on the company it keeps. On clusters of
 #'   20/10/8/6 with `n = 7` over 2 clusters, the average take is out by up to
 #'   17%, and a cluster smaller than the take can push the figure above 1.
+#'
+#'   For these two, the exact probability is the probability given the
+#'   clusters selected, averaged over every possible selection, and that
+#'   average has no formula. `draw(weights = TRUE)` weights the sample
+#'   conditional on the clusters it selected instead, which gives an
+#'   unbiased total without the average; see "Design weights" in [draw()].
 #' * `design_weighted(method = "successive")` — the default. Successive sampling
 #'   has no closed-form inclusion probability; this is the whole reason the other
 #'   two methods exist. Note that its realised probabilities are not merely
@@ -207,7 +209,7 @@ certainty_set <- function(data, design) {
 #' Monte Carlo inclusion probabilities
 #'
 #' Draws `R` samples and counts how often each row appears. Works for every
-#' design, including the four with no closed form.
+#' design, including those with no closed form.
 #'
 #' @noRd
 simulate_inclusion <- function(data, design, R, seed) {

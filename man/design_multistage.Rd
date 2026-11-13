@@ -21,19 +21,23 @@ design_multistage(
 \item{n_clusters}{Number of clusters to select at stage one.}
 
 \item{n}{Total rows to draw across the selected clusters, at least
-\code{n_clusters}. Make it a multiple of \code{n_clusters}, and no larger than
-\code{n_clusters} times the smallest cluster, if you intend to estimate:
-otherwise the per-cluster take depends on which clusters were selected
-and there is no closed-form inclusion probability. See \code{\link[=inclusion_prob]{inclusion_prob()}}.}
+\code{n_clusters}. A multiple of \code{n_clusters}, no larger than \code{n_clusters}
+times the smallest cluster, gives every selected cluster the same take
+and every row a closed-form inclusion probability. Otherwise the take
+depends on which clusters were selected, and \code{draw(weights = TRUE)}
+weights the sample conditional on them. See "When the take depends on
+the clusters selected".}
 
 \item{allocation}{\code{"equal"} splits \code{n} evenly across the selected clusters;
-\code{"proportional"} splits it in proportion to their size. Proportional
-allocation can give a small selected cluster no rows; \code{\link[=draw]{draw()}} then warns
-with class \code{drawn_empty_cluster} and names it.}
+\code{"proportional"} splits it in proportion to their size, and its weights
+are conditional on the clusters selected. Proportional allocation can
+give a small selected cluster no rows; \code{\link[=draw]{draw()}} then warns with class
+\code{drawn_empty_cluster} and names it.}
 
 \item{min_per_cluster}{Minimum rows from each selected cluster. Defaults to
 \code{0}, and \code{n_clusters * min_per_cluster} must not exceed \code{n}. A cluster
-smaller than the minimum is taken whole. Take at least two rows per
+smaller than the minimum is taken whole. \code{draw(weights = TRUE)} needs at
+least 1 under proportional allocation. Take at least two rows per
 cluster if you intend to estimate a variance: with one, the variation
 within clusters cannot be measured and \code{\link[=ht_total]{ht_total()}} falls back to the
 ultimate-cluster jackknife.}
@@ -60,6 +64,35 @@ Selects clusters at the first stage, then draws rows within them at the
 second. \code{n} is the total across the selected clusters under both allocations,
 matching \code{\link[=design_stratified]{design_stratified()}}.
 }
+\section{When the take depends on the clusters selected}{
+
+Without \code{size}, the \code{n} rows are split over the clusters selected, so a
+cluster's take is the same in every sample only under \code{"equal"}
+allocation of an \code{n} that divides by \code{n_clusters}, with no cluster
+smaller than \code{n / n_clusters}. Otherwise, under \code{"proportional"}
+allocation, with a remainder that goes to the largest clusters selected,
+or with a small cluster capped at its size and its shortfall dealt to the
+others, a row's inclusion probability depends on which other clusters
+were selected. It is the chance of drawing the row given the clusters
+selected, averaged over every possible selection, which has no closed
+form, so \code{\link[=inclusion_prob]{inclusion_prob()}} refuses it.
+
+\code{draw(weights = TRUE)} weights such a sample conditional on the clusters
+it selected. With \code{a} of \code{A} clusters selected and \code{m_i} of the \code{N_i}
+rows of cluster \code{i} taken, \code{.prob} is \code{(a / A) * m_i / N_i}, and the
+estimate of a total is \code{A / a} times the sum of the selected clusters'
+estimated totals. That is unbiased whichever clusters were selected, and
+so over all of them. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} estimate its variance
+with the two-stage formula, the variance between the estimated cluster
+totals plus that within each cluster at its own take, on \code{a - 1} degrees
+of freedom, and \code{\link[=as_svydesign]{as_svydesign()}} hands it to \code{survey} in two stages,
+where the standard errors agree. The variance falls back to the
+delete-a-cluster jackknife when a selected cluster gives one row of
+several. Proportional allocation needs \code{min_per_cluster} of at least 1
+for weights, since a selected cluster with no rows would count as a
+cluster total of 0.
+}
+
 \section{Clusters in proportion to size}{
 
 With \code{size}, the clusters are selected with probability proportional to a

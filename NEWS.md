@@ -710,6 +710,29 @@
   approximation at the first. A measure that differs within a cluster,
   `allocation = "proportional"` and an `n` that `n_clusters` does not
   divide are refused.
+* `inclusion_prob()` gives `design_cluster(balanced = TRUE)` its exact
+  inclusion probabilities, where it refused them as having no closed form,
+  so `plot(type = "probability")` and `sampling_weight()` work for it too. A
+  row of a cluster of `N_i` rows has `(a / A) * E(m) / N_i`, the take `m`
+  averaged over the selections that include its cluster, worked out from
+  the sorted cluster sizes. The help page quoted simulated values of 0.41
+  and 0.34 for clusters of 4 and 6 rows where the exact ones are 0.417 and
+  0.333.
+* `draw(weights = TRUE)` weights `design_cluster(balanced = TRUE)`, and
+  `design_multistage()` without `size` under proportional allocation, with
+  an `n` that `n_clusters` does not divide or with a cluster smaller than
+  the take, conditional on the clusters it selected, all of which it
+  refused before. `.prob` is `(a / A) * m_i / N_i` for the `m_i` rows taken
+  from cluster `i`, and the sample records the clusters selected. The total
+  is unbiased given the selection, and so over every selection.
+  `ht_total()` and `ht_mean()` estimate its variance with the two-stage
+  formula at each cluster's own take, on `a - 1` degrees of freedom;
+  `as_svydesign()` hands it to `survey` in two stages, with the same
+  standard errors; and `sample_summary()` says the weights are conditional.
+  Proportional allocation needs `min_per_cluster` of at least 1 for this.
+  `inclusion_prob()` still refuses the multistage cases, whose exact
+  probabilities average the chance given the clusters selected over every
+  possible selection.
 
 ## Speed and memory
 

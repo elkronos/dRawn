@@ -28,6 +28,16 @@
 #' sample, and some designs have no closed form for them. [inclusion_prob()]
 #' documents which, why, and what to do instead.
 #'
+#' Two kinds of design are weighted conditional on the clusters the draw
+#' selected: [design_cluster()] with `balanced = TRUE`, and
+#' [design_multistage()] without `size` when the rows taken from a cluster
+#' depend on which other clusters were selected. With `a` of `A` clusters
+#' selected and `m_i` of the `N_i` rows of cluster `i` taken, `.prob` is
+#' `(a / A) * m_i / N_i`, the chance of the cluster being selected times the
+#' chance of the row being drawn given these clusters. The total estimated
+#' from it is unbiased given the clusters selected, and so over every
+#' selection. [sample_summary()] says when a sample is weighted this way.
+#'
 #' Keep `.prob` as it is: [ht_total()], [ht_mean()] and [as_svydesign()] refuse
 #' a sample whose `.prob` was changed. Weights adjusted after the draw, for
 #' nonresponse say, go in `.weight`, and [as_svydesign()] is the way to
@@ -105,7 +115,8 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   warn_region(design, data)
 
   if (!isTRUE(weights)) {
-    return(table_ready(with_seed(seed, draw_design(design, data))))
+    out <- with_seed(seed, draw_design(design, data))
+    return(table_ready(drop_selection(out)))
   }
 
   if (!is.data.frame(data)) {
@@ -148,10 +159,17 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   }
 
   # Probabilities first, so a design with no closed form fails before any
-  # sampling happens rather than after.
-  p_all <- exact_inclusion(design, data)
-  if (inherits(design, "drawn_design_certainty")) {
-    check_rest_reach(design, data, p_all)
+  # sampling happens rather than after. A design weighted conditional on its
+  # clusters has probabilities only once they are selected, so it gets its
+  # checks here and its probabilities after the draw.
+  conditional <- conditional_design(design, data)
+  if (conditional) {
+    conditional_setup(design, data)
+  } else {
+    p_all <- exact_inclusion(design, data)
+    if (inherits(design, "drawn_design_certainty")) {
+      check_rest_reach(design, data, p_all)
+    }
   }
 
   # Tag the population, draw from the tagged copy, then read the source row off
@@ -166,6 +184,9 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   tagged[[key]] <- seq_len(nrow(data))
 
   out <- with_seed(seed, draw_design(design, tagged))
+  selection <- attr(out, "drawn_selection", exact = TRUE)
+  out <- drop_selection(out)
+  if (conditional) p_all <- conditional_inclusion(design, data, selection)
   pos <- as.integer(out[[key]])
   out[[key]] <- NULL
 
@@ -193,7 +214,24 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   attr(out, "drawn_rows") <- copy_column(pos)
   attr(out, "drawn_population") <- snapshot_frame(data)
   attr(out, "drawn_pi") <- p_all
+  # The clusters selected, in the order selected, from which drawn_state()
+  # works out the conditional probabilities again.
+  if (conditional) attr(out, "drawn_selection") <- selection
   table_ready(out)
+}
+
+#' Remove the clusters a cluster or multistage draw records
+#'
+#' Their draw_design() methods attach the codes of the clusters they selected
+#' as `drawn_selection`. Only a sample weighted conditional on its clusters
+#' keeps them, set by draw() itself.
+#'
+#' @noRd
+drop_selection <- function(out) {
+  if (!is.null(attr(out, "drawn_selection", exact = TRUE))) {
+    attr(out, "drawn_selection") <- NULL
+  }
+  out
 }
 
 #' Does a design put the same row in a sample more than once?
@@ -227,7 +265,10 @@ table_ready <- function(out) {
 #'
 #' @param design A design object.
 #' @param data The data to sample from.
-#' @return The sampled rows.
+#' @return The sampled rows. The cluster and multistage methods attach the
+#'   codes of the clusters they selected as the attribute `drawn_selection`,
+#'   which [draw()] removes or, for a sample weighted conditional on its
+#'   clusters, keeps.
 #' @keywords internal
 #' @export
 draw_design <- function(design, data) {

@@ -4,6 +4,33 @@
 #' second. `n` is the total across the selected clusters under both allocations,
 #' matching [design_stratified()].
 #'
+#' @section When the take depends on the clusters selected:
+#' Without `size`, the `n` rows are split over the clusters selected, so a
+#' cluster's take is the same in every sample only under `"equal"`
+#' allocation of an `n` that divides by `n_clusters`, with no cluster
+#' smaller than `n / n_clusters`. Otherwise, under `"proportional"`
+#' allocation, with a remainder that goes to the largest clusters selected,
+#' or with a small cluster capped at its size and its shortfall dealt to the
+#' others, a row's inclusion probability depends on which other clusters
+#' were selected. It is the chance of drawing the row given the clusters
+#' selected, averaged over every possible selection, which has no closed
+#' form, so [inclusion_prob()] refuses it.
+#'
+#' `draw(weights = TRUE)` weights such a sample conditional on the clusters
+#' it selected. With `a` of `A` clusters selected and `m_i` of the `N_i`
+#' rows of cluster `i` taken, `.prob` is `(a / A) * m_i / N_i`, and the
+#' estimate of a total is `A / a` times the sum of the selected clusters'
+#' estimated totals. That is unbiased whichever clusters were selected, and
+#' so over all of them. [ht_total()] and [ht_mean()] estimate its variance
+#' with the two-stage formula, the variance between the estimated cluster
+#' totals plus that within each cluster at its own take, on `a - 1` degrees
+#' of freedom, and [as_svydesign()] hands it to `survey` in two stages,
+#' where the standard errors agree. The variance falls back to the
+#' delete-a-cluster jackknife when a selected cluster gives one row of
+#' several. Proportional allocation needs `min_per_cluster` of at least 1
+#' for weights, since a selected cluster with no rows would count as a
+#' cluster total of 0.
+#'
 #' @section Clusters in proportion to size:
 #' With `size`, the clusters are selected with probability proportional to a
 #' size measure, such as a count of households from a census, by
@@ -44,17 +71,21 @@
 #' @param clusters Column naming each row's cluster.
 #' @param n_clusters Number of clusters to select at stage one.
 #' @param n Total rows to draw across the selected clusters, at least
-#'   `n_clusters`. Make it a multiple of `n_clusters`, and no larger than
-#'   `n_clusters` times the smallest cluster, if you intend to estimate:
-#'   otherwise the per-cluster take depends on which clusters were selected
-#'   and there is no closed-form inclusion probability. See [inclusion_prob()].
+#'   `n_clusters`. A multiple of `n_clusters`, no larger than `n_clusters`
+#'   times the smallest cluster, gives every selected cluster the same take
+#'   and every row a closed-form inclusion probability. Otherwise the take
+#'   depends on which clusters were selected, and `draw(weights = TRUE)`
+#'   weights the sample conditional on them. See "When the take depends on
+#'   the clusters selected".
 #' @param allocation `"equal"` splits `n` evenly across the selected clusters;
-#'   `"proportional"` splits it in proportion to their size. Proportional
-#'   allocation can give a small selected cluster no rows; [draw()] then warns
-#'   with class `drawn_empty_cluster` and names it.
+#'   `"proportional"` splits it in proportion to their size, and its weights
+#'   are conditional on the clusters selected. Proportional allocation can
+#'   give a small selected cluster no rows; [draw()] then warns with class
+#'   `drawn_empty_cluster` and names it.
 #' @param min_per_cluster Minimum rows from each selected cluster. Defaults to
 #'   `0`, and `n_clusters * min_per_cluster` must not exceed `n`. A cluster
-#'   smaller than the minimum is taken whole. Take at least two rows per
+#'   smaller than the minimum is taken whole. `draw(weights = TRUE)` needs at
+#'   least 1 under proportional allocation. Take at least two rows per
 #'   cluster if you intend to estimate a variance: with one, the variation
 #'   within clusters cannot be measured and [ht_total()] falls back to the
 #'   ultimate-cluster jackknife.
@@ -235,9 +266,27 @@ cluster_units <- function(design, units, pop, ctx = NULL) {
 #' @export
 draw_design.drawn_design_multistage <- function(design, data) {
   sel <- select_clusters(design, data, multistage_setup(design, data))
-  data <- sel$data
-  sizes <- sel$sizes
+  n_alloc <- multistage_takes(design, sel$sizes)
+  warn_empty_clusters(n_alloc, sel$labels, design$n)
 
+  out <- reindex(sel$data,
+                 take_within(sel$idx_by_cluster, n_alloc, design$replace),
+                 sort = TRUE)
+  # draw(weights = TRUE) weights the sample conditional on these clusters
+  # when the take depends on them, and removes the attribute otherwise.
+  attr(out, "drawn_selection") <- sel$chosen
+  out
+}
+
+#' Split `n` over the selected clusters
+#'
+#' `sizes` holds the selected clusters' row counts, in the order they were
+#' selected; the allocation breaks ties in that order. Shared by the draw
+#' and `conditional_inclusion()`, so the weights follow the take the draw
+#' made.
+#'
+#' @noRd
+multistage_takes <- function(design, sizes) {
   # Not check_draw_size(): the bound here is the rows across the SELECTED
   # clusters, not nrow(data), and the generic message would name the wrong
   # number.
@@ -259,11 +308,19 @@ draw_design.drawn_design_multistage <- function(design, data) {
          design$min_per_cluster, "; the allocation totals ", sum(n_alloc),
          " row(s).", call. = FALSE)
   }
+  n_alloc
+}
 
-  warn_empty_clusters(n_alloc, sel$labels, design$n)
-
-  reindex(data, take_within(sel$idx_by_cluster, n_alloc, design$replace),
-          sort = TRUE)
+#' Does every selection give each cluster the same take?
+#'
+#' Equal allocation of an `n` that `n_clusters` divides, with no cluster,
+#' among `sizes`, smaller than the take unless rows are drawn with
+#' replacement. Otherwise the take depends on which clusters are selected.
+#'
+#' @noRd
+multistage_fixed <- function(design, sizes) {
+  design$allocation == "equal" && design$n %% design$n_clusters == 0L &&
+    (design$replace || all(sizes >= design$n %/% design$n_clusters))
 }
 
 #' Warn when the allocation leaves a selected cluster with no rows
@@ -321,8 +378,13 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
   #     size and the shortfall is dealt to the others. Sampling with
   #     replacement has no cap, so this one applies only without it.
   #
-  # Averaging over the possibilities is not a closed form, and the average is not
-  # the answer: it was out by 13% on a four-cluster frame and could exceed 1.
+  # The exact probability is the stage-one probability times the take given
+  # the selection, over N_h, averaged over every selection that includes the
+  # row's cluster, which needs those selections enumerated. Putting
+  # the average take, n / n_clusters, in its place was out by up to 17% on a
+  # four-cluster frame and could exceed 1. draw(weights = TRUE) weights such
+  # a sample conditional on the selection it made instead; see
+  # conditional_inclusion().
   m <- design$n %/% design$n_clusters
   if (design$n %% design$n_clusters != 0L) {
     no_closed_form(

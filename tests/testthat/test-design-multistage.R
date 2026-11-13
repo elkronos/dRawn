@@ -308,3 +308,142 @@ test_that("a size that is not one per cluster, or not usable, is refused", {
   expect_identical(p[45], 0)
   expect_equal(sum(p), 6)
 })
+
+# ---- weights conditional on the clusters selected ----------------------------
+
+test_that("a take that depends on the clusters selected is weighted on them", {
+  sizes <- c(6, 6, 9, 4, 6)
+  d <- data.frame(id = seq_len(sum(sizes)),
+                  cl = rep(c("a", "b", "c", "d", "e"), sizes))
+  d$y <- (d$id * 7) %% 13 + rep(c(5, 20, 9, 30, 14), sizes)
+  N_i <- rep(sizes, sizes)
+  designs <- list(
+    # A remainder, dealt in the order the clusters were selected when their
+    # sizes tie.
+    design_multistage("cl", n_clusters = 2, n = 7),
+    # Cluster d is smaller than the take of 5, and is taken whole.
+    design_multistage("cl", n_clusters = 3, n = 15),
+    design_multistage("cl", n_clusters = 3, n = 10,
+                      allocation = "proportional", min_per_cluster = 1)
+  )
+  for (des in designs) {
+    expect_error(inclusion_prob(d, des), "no closed-form")
+    a <- des$n_clusters
+    for (seed in 1:25) {
+      s <- draw(d, des, seed = seed, weights = TRUE)
+      expect_identical(s$id, draw(d, des, seed = seed)$id)
+      m <- as.vector(table(s$cl)[s$cl])
+      expect_equal(s$.prob, a / 5 * m / N_i[s$.row])
+      expect_setequal(attr(s, "drawn_selection"),
+                      match(unique(s$cl), unique(d$cl)))
+    }
+    r <- ht_total(s, "y")
+    expect_equal(r$method, "analytic")
+    expect_equal(r$df, a - 1)
+    expect_equal(r$total, sum(s$y / s$.prob))
+  }
+})
+
+test_that("conditional weights are unbiased, by enumeration", {
+  # Every ordered selection of 2 of 4 clusters, then every subset of the
+  # rows each selected cluster gives. Ties in the allocation are broken by
+  # the order of selection, so both orders are counted.
+  sizes <- c(5, 3, 2, 4)
+  d <- data.frame(cl = rep(1:4, sizes))
+  d$y <- c(4, 9, 1, 7, 12, 30, 22, 26, 3, 5, 16, 18, 11, 20)
+  des <- design_multistage("cl", n_clusters = 2, n = 5,
+                           allocation = "proportional", min_per_cluster = 1)
+  est <- numeric(0)
+  for (i in 1:4) for (j in setdiff(1:4, i)) {
+    p <- drawn:::conditional_inclusion(des, d, c(i, j))
+    expect_true(all(is.na(p[!d$cl %in% c(i, j)])))
+    # `.prob` is a / A times the chance of a row given the selection.
+    take <- round(p * 4 / 2 * sizes[d$cl])
+    total <- 0
+    for (k in c(i, j)) {
+      rows <- which(d$cl == k)
+      subsets <- utils::combn(rows, take[rows[1]], simplify = FALSE)
+      total <- total + mean(vapply(subsets, function(r) sum(d$y[r] / p[r]),
+                                   numeric(1)))
+    }
+    expect_equal(take[d$cl == i][1] + take[d$cl == j][1], 5)
+    est <- c(est, total)
+  }
+  expect_equal(mean(est), sum(d$y))
+})
+
+test_that("conditionally weighted totals are unbiased over repeated draws", {
+  skip_on_cran()
+  sizes <- c(4, 9, 12, 5, 20, 7, 15, 6, 10, 8)
+  d <- data.frame(cl = rep(seq_along(sizes), sizes))
+  d$y <- 3 * d$cl + seq_len(nrow(d)) %% 7 + rep(sizes, sizes)
+  des <- design_multistage("cl", n_clusters = 4, n = 15,
+                           allocation = "proportional", min_per_cluster = 2)
+  totals <- vapply(1:1000, function(i) {
+    s <- draw(d, des, seed = i, weights = TRUE)
+    sum(s$y * s$.weight)
+  }, numeric(1))
+  expect_lt(abs(mean(totals) - sum(d$y)), 3 * stats::sd(totals) / sqrt(1000))
+})
+
+test_that("proportional weights need a row from every selected cluster", {
+  d <- data.frame(id = 1:31, cl = c("tiny", rep("big", 30)), y = 1:31)
+  des <- design_multistage("cl", n_clusters = 2, n = 10,
+                           allocation = "proportional")
+  expect_error(draw(d, des, seed = 1, weights = TRUE),
+               "`min_per_cluster` is 0, so proportional allocation can give",
+               fixed = TRUE)
+  s <- draw(d, design_multistage("cl", n_clusters = 2, n = 10,
+                                 allocation = "proportional",
+                                 min_per_cluster = 1), seed = 1,
+            weights = TRUE)
+  expect_equal(as.vector(table(s$cl)[c("big", "tiny")]), c(9L, 1L))
+  # Both clusters selected: no variance between them, and the one taken
+  # whole adds none within.
+  r <- ht_total(s, "y")
+  big <- s$y[s$cl == "big"]
+  expect_equal(r$variance, 30^2 * (1 - 9 / 30) * stats::var(big) / 9)
+})
+
+test_that("one row from a selected cluster of several falls back", {
+  sizes <- c(2, 20, 20, 20)
+  d <- data.frame(cl = rep(c("s", "x", "y", "z"), sizes))
+  d$y <- seq_len(nrow(d)) %% 11
+  des <- design_multistage("cl", n_clusters = 2, n = 8,
+                           allocation = "proportional", min_per_cluster = 1)
+  seed <- which(vapply(1:40, function(i) {
+    "s" %in% draw(d, des, seed = i)$cl
+  }, logical(1)))[1]
+  s <- draw(d, des, seed = seed, weights = TRUE)
+  expect_equal(sum(s$cl == "s"), 1L)
+  r <- ht_total(s, "y")
+  expect_equal(r$method, "jackknife")
+  expect_match(r$note, "one row from a selected cluster of several")
+})
+
+test_that("a conditional sample keeps the clusters it was drawn from", {
+  sizes <- c(6, 6, 9, 4, 6)
+  d <- data.frame(id = seq_len(sum(sizes)),
+                  cl = rep(c("a", "b", "c", "d", "e"), sizes))
+  d$y <- d$id %% 5
+  s <- draw(d, design_multistage("cl", n_clusters = 3, n = 13), seed = 2,
+            weights = TRUE)
+  expect_s3_class(ht_total(s, "y"), "drawn_ht")
+  expect_s3_class(ht_mean(s[rev(seq_len(nrow(s))), ], "y"), "drawn_mean")
+  expect_equal(sample_summary(s)$unreachable, 0L)
+
+  lost <- s
+  attr(lost, "drawn_selection") <- NULL
+  expect_error(ht_total(lost, "y"),
+               "does not record which clusters were selected")
+  bad <- s
+  attr(bad, "drawn_selection") <- c(1L, 1L, 2L)
+  expect_error(ht_total(bad, "y"), "not 3 distinct clusters of the 5")
+  other <- s
+  sel <- attr(s, "drawn_selection")
+  attr(other, "drawn_selection") <- c(setdiff(1:5, sel)[1], sel[-1])
+  expect_error(ht_total(other, "y"), "different inclusion probability")
+  edited <- s
+  edited$.prob[1] <- edited$.prob[1] / 2
+  expect_error(ht_total(edited, "y"), "differ from the inclusion probabilities")
+})

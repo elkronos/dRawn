@@ -110,3 +110,140 @@ test_that("selecting many clusters takes one pass over the frame", {
   expect_equal(nrow(m), 5000)
   expect_lt(took, 5)
 })
+
+# ---- balanced clusters ------------------------------------------------------
+
+test_that("balanced clusters have exact inclusion probabilities", {
+  # The take is the smallest selected cluster's size. Given cluster i, the
+  # other cluster is one of three, so clusters of 2/4/6/8 average takes of
+  # 2, 10/3, 4 and 4.
+  d <- data.frame(cl = rep(c("a", "b", "c", "d"), c(2, 4, 6, 8)))
+  des <- design_cluster("cl", n_clusters = 2, balanced = TRUE)
+  p <- inclusion_prob(d, des)
+  expect_equal(as.numeric(tapply(p, d$cl, unique)),
+               c(1 / 2, 5 / 12, 1 / 3, 1 / 4))
+  expect_equal(sampling_weight(d, des), 1 / p)
+  sim <- inclusion_prob(d, des, simulate = TRUE, R = 2000, seed = 1)
+  expect_lt(max(abs(tapply(sim, d$cl, mean) - tapply(p, d$cl, mean))), 0.03)
+
+  # Every selection of 3 clusters out of 7, of sizes with ties, enumerated.
+  sizes <- c(3, 7, 1, 7, 4, 9, 4)
+  e <- data.frame(cl = rep(seq_along(sizes), sizes))
+  got <- inclusion_prob(e, design_cluster("cl", n_clusters = 3,
+                                          balanced = TRUE))
+  sets <- utils::combn(7, 3)
+  want <- numeric(7)
+  for (j in seq_len(ncol(sets))) {
+    s <- sets[, j]
+    want[s] <- want[s] + min(sizes[s]) / sizes[s] / ncol(sets)
+  }
+  expect_equal(as.numeric(tapply(got, e$cl, unique)), want)
+
+  # The probability plot needs them too.
+  f <- tempfile(fileext = ".png")
+  grDevices::png(f)
+  on.exit({grDevices::dev.off(); unlink(f)}, add = TRUE)
+  expect_no_error(plot(des, d, type = "probability"))
+
+  # One cluster selected is taken whole; all of them, at the smallest size.
+  expect_equal(inclusion_prob(e, design_cluster("cl", n_clusters = 1,
+                                                balanced = TRUE)),
+               rep(1 / 7, nrow(e)))
+  expect_equal(inclusion_prob(e, design_cluster("cl", n_clusters = 7,
+                                                balanced = TRUE)),
+               1 / rep(sizes, sizes))
+})
+
+test_that("a missing cluster label gets probability 0 under balance too", {
+  d <- data.frame(cl = c(NA, rep(c("a", "b", "c"), c(2, 4, 6))))
+  des <- design_cluster("cl", n_clusters = 2, balanced = TRUE, na_rm = TRUE)
+  p <- inclusion_prob(d, des)
+  expect_equal(p[1], 0)
+  # Average takes of 2, 3 and 3, with two of three clusters selected.
+  expect_equal(p[-1], rep(c(2 / 3, 1 / 2, 1 / 3), c(2, 4, 6)))
+})
+
+test_that("a balanced sample is weighted conditional on its clusters", {
+  sizes <- c(3, 5, 7, 4, 6, 8, 5, 9)
+  d <- data.frame(id = seq_len(sum(sizes)),
+                  cl = rep(paste0("k", 1:8), sizes))
+  d$y <- (d$id * 37) %% 23 + rep(c(10, 40, 25, 60, 15, 30, 50, 20), sizes)
+  des <- design_cluster("cl", n_clusters = 4, balanced = TRUE)
+  s <- draw(d, des, seed = 3, weights = TRUE)
+
+  sel <- attr(s, "drawn_selection")
+  expect_type(sel, "integer")
+  expect_setequal(sel, match(unique(s$cl), unique(d$cl)))
+  m <- min(sizes[sel])
+  expect_equal(as.vector(table(s$cl)), rep(m, 4))
+  expect_equal(s$.prob, 4 / 8 * m / sizes[match(s$cl, unique(d$cl))])
+  pi_all <- attr(s, "drawn_pi")
+  expect_true(all(is.na(pi_all[!d$cl %in% s$cl])))
+  expect_equal(pi_all[s$.row], s$.prob)
+
+  # The two-stage formula, at the take of m rows from each cluster.
+  r <- ht_total(s, "y")
+  N_i <- sizes[sel]
+  g <- factor(s$cl, levels = unique(d$cl)[sel])
+  tot <- N_i * tapply(s$y, g, mean)
+  s2 <- tapply(s$y, g, stats::var)
+  v <- 8^2 * (1 - 4 / 8) * stats::var(tot) / 4 +
+    8 / 4 * sum(N_i^2 * (1 - m / N_i) * s2 / m)
+  expect_equal(r$total, 8 / 4 * sum(tot))
+  expect_equal(r$method, "analytic")
+  expect_equal(r$variance, v)
+  expect_equal(r$df, 3)
+  expect_equal(ht_total(s, "y", variance = "jackknife")$method, "jackknife")
+
+  sm <- sample_summary(s)
+  expect_equal(sm$conditional, 4L)
+  expect_equal(sm$N_reachable, nrow(d))
+  expect_equal(sm$unreachable, 0L)
+  expect_output(print(sm), "conditional on the 4 clusters selected")
+  expect_true(is.na(sample_summary(draw(d, design_cluster("cl", 4), seed = 3,
+                                        weights = TRUE))$conditional))
+
+  # Without weights the selection is not attached.
+  expect_null(attr(draw(d, des, seed = 3), "drawn_selection"))
+})
+
+test_that("conditional weights are unbiased over every selection", {
+  # Given the clusters, each is estimated without bias; the clusters are a
+  # simple random sample. Averaging the expected estimate over all 35
+  # selections gives the total. `.prob` is a / A times the chance of a row
+  # given the selection, and that chance averages to the exact probability.
+  sizes <- c(3, 7, 1, 7, 4, 9, 4)
+  d <- data.frame(cl = rep(seq_along(sizes), sizes))
+  d$y <- seq_len(nrow(d))^2 %% 17 + d$cl * 5
+  des <- design_cluster("cl", n_clusters = 3, balanced = TRUE)
+  sets <- utils::combn(7, 3)
+  est <- numeric(ncol(sets))
+  avg <- numeric(nrow(d))
+  for (j in seq_len(ncol(sets))) {
+    p <- drawn:::conditional_inclusion(des, d, sets[, j])
+    take <- min(sizes[sets[, j]])
+    hit <- !is.na(p)
+    # A row of cluster i is drawn with chance take / N_i given the clusters.
+    est[j] <- sum((d$y * take / sizes[d$cl] / p)[hit])
+    avg[hit] <- avg[hit] + p[hit] * 7 / 3 / ncol(sets)
+  }
+  expect_equal(mean(est), sum(d$y))
+  expect_equal(avg, inclusion_prob(d, des))
+})
+
+test_that("a balanced design under certainty declines the two-stage form", {
+  # Inside a certainty design the cluster rows are weighted with the
+  # unconditional probabilities, which the two-stage estimator cannot use.
+  sizes <- rep(c(3, 5, 7), 4)
+  d <- data.frame(cl = rep(paste0("c", 1:12), sizes))
+  d$v <- seq_len(nrow(d))
+  d$y <- (d$v * 13) %% 11 + 2
+  des <- design_certainty("v", 58, design_cluster("cl", n_clusters = 4,
+                                                  balanced = TRUE))
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  expect_null(attr(s, "drawn_selection"))
+  r <- ht_total(s, "y")
+  expect_equal(r$method, "jackknife")
+  expect_match(r$note, "no closed-form joint inclusion probability")
+  expect_equal(ht_total(s, "y", variance = "analytic")$method, "none")
+})

@@ -17,7 +17,7 @@
 #'   [design_stratified()] \tab `strata` from the strata columns, `fpc` each stratum's size \tab identical \cr
 #'   [design_temporal()] \tab `strata` from the sampling intervals, `fpc` each interval's size \tab identical \cr
 #'   [design_cluster()] \tab `ids` a `.cluster` column numbering the clusters, `fpc` the number of clusters \tab identical \cr
-#'   [design_multistage()] \tab two stages, `ids` the `.cluster` numbers then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
+#'   [design_multistage()], and [design_cluster()] with `balanced = TRUE` \tab two stages, `ids` the `.cluster` numbers then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size; with `strata`, the strata too, which change only the degrees of freedom \tab identical \cr
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities; with `strata`, `strata` from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
@@ -94,7 +94,14 @@
 #' A stratum or interval with a single sampled row makes `survey` stop with
 #' "Stratum has only one PSU" unless `options(survey.lonely.psu)` says
 #' otherwise; [ht_total()] declines in the same situation. Draw at least two
-#' per stratum.
+#' per stratum. A cluster with a single sampled row of several does the same
+#' at the second stage of a two-stage design.
+#'
+#' A sample weighted conditional on the clusters selected (see "Design
+#' weights" in [draw()]) goes over in two stages too. `survey` works out
+#' each cluster's second-stage sampling fraction from the rows sampled in
+#' it, which is the take given that selection, so its estimate and standard
+#' error are those of [ht_total()].
 #'
 #' @section Weights and design columns:
 #' `survey` gets the sample's `.weight` column as its weights. Weights adjusted
@@ -281,10 +288,14 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       cl <- count_clusters(design, pop)
       n_clusters <- cl$total
       cluster <- cl$code[rows]
-      if (design_type(design) == "cluster") {
+      if (design_type(design) == "cluster" && !design$balanced) {
         return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
                     ids = stats::as.formula("~.cluster"), cluster = cluster))
       }
+      # Two stages, also for balanced clusters, which subsample. `survey`
+      # takes each cluster's sampling fraction from the rows sampled in it,
+      # which is the take given the clusters selected, so its estimate is the
+      # one weighted conditional on them.
       sizes <- tabulate(cl$code, n_clusters)
       list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
            fpc2 = sizes[cluster],

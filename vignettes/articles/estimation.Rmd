@@ -52,6 +52,7 @@ piece as fixed, which it is not.
 |---|---|---|---|
 | simple, stratified, temporal, spatial, reservoir, multistage | Sen-Yates-Grundy with exact $\pi_{kl}$ | `"analytic"` | exact, unbiased |
 | cluster | between-cluster form over cluster totals | `"analytic"` | exact, unbiased |
+| cluster with `balanced = TRUE`, multistage with a take that depends on the clusters selected | two-stage formula at each cluster's take, weights conditional on the clusters selected | `"analytic"` | unbiased |
 | weighted, `"poisson"` | $\sum (1-\pi_k) y_k^2 / \pi_k^2$ | `"analytic"` | exact, unbiased |
 | weighted, `"systematic"` | Deville (1999) | `"deville"` | approximation |
 | systematic | successive differences (Wolter 2007) | `"successive difference"` | approximation |
@@ -86,6 +87,22 @@ $s_i^2$ the variance within cluster $i$. `drawn` computes these forms, which
 take time and memory in proportion to the number of sampled rows. The sum over
 pairs needs matrices with a row and a column per sampled row, more than a
 gigabyte at 4,000 rows.
+
+Under proportional allocation, an $n$ that does not divide by the number of
+clusters, a cluster smaller than the take, or `design_cluster(balanced = TRUE)`,
+the take $m_i$ from cluster $i$ depends on which clusters were selected. A
+row's inclusion probability then averages over every selection; only the
+balanced design has a closed form for it, and none of them has one for the
+joint probabilities. `draw(weights = TRUE)` weights such a sample conditional
+on the selection, $\pi_k = (a/A)\, m_i / N_i$, so the estimated total is $A/a$
+times the sum of the estimated totals of the selected clusters, unbiased given
+the selection and so over every selection. The formula above, with $m_i$ in
+place of $m$, is unbiased for its variance. Given the selection, the estimated
+cluster totals also vary by the variance within each cluster, so the first term
+holds $(A/a)^2 (1 - a/A)$ times the within-cluster variances on average, and
+with the second term that makes $(A/a)^2$ times them, the variance of the
+estimate given the selection. What remains of the first term is the variance
+between clusters.
 
 The condition matters. **A stratum with one sampled row** has no pair inside it,
 so it silently contributes nothing: with one row in every stratum the sum is

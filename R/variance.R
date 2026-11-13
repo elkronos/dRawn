@@ -556,8 +556,10 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
   if (length(unique(psu[member])) >= 2L) return(NULL)
   pi_all <- parts$pi_all
   if (!is.null(pi_all) && !anyNA(frame)) {
-    reach <- pi_all > 0 & frame
-    if (all(is_certain(pi_all[reach]))) return(NULL)
+    # A conditional sample's unselected clusters have no recorded
+    # probability, and were not taken with certainty.
+    reach <- reachable(pi_all) & frame
+    if (!anyNA(pi_all[reach]) && all(is_certain(pi_all[reach]))) return(NULL)
   }
   unit <- unit_noun(parts$design)
   core <- paste0("A Hajek mean's linearised residuals sum to zero over it, so ",
@@ -830,29 +832,86 @@ srs_variance <- function(z, group, n_g, N_g) {
   sum((N^2 * (1 - n / N) * ss / ((m - 1) * n))[use])
 }
 
-#' Variance of a total from a two-stage sample with an equal take
+#' Variance of a total from a two-stage sample
 #'
-#' `a` of `A` clusters by simple random sampling, then `m` of the `sizes[i]`
-#' rows of each selected cluster `i`. The unbiased estimator is
-#' `A^2 * (1 - a / A) * s_t^2 / a + (A / a) * sum(N_i^2 * (1 - m / N_i) *
-#' s_i^2 / m)`, with `s_t^2` the variance of the estimated cluster totals
-#' `N_i * mean(z_i)` and `s_i^2` the variance of `z` within cluster `i`. It is
-#' the Sen-Yates-Grundy sum for this design, computed without the n x n joint
-#' matrix. Selecting every cluster leaves nothing between them to vary, and a
-#' cluster taken whole adds nothing within it.
+#' `a` of `A` clusters by simple random sampling, then `m_i` of the
+#' `sizes[i]` rows of each selected cluster `i`. The unbiased estimator is
+#' `A^2 * (1 - a / A) * s_t^2 / a + (A / a) * sum(N_i^2 * (1 - m_i / N_i) *
+#' s_i^2 / m_i)`, with `s_t^2` the variance of the estimated cluster totals
+#' `N_i * mean(z_i)` and `s_i^2` the variance of `z` within cluster `i`. With
+#' an equal take it is the Sen-Yates-Grundy sum for this design, computed
+#' without the n x n joint matrix. Selecting every cluster leaves nothing
+#' between them to vary, and a cluster taken whole adds nothing within it.
 #'
-#' `cluster` is each sampled row's cluster code, indexing `sizes`.
+#' `cluster` is each sampled row's cluster code, indexing `sizes`, and each
+#' cluster's take `m_i` is the number of its rows in the sample. The take may
+#' depend on which clusters were selected, as in a sample weighted
+#' conditional on them: given the selection, the estimated cluster totals
+#' vary by their within-cluster variance on top of the variance between
+#' clusters, which brings the within term to `(A / a)^2` of the variances
+#' within, and the estimator stays unbiased over every selection.
 #'
 #' @noRd
-two_stage_variance <- function(z, cluster, a, A, m, sizes) {
+two_stage_variance <- function(z, cluster, a, A, sizes) {
   z <- as.numeric(z)
   live <- sort(unique(cluster))
   g <- match(cluster, live)
   N_i <- as.numeric(sizes)[live]
-  totals <- N_i * rowsum(z, g)[, 1L] / tabulate(g, length(live))
+  m_i <- tabulate(g, length(live))
+  totals <- N_i * rowsum(z, g)[, 1L] / m_i
   between <- if (a < A) A^2 * (1 - a / A) * stats::var(totals) / a else 0
-  within <- srs_variance(z, g, rep(m, length(live)), N_i)
+  within <- srs_variance(z, g, m_i, N_i)
   between + A / a * within
+}
+
+#' Two-stage variance of a sample weighted conditional on its clusters
+#'
+#' For a balanced cluster sample, or a multistage one whose take depends on
+#' the clusters selected (see `conditional_inclusion()`).
+#' `two_stage_variance()` with each cluster's own take is unbiased for it.
+#'
+#' The sample must carry the conditional probabilities, `(a / A) * m_i /
+#' N_i` with `m_i` the rows of cluster `i` in the sample. A balanced design
+#' in the `rest` of a certainty design is weighted with its unconditional
+#' probabilities, whose joint probabilities have no closed form, so that
+#' declines. So does a sample from one cluster, and one with a cluster that
+#' gave one row of several, whose variation within cannot be measured.
+#'
+#' @noRd
+conditional_variance <- function(design, cl, rows, y, pi_i) {
+  code <- cl$code[rows]
+  if (anyNA(code)) {
+    return(list(variance = NA_real_,
+                note = "Some sampled rows have no cluster label."))
+  }
+  live <- unique(code)
+  g <- match(code, live)
+  k <- length(live)
+  if (k < 2L && !all(is_certain(pi_i))) {
+    return(list(variance = NA_real_, note = paste0(
+      "A variance needs at least two clusters; this sample has ", k, ".")))
+  }
+  a <- design$n_clusters
+  A <- cl$total
+  sizes <- tabulate(cl$code, A)
+  m <- tabulate(g, k)
+  N <- sizes[live]
+  if (!all(same_prob(pi_i, (a / A * m / N)[g]))) {
+    no_joint_form(
+      paste0("`", design_label(design), "`"),
+      paste0("Its sample is weighted with unconditional probabilities, ",
+             "which the two-stage estimator\ncannot use. draw(weights = ",
+             "TRUE) weights the design on its own conditional on the\n",
+             "clusters selected."))
+  }
+  if (all(is_certain(pi_i))) return(all_certain())
+  if (any(m < 2L & m < N)) {
+    return(list(variance = NA_real_, note = paste0(
+      "With one row from a selected cluster of several, the variation ",
+      "within clusters cannot be measured, and the two-stage estimator would ",
+      "understate the variance.", fallback_note(a, A))))
+  }
+  list(variance = two_stage_variance(y, code, a, A, sizes), note = NULL)
 }
 
 #' The variance of a simple random sample from one group of `N` rows
@@ -1226,10 +1285,14 @@ srs_variance_by <- function(z, group, domain, n_dom, n_g, N_g) {
 #' over them is each cluster's contribution to the total. That is the textbook
 #' form, and it is algebraically identical to the delete-a-cluster jackknife.
 #'
+#' A balanced design subsamples the clusters it selects, and gets the
+#' two-stage form of `conditional_variance()`.
+#'
 #' @noRd
 ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
                                              domain = NULL, ctx = NULL) {
   cl <- from_context(ctx, "clusters", count_clusters(design, data))
+  if (design$balanced) return(conditional_variance(design, cl, rows, y, pi_i))
   A <- cl$total
   code <- cl$code[rows]
   if (anyNA(code)) {
@@ -1249,8 +1312,11 @@ ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
 #' Two-stage variance, declining where a stage is unmeasurable
 #'
 #' With an equal take that divides `n`, drawn without replacement, the exact
-#' estimator is `two_stage_variance()`. Any other multistage design has no
-#' closed-form joint probabilities, and the default method declines.
+#' estimator is `two_stage_variance()`. A take that depends on the clusters
+#' selected is weighted conditional on them, and `conditional_variance()`
+#' applies the same formula at each cluster's own take. A design drawn with
+#' replacement has no closed-form joint probabilities, and the default
+#' method declines.
 #'
 #' A sample from a single cluster has no variation between clusters to
 #' measure. Sen-Yates-Grundy came out negative on every such sample, or 0 for
@@ -1280,22 +1346,19 @@ ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
     return(list(variance = NA_real_, note = paste0(
       "A variance needs at least two clusters; this sample has ", n_cl, ".")))
   }
-  if (!design$replace && design$allocation == "equal" &&
-      design$n %/% design$n_clusters == 1L &&
-      design$n %% design$n_clusters == 0L) {
+  if (design$replace) return(NextMethod())
+  sizes <- from_context(ctx, "cluster_sizes", tabulate(cl$code, cl$total))
+  if (!multistage_fixed(design, sizes)) {
+    return(conditional_variance(design, cl, rows, y, pi_i))
+  }
+  if (design$n %/% design$n_clusters == 1L) {
     return(list(variance = NA_real_, note = paste0(
       "With one row per selected cluster the variation within clusters ",
       "cannot be measured, and the exact two-stage estimator would understate ",
       "the variance.", fallback_note(design$n_clusters, cl$total))))
   }
-  if (design$replace || design$allocation != "equal" ||
-      design$n %% design$n_clusters != 0L) {
-    return(NextMethod())
-  }
   v <- two_stage_variance(y, cl$code[rows], design$n_clusters, cl$total,
-                          design$n %/% design$n_clusters,
-                          from_context(ctx, "cluster_sizes",
-                                       tabulate(cl$code, cl$total)))
+                          sizes)
   list(variance = v, note = NULL)
 }
 
@@ -1856,7 +1919,8 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
 #' Without a finite count of units in the frame there is nothing to correct
 #' by, and the correction is 1.
 #'
-#' Not applied to multi-stage designs. Each estimated cluster total carries
+#' Not applied to multi-stage designs, or to balanced cluster sampling, which
+#' subsamples its clusters too. Each estimated cluster total carries
 #' the second stage's variance as well as the first's, and multiplying by the
 #' first-stage correction `1 - f1`, with `f1 = n_clusters / A`, would scale
 #' both, understating by `f1` times the within-cluster component. Leaving it
@@ -1866,7 +1930,10 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
 #'
 #' @noRd
 jackknife_fpc <- function(design, pop, m, n_fixed = 0L, ctx = NULL) {
-  if (inherits(design, "drawn_design_multistage")) return(1)
+  if (inherits(design, "drawn_design_multistage") ||
+      (inherits(design, "drawn_design_cluster") && design$balanced)) {
+    return(1)
+  }
   total <- if (inherits(design, "drawn_design_cluster")) {
     from_context(ctx, "clusters", count_clusters(design, pop))$total
   } else {
