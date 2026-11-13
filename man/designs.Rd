@@ -89,7 +89,10 @@ standard error from the variance estimator suited to the design and a
 confidence interval on the design's degrees of freedom. \code{\link[=deff]{deff()}} reports
 what the design cost in precision against simple random sampling, and
 \code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn against what was in the
-frame.
+frame. \code{\link[=add_fieldwork]{add_fieldwork()}} joins fieldwork results to a sample by an id,
+\code{\link[=as_drawn]{as_drawn()}} rebuilds a sample read back from a file or a database, and
+\code{\link[=compact_sample]{compact_sample()}} drops the frame columns its design does not read before
+it is saved or shared.
 
 Going the other way, \code{\link[=plan_size]{plan_size()}} solves for the sample size a given margin
 of error requires — the step \emph{before} choosing a design. For analysis this

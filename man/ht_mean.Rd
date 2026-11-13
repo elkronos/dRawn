@@ -15,7 +15,8 @@ ht_mean(
   proportion = NULL,
   ci_method = c("logit", "beta"),
   alternative = c("two.sided", "less", "greater"),
-  contrast = NULL
+  contrast = NULL,
+  na_rm = FALSE
 )
 }
 \arguments{
@@ -39,12 +40,17 @@ symmetric interval. See "Proportions".}
 \item{ci_method}{The interval for a proportion: \code{"logit"}, or \code{"beta"} for
 Korn and Graubard's. A proportion of exactly 0 or 1 gets \code{"beta"} either
 way. See "Proportions".}
+
+\item{na_rm}{\code{FALSE} refuses a missing \code{y}. \code{TRUE} estimates the mean over
+the rows with \code{y} present, as a domain of the sample. See "Missing
+values".}
 }
 \value{
 A list with a \code{print()} method, holding \code{mean}, \code{estimator},
 \code{variable}, \code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}, \code{n},
 \code{n_random}, \code{design}, \code{deff}, \code{method}, \code{note}, \code{ci_scale} (\code{"linear"},
-\code{"logit"} or \code{"beta"}) and \code{unreachable}. See \code{\link[=ht_total]{ht_total()}} for what
+\code{"logit"} or \code{"beta"}), \code{unreachable} and \code{n_missing}, the sampled rows
+with \code{y} missing that \code{na_rm = TRUE} left out. See \code{\link[=ht_total]{ht_total()}} for what
 \code{variable}, \code{n_random}, \code{method}, \code{df}, \code{note} and \code{unreachable} say,
 and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data frame with one row
 per domain, and with \code{contrast} a \code{drawn_contrast}, as for \code{\link[=ht_total]{ht_total()}}.
@@ -149,6 +155,21 @@ When \code{y} has the same value in every sampled row, the residuals are 0 and
 the Hajek mean's variance is set to exactly 0, with a note, rather than
 left to rounding error, which gave standard errors near \code{1e-16} and design
 effects that changed from seed to seed. The design effect is then \code{NA}.
+}
+
+\section{Missing values}{
+
+A missing \code{y} is refused unless \code{na_rm = TRUE}. Then the mean is the
+Hajek mean over the rows with \code{y} present, treated as a domain of the
+whole sample, with the design's own variance estimator, and equals
+\code{survey::svymean(na.rm = TRUE)} on \code{\link[=as_svydesign]{as_svydesign()}}. It assumes the values
+are missing completely at random, and the printed result says so. \code{n}
+counts the rows with \code{y} present, \code{n_missing} the others, and the design
+effect is \code{NA}, as for a domain. With \code{by}, each domain is the rows of
+its \code{by} values with \code{y} present. \code{estimator = "ht"} is refused, since
+the number of frame rows that would have a \code{y} is unknown. See "Missing
+values and nonresponse" in \code{\link[=ht_total]{ht_total()}} for when the assumption fails and
+what to do then.
 }
 
 \examples{

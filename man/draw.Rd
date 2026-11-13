@@ -73,10 +73,13 @@ The sample also carries its design, the frame rows it came from and a copy
 of the frame as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
 \code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone.
 \itemize{
-\item The frame is copied when the sample is drawn. Later edits to \code{data},
-including data.table's in-place \verb{:=}, \code{setorder()} and \code{setkey()}, do not
-reach the sample, and saving the sample with \code{\link[=saveRDS]{saveRDS()}} saves the copy
-with it.
+\item The frame is copied when the sample is drawn, every column of it. Later
+edits to \code{data}, including data.table's in-place \verb{:=}, \code{setorder()} and
+\code{setkey()}, do not reach the sample. Each sample holds its own copy, in
+memory and in every file it is saved to with \code{\link[=saveRDS]{saveRDS()}}, so a list of
+samples from a large frame holds the frame once per sample, and a
+sample sent to someone sends them the frame, with any personal data in
+it. \code{\link[=compact_sample]{compact_sample()}} keeps only the columns the design reads.
 \item Reordering the sample by \code{[}, \code{dplyr::arrange()} or
 \code{data.table::setorder()} is safe, because each row finds its frame row
 through \code{.row}.
@@ -85,7 +88,11 @@ through \code{.row}.
 that repeat rows keep the attributes but no longer match the rows that
 were drawn, and the functions above refuse them. \code{\link[=merge]{merge()}}, column
 selection (\code{s[, cols]}), \code{\link[=subset]{subset()}} and \code{\link[=transform]{transform()}} drop the attributes
-altogether. Add fieldwork results with \code{s$col <- value}.
+altogether. Add fieldwork results with \code{\link[=add_fieldwork]{add_fieldwork()}}, which matches
+them on an id, or with \code{s$col <- value}.
+\item A CSV or spreadsheet file and a database table keep the rows and the
+\code{.row} column but not the attributes. \code{\link[=as_drawn]{as_drawn()}} rebuilds the sample
+from them, the design and the frame.
 }
 
 \code{weights = TRUE} is not available for a design that samples \strong{with

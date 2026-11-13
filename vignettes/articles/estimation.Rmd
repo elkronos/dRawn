@@ -387,6 +387,84 @@ c(horvitz_thompson = ht_total(srs, "y")$se,
 With `table = TRUE`, `frame_totals()` gives the counts in each cell of its
 variables instead, for `survey::postStratify()` and `survey::rake()`.
 
+## Fieldwork and missing values
+
+A weighted sample carries its design, so fieldwork results are joined to the
+sample rather than the sample to the results. `add_fieldwork()` adds the
+columns of a results table keyed by an id, in the sample's own order, and
+leaves `y` missing for a sampled row with no result. A sample sent to the
+field as a CSV file comes back with its rows and its `.row` column but not
+its design, and `as_drawn()` rebuilds it from the design and the frame.
+Here the sites differ in spend, and site c answered less often:
+
+```{r fieldwork}
+set.seed(11)
+shops <- data.frame(id = 1:600,
+                    site = rep(c("a", "b", "c"), times = c(300, 200, 100)))
+shops$spend <- round(c(a = 80, b = 120, c = 200)[shops$site] +
+                       rnorm(600, 0, 25))
+listing <- shops[, c("id", "site")]
+by_site <- design_stratified("site", n = 60)
+s <- draw(listing, by_site, seed = 1, weights = TRUE)
+
+path <- tempfile(fileext = ".csv")
+write.csv(s, path, row.names = FALSE)
+back <- as_drawn(read.csv(path), by_site, listing)
+
+answered <- back$id[back$site != "c" | back$id %% 2 == 0]
+results <- shops[shops$id %in% answered, c("id", "spend")]
+back <- add_fieldwork(back, results, by = "id")
+table(back$site, answered = !is.na(back$spend))
+```
+
+`ht_total()` refuses the missing values. A total over the rows that
+answered counts the others as 0, and so is low by about the share of the
+weight they hold:
+
+```{r missing-total, error = TRUE}
+ht_total(back, "spend")
+```
+
+`ht_mean(na_rm = TRUE)` estimates the mean over the rows with `spend`
+present, treating them as a domain of the whole sample. The estimate is the
+Hajek mean over them, and its variance that of the linearised residuals
+over every sampled row, 0 for the rows left out.
+`survey::svymean(na.rm = TRUE)` gives the same estimate and standard error.
+
+```{r missing-mean}
+ht_mean(back, "spend", na_rm = TRUE)
+```
+
+```{r missing-survey, eval = requireNamespace("survey", quietly = TRUE)}
+survey::svymean(~spend, as_svydesign(back), na.rm = TRUE)
+```
+
+That mean assumes the values are missing completely at random. Here they
+are not. Site c spends the most and answered least, so the mean is low
+against the frame's `r round(mean(shops$spend), 1)`. A weighting-class
+adjustment assumes only that within each class, here each site, whether a
+row answered is unrelated to its `spend`. Each row that answered takes on
+the weight of the rows of its class that did not, and `survey` estimates
+from the adjusted `.weight`:
+
+```{r weighting-class, eval = requireNamespace("survey", quietly = TRUE)}
+answer <- !is.na(back$spend)
+boost <- tapply(back$.weight, back$site, sum) /
+  tapply(back$.weight * answer, back$site, sum)
+adjusted <- back
+adjusted$.weight[answer] <- adjusted$.weight[answer] *
+  boost[adjusted$site[answer]]
+des <- as_svydesign(adjusted)
+c(mean = coef(survey::svymean(~spend, des, na.rm = TRUE)),
+  total = coef(survey::svytotal(~spend, des, na.rm = TRUE)),
+  frame_mean = mean(shops$spend), frame_total = sum(shops$spend))
+```
+
+`survey` treats the adjusted weights as fixed, so its standard errors leave
+out that the adjustment factors were estimated from the sample.
+`ht_total()` and `ht_mean()` keep to `.prob` and warn that `.weight` was
+changed.
+
 ## References
 
 Deville, J.-C. (1999). Variance estimation for complex statistics and

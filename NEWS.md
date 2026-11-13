@@ -452,6 +452,11 @@
 * A `by` table whose columns were selected with `[` or `subset()` prints
   as a plain data frame. It kept its class but lost the attributes its
   printout reads, and `print()` stopped with "argument is of length zero".
+* `ht_total()` refuses a missing `y` with a message that gives the share of
+  the weight the rows with `y` missing hold, which is about how low a total
+  over the other rows would be, and points to `ht_mean(na_rm = TRUE)`, `by`
+  and a weighting-class adjustment through `as_svydesign()`. It said only
+  how many values were missing. `ht_mean()` points to `na_rm`.
 
 ## Behaviour changes
 
@@ -820,6 +825,36 @@
   `region`, with each edge of a longitude/latitude region along its great
   circle under spherical geometry, which is how the design decides which
   rows are inside.
+* `as_drawn()` rebuilds a weighted sample from rows read back from a CSV
+  file, a spreadsheet or a database table, which keep the rows and lose the
+  design. It matches each row to the frame through `.row`, or through id
+  columns named in `by`, and works out the inclusion probabilities again
+  from the design. Ids that are missing, repeated or not in the frame, a
+  frame reordered since the draw, and a sample short of the rows drawn, such
+  as the rows that responded, are refused. `add_fieldwork()` joins fieldwork
+  results keyed by an id to a sample, in the sample's own order and keeping
+  its design, and refuses repeated or unknown ids and columns the sample
+  already has; a sampled row with no result gets a missing value. A sample
+  that had been through a file could not be estimated from, and `merge()`
+  dropped the design. The refusal of a sample without its design names both.
+* `compact_sample()` replaces the copy of the frame a weighted sample holds
+  with the columns its design reads, plus any named in `keep`. Each sample
+  holds its own copy of the whole frame, in memory and in every file it is
+  saved to, which hands the frame, with any personal data in it, to whoever
+  receives the file. A simple random sample of 100 from a three-column frame
+  of a million rows saved to 28 MB, and to 8 MB compacted, most of it the
+  frame's inclusion probabilities. Estimates, `as_svydesign()` and
+  `sample_summary()` are unchanged; `ht_mean(estimator = "ht")` with `by`,
+  and `frame_totals()`, need their columns in `keep`, and say so. `?draw`
+  describes the cost.
+* `ht_mean()` takes `na_rm`. With `na_rm = TRUE` it estimates the mean over
+  the sampled rows with `y` present, as a domain of the whole sample, with
+  the design's own variance estimator, and equals
+  `survey::svymean(na.rm = TRUE)` on `as_svydesign()`, by domain too. The
+  printed result says how many rows were left out and that they are assumed
+  missing completely at random. `?ht_total` has a section on missing values
+  and nonresponse, with the weighting-class adjustment to use when that
+  assumption fails, and the estimation article shows the steps.
 
 ## Speed and memory
 

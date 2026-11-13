@@ -365,6 +365,39 @@ keeps them. A \code{drawn_contrast} has the same methods, with the estimate
 named by its weights, as in \code{"a - b"}.
 }
 
+\section{Missing values and nonresponse}{
+
+\code{ht_total()} refuses a missing \code{y}, from a nonresponse or a measurement
+that failed. A total over the rows with \code{y} present counts the others as
+0, so it is low by about the share of the weight they hold, the weighted
+nonresponse rate, and the message gives that share.
+
+\code{ht_mean(na_rm = TRUE)} estimates the mean over the rows with \code{y}
+present. They are a domain of the whole sample, as a \code{by} domain is: the
+estimate is the Hajek mean over them, and its variance comes from the
+linearised residuals over every sampled row, 0 for the rows left out,
+with the design's own estimator and degrees of freedom.
+\code{survey::svymean(na.rm = TRUE)} on \code{\link[=as_svydesign]{as_svydesign()}} gives the same
+estimate and standard error. With \code{by}, each domain's mean is over its
+rows with \code{y} present. \code{\link[=add_fieldwork]{add_fieldwork()}} joins results keyed by an id and
+leaves \code{y} missing for a sampled row with none.
+
+That mean is unbiased for the frame's mean only if the values are missing
+completely at random, with no relation between whether a row has a \code{y}
+and its \code{y}.
+When response rates differ between groups whose \code{y} differs, such as
+sites, the rows with \code{y} present over-represent the groups that responded
+more. A weighting-class adjustment corrects for that, under the weaker
+assumption that response is unrelated to \code{y} within each group. Multiply
+the \code{.weight} of each row with \code{y} present by its group's sum of
+\code{.weight} over all its sampled rows, divided by the same sum over its rows
+with \code{y} present, and estimate totals and means from \code{\link[=as_svydesign]{as_svydesign()}}
+with \code{survey}'s \code{na.rm = TRUE}. \code{survey} treats the adjusted weights as
+fixed, so its standard errors leave out that the adjustment factors were
+estimated from the sample. \code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} keep to \code{.prob}
+and do not see the adjustment. The estimation article shows the steps.
+}
+
 \section{Which columns are read}{
 
 \code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} divide by \code{.prob}, the inclusion probabilities

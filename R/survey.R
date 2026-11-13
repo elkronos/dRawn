@@ -506,6 +506,14 @@ frame_totals <- function(sample, formula, table = FALSE) {
   state <- drawn_state(sample)
   pop <- state$pop
   unknown <- setdiff(vars, names(pop))
+  gone <- intersect(unknown, state$compact$dropped)
+  if (length(gone)) {
+    stop("`formula` uses ", quote_names(gone), ", which compact_sample() ",
+         "dropped from the frame stored with `sample`. Name ",
+         if (length(gone) > 1L) "them" else "it", " in `keep` when ",
+         "compacting, or rebuild the sample from the full frame with ",
+         "as_drawn().", call. = FALSE)
+  }
   if (length(unknown)) {
     stop("`formula` uses ", quote_names(unknown), ", which ",
          if (length(unknown) > 1L) "are not columns" else "is not a column",

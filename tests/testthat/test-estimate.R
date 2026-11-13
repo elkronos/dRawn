@@ -702,3 +702,74 @@ test_that("a printed estimate and a by table name the method alike", {
   srs <- draw(d, design_simple(n = 20), seed = 1, weights = TRUE)
   expect_output(print(ht_total(srs, "y")), "(analytic)", fixed = TRUE)
 })
+
+test_that("ht_total() refuses a missing y and says why a respondent total is low", {
+  d <- est_pop()
+  s <- draw(d, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  s$y[c(2, 7, 25)] <- NA
+  msg <- tryCatch(ht_total(s, "y"), error = conditionMessage)
+  expect_match(msg, "`y` is missing in 3 of the 40 sampled rows", fixed = TRUE)
+  share <- sum(s$.weight[is.na(s$y)]) / sum(s$.weight)
+  expect_match(msg, paste0(format(signif(100 * share, 2)), "% here"),
+               fixed = TRUE)
+  expect_match(msg, "ht_mean(na_rm = TRUE)", fixed = TRUE)
+  expect_match(msg, "as_svydesign()", fixed = TRUE)
+  expect_error(ht_mean(s, "y"), "Set `na_rm = TRUE`")
+  expect_error(ht_mean(s, "y", na_rm = NA), "`na_rm` must be TRUE or FALSE")
+})
+
+test_that("ht_mean(na_rm = TRUE) is the mean over the rows with y present", {
+  d <- est_pop()
+  for (des in list(design_stratified("site", n = 40),
+                   design_cluster("cl", n_clusters = 6))) {
+    s <- draw(d, des, seed = 1, weights = TRUE)
+    s$y[c(2, 7, 25)] <- NA
+    m <- ht_mean(s, "y", na_rm = TRUE)
+    r <- !is.na(s$y)
+    expect_equal(m$mean, sum(s$y[r] * s$.weight[r]) / sum(s$.weight[r]))
+    expect_identical(m$n, sum(r))
+    expect_identical(m$n_missing, 3L)
+    expect_true(is.na(m$deff))
+    expect_match(m$note, "missing completely at random")
+    expect_output(print(m), "3 sampled rows left out")
+    # The same as the domain of the rows with y present
+    s0 <- s
+    s0$y0 <- ifelse(r, s$y, 0)
+    s0$r <- r
+    dom <- ht_mean(s0, "y0", by = "r")
+    expect_equal(m$se, dom$se[dom$r])
+    skip_if_not_installed("survey")
+    sv <- survey::svymean(~y, as_svydesign(s), na.rm = TRUE)
+    expect_equal(m$mean, unname(coef(sv)))
+    expect_equal(m$se, as.numeric(survey::SE(sv)))
+    by <- ht_mean(s, "y", by = "site", na_rm = TRUE)
+    sb <- survey::svyby(~y, ~site, as_svydesign(s), survey::svymean,
+                        na.rm = TRUE)
+    expect_equal(by$se, unname(sb$se))
+    expect_identical(by$n, as.integer(tapply(r, s$site, sum)))
+  }
+})
+
+test_that("ht_mean(na_rm = TRUE) changes nothing when no y is missing", {
+  d <- est_pop()
+  s <- draw(d, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  expect_identical(ht_mean(s, "y", na_rm = TRUE), ht_mean(s, "y"))
+  expect_identical(ht_mean(s, "y", by = "site", na_rm = TRUE),
+                   ht_mean(s, "y", by = "site"))
+  expect_identical(ht_mean(s, "y")$n_missing, 0L)
+})
+
+test_that("ht_mean(na_rm = TRUE) refuses what it cannot estimate", {
+  d <- est_pop()
+  s <- draw(d, design_simple(n = 20), seed = 1, weights = TRUE)
+  s$y[1] <- NA
+  expect_error(ht_mean(s, "y", estimator = "ht", na_rm = TRUE),
+               "number of frame rows the mean is over is unknown")
+  s$y[] <- NA
+  expect_error(ht_mean(s, "y", na_rm = TRUE), "missing in every one of the 20")
+  # One row with y present has no standard error
+  s$y[1] <- 5
+  one <- ht_mean(s, "y", na_rm = TRUE)
+  expect_true(is.na(one$se))
+  expect_match(one$note, "The domain of rows with `y` present has one")
+})

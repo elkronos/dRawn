@@ -259,6 +259,37 @@
 #' keeps them. A `drawn_contrast` has the same methods, with the estimate
 #' named by its weights, as in `"a - b"`.
 #'
+#' @section Missing values and nonresponse:
+#' `ht_total()` refuses a missing `y`, from a nonresponse or a measurement
+#' that failed. A total over the rows with `y` present counts the others as
+#' 0, so it is low by about the share of the weight they hold, the weighted
+#' nonresponse rate, and the message gives that share.
+#'
+#' `ht_mean(na_rm = TRUE)` estimates the mean over the rows with `y`
+#' present. They are a domain of the whole sample, as a `by` domain is: the
+#' estimate is the Hajek mean over them, and its variance comes from the
+#' linearised residuals over every sampled row, 0 for the rows left out,
+#' with the design's own estimator and degrees of freedom.
+#' `survey::svymean(na.rm = TRUE)` on [as_svydesign()] gives the same
+#' estimate and standard error. With `by`, each domain's mean is over its
+#' rows with `y` present. [add_fieldwork()] joins results keyed by an id and
+#' leaves `y` missing for a sampled row with none.
+#'
+#' That mean is unbiased for the frame's mean only if the values are missing
+#' completely at random, with no relation between whether a row has a `y`
+#' and its `y`.
+#' When response rates differ between groups whose `y` differs, such as
+#' sites, the rows with `y` present over-represent the groups that responded
+#' more. A weighting-class adjustment corrects for that, under the weaker
+#' assumption that response is unrelated to `y` within each group. Multiply
+#' the `.weight` of each row with `y` present by its group's sum of
+#' `.weight` over all its sampled rows, divided by the same sum over its rows
+#' with `y` present, and estimate totals and means from [as_svydesign()]
+#' with `survey`'s `na.rm = TRUE`. `survey` treats the adjusted weights as
+#' fixed, so its standard errors leave out that the adjustment factors were
+#' estimated from the sample. `ht_total()` and [ht_mean()] keep to `.prob`
+#' and do not see the adjustment. The estimation article shows the steps.
+#'
 #' @section Which columns are read:
 #' `ht_total()` and [ht_mean()] divide by `.prob`, the inclusion probabilities
 #' [draw()] attached, and read strata, clusters, time stamps and the other
@@ -410,7 +441,7 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
   alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
                               "alternative")
   check_contrast_by(contrast, by)
-  parts <- ht_prepare(sample, y, level, df)
+  parts <- ht_prepare(sample, y, level, df, na_rm = NULL)
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "total",
                        alternative = alternative, contrast = contrast))
@@ -587,13 +618,17 @@ sub_context <- function(ctx, name) {
 #' certainty. That is read from the draw-time probabilities over `frame`, a
 #' logical vector marking the domain's frame rows: `TRUE` for the whole
 #' sample, `NA` when the frame cannot say. `label` names the domain in the
-#' note, and `psu` takes `sample_units()` worked out once for many domains.
-#' Returns the decline, or `NULL` when the variance can go ahead.
+#' note, `subject` replaces the opening "The domain `label`" for a domain
+#' with no label, and `psu` takes `sample_units()` worked out once for many
+#' domains. Returns the decline, or `NULL` when the variance can go ahead.
 #'
 #' @noRd
 ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                           psu = sample_units(parts$design, parts$units,
-                                             parts$pop, parts$rows)) {
+                                             parts$pop, parts$rows),
+                          subject = if (!is.null(label)) {
+                            paste0("The domain `", label, "`")
+                          }) {
   if (length(unique(psu[member])) >= 2L) return(NULL)
   pi_all <- parts$pi_all
   if (!is.null(pi_all) && !anyNA(frame)) {
@@ -606,11 +641,11 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
   core <- paste0("A Hajek mean's linearised residuals sum to zero over it, so ",
                  "every variance estimator would give a standard error of ",
                  "about 0, whatever the spread of `y`.")
-  note <- if (is.null(label)) {
+  note <- if (is.null(subject)) {
     paste0("The sample has one ", unit, ". ", core, " A standard error needs ",
            "at least two.")
   } else {
-    paste0("The domain `", label, "` has ",
+    paste0(subject, " has ",
            if (unit == "row") "one sampled row" else
              paste0("sampled rows in one ", unit, " only"), ". ", core,
            if (unit == "row") {

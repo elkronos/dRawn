@@ -44,6 +44,15 @@ reference:
   - ht_mean
   - deff
 
+- title: From fieldwork to estimate
+  desc: >
+    Join fieldwork results to a sample, rebuild one read back from a file,
+    and drop frame columns before saving or sharing one.
+  contents:
+  - add_fieldwork
+  - as_drawn
+  - compact_sample
+
 - title: Planning and checking
   desc: How many rows to draw, what you actually got, and where to go next.
   contents:

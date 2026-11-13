@@ -92,6 +92,19 @@
 #' left to rounding error, which gave standard errors near `1e-16` and design
 #' effects that changed from seed to seed. The design effect is then `NA`.
 #'
+#' @section Missing values:
+#' A missing `y` is refused unless `na_rm = TRUE`. Then the mean is the
+#' Hajek mean over the rows with `y` present, treated as a domain of the
+#' whole sample, with the design's own variance estimator, and equals
+#' `survey::svymean(na.rm = TRUE)` on [as_svydesign()]. It assumes the values
+#' are missing completely at random, and the printed result says so. `n`
+#' counts the rows with `y` present, `n_missing` the others, and the design
+#' effect is `NA`, as for a domain. With `by`, each domain is the rows of
+#' its `by` values with `y` present. `estimator = "ht"` is refused, since
+#' the number of frame rows that would have a `y` is unknown. See "Missing
+#' values and nonresponse" in [ht_total()] for when the assumption fails and
+#' what to do then.
+#'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. It is
 #'   read as [ht_total()] reads it: `.prob` for the probabilities, and the
 #'   stored frame for the design's columns. See "Which columns are read" there.
@@ -107,11 +120,15 @@
 #' @param ci_method The interval for a proportion: `"logit"`, or `"beta"` for
 #'   Korn and Graubard's. A proportion of exactly 0 or 1 gets `"beta"` either
 #'   way. See "Proportions".
+#' @param na_rm `FALSE` refuses a missing `y`. `TRUE` estimates the mean over
+#'   the rows with `y` present, as a domain of the sample. See "Missing
+#'   values".
 #'
 #' @return A list with a `print()` method, holding `mean`, `estimator`,
 #'   `variable`, `variance`, `se`, `ci`, `level`, `alternative`, `df`, `n`,
 #'   `n_random`, `design`, `deff`, `method`, `note`, `ci_scale` (`"linear"`,
-#'   `"logit"` or `"beta"`) and `unreachable`. See [ht_total()] for what
+#'   `"logit"` or `"beta"`), `unreachable` and `n_missing`, the sampled rows
+#'   with `y` missing that `na_rm = TRUE` left out. See [ht_total()] for what
 #'   `variable`, `n_random`, `method`, `df`, `note` and `unreachable` say,
 #'   and [deff()] for the design effect. With `by`, a data frame with one row
 #'   per domain, and with `contrast` a `drawn_contrast`, as for [ht_total()].
@@ -174,7 +191,7 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                     level = 0.95, by = NULL, df = NULL, proportion = NULL,
                     ci_method = c("logit", "beta"),
                     alternative = c("two.sided", "less", "greater"),
-                    contrast = NULL) {
+                    contrast = NULL, na_rm = FALSE) {
   estimator <- check_choice(estimator, c("hajek", "ht"), "estimator")
   variance <- check_choice(variance,
                            c("auto", "analytic", "jackknife", "none"),
@@ -183,7 +200,16 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
   alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
                               "alternative")
   check_contrast_by(contrast, by)
-  parts <- ht_prepare(sample, y, level, df)
+  check_flag(na_rm, "na_rm")
+  parts <- ht_prepare(sample, y, level, df, na_rm = na_rm)
+  n_missing <- sum(!parts$respond)
+  if (n_missing && estimator == "ht") {
+    stop("`estimator = \"ht\"` divides by the number of frame rows, and ",
+         "with `y` missing in ", n_missing, " sampled row",
+         if (n_missing > 1L) "s", " the number of frame rows the mean is ",
+         "over is unknown. Use the Hajek estimator, which estimates it from ",
+         "the sample.", call. = FALSE)
+  }
   parts$proportion <- mean_is_proportion(parts, proportion)
   if (ci_method == "beta" && !parts$proportion) {
     stop("`ci_method = \"beta\"` gives an interval for a proportion, and ",
@@ -196,6 +222,10 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
                        alternative = alternative, contrast = contrast))
   }
   warn_grouped(sample, "ht_mean")
+  if (n_missing) {
+    return(respondent_mean(parts, variance, level, df, ci_method,
+                           alternative))
+  }
   if (!nrow(parts$sample) && estimator == "hajek") {
     stop("`sample` has no rows, so the Hajek mean is 0 / 0. Use ",
          "estimator = \"ht\", which divides the total, 0, by the size of the ",
@@ -235,7 +265,76 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
     out$note <- paste(c(out$note, constant_note(yv[1], parts$proportion)),
                       collapse = " ")
   }
+  out$n_missing <- 0L
   out
+}
+
+#' The Hajek mean over the rows with `y` present
+#'
+#' Those rows are a domain of the whole sample, as a `by` domain is. The
+#' estimate is the Hajek mean over them, and its variance that of the total
+#' of the linearised residuals `(y - mean) / N_hat` over every sampled row,
+#' 0 for a row with `y` missing, from the design's own estimator. Which frame
+#' rows would have a `y` cannot be read from the frame, so `domain` is `NA`.
+#' This is `survey::svymean(na.rm = TRUE)`. `n`, `n_random` and the beta
+#' interval count the rows with `y` present. A domain's design effect is not
+#' estimated, so `deff` is `NA`.
+#'
+#' @noRd
+respondent_mean <- function(parts, variance, level, df, ci_method,
+                            alternative) {
+  r <- parts$respond
+  pi_i <- parts$pi
+  yv <- parts$y
+  n_hat <- sum(1 / pi_i[r])
+  est <- sum(yv[r] / pi_i[r]) / n_hat
+  z <- numeric(length(yv))
+  z[r] <- (yv[r] - est) / n_hat
+  constant <- all(yv[r] == yv[r][1])
+  if (constant) {
+    est <- yv[r][1]
+    z[] <- 0
+  }
+  var_out <- if (variance != "none") {
+    ratio_decline(parts, which(r), NA,
+                  subject = "The domain of rows with `y` present")
+  }
+  var_out <- var_out %||%
+    ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
+                         pi_i, variance, domain = NA)
+  df <- df %||% design_df(parts$design, parts$units, parts$pop, parts$rows,
+                          pi_i)
+  # The interval's sample size and `n_random` count the rows behind the
+  # estimate.
+  held <- parts
+  held$pi <- pi_i[r]
+  out <- finish_estimate(est, var_out, held, level, df, what = "mean",
+                         class = "drawn_mean", proportion = parts$proportion,
+                         ci_method = ci_method, alternative = alternative)
+  out$estimator <- "hajek"
+  out$n <- sum(r)
+  out$n_missing <- sum(!r)
+  notes <- c(out$note, missing_note(sum(!r), length(r)))
+  if (constant && identical(out$variance, 0) &&
+      !identical(out$ci_scale, "beta") && any(!is_certain(pi_i[r]))) {
+    notes <- c(notes, constant_note(est, parts$proportion))
+  }
+  out$note <- paste(notes, collapse = " ")
+  out
+}
+
+#' What a mean over the rows with `y` present assumes
+#' @noRd
+missing_note <- function(n_missing, n) {
+  one <- n_missing == 1L
+  paste0(n_missing, " of the ", n, " sampled rows ", if (one) "has" else
+           "have", " `y` missing and ", if (one) "is" else "are", " left ",
+         "out. The mean is over the rows with `y` present, estimated as a ",
+         "domain of the whole sample, which assumes the values are missing ",
+         "completely at random, with no relation between whether `y` is ",
+         "missing and `y` itself. When response differs between groups ",
+         "whose `y` differs, adjust the weights within those groups and ",
+         "estimate with as_svydesign().")
 }
 
 #' What the mean divides its Horvitz-Thompson total by, for the design effect
@@ -281,7 +380,7 @@ constant_note <- function(value, proportion, domains = NULL) {
 #'
 #' @noRd
 mean_is_proportion <- function(parts, proportion) {
-  y <- parts$y
+  y <- parts$y[parts$respond]
   binary <- all(y == 0 | y == 1)
   if (!is.null(proportion)) {
     if (!is.logical(proportion) || length(proportion) != 1L ||
@@ -302,12 +401,10 @@ mean_is_proportion <- function(parts, proportion) {
   if (!binary) return(FALSE)
   if (parts$y_logical) return(TRUE)
   col <- parts$y_name
-  if (is.null(col) || !col %in% names(parts$pop)) return(FALSE)
-  x <- parts$pop[[col]]
-  if (is.logical(x)) return(TRUE)
-  if (!is.numeric(x)) return(FALSE)
-  x <- x[!is.na(x)]
-  length(x) > 0L && all(x == 0 | x == 1)
+  if (is.null(col)) return(FALSE)
+  # compact_sample() records which of the columns it dropped were 0/1.
+  if (!col %in% names(parts$pop)) return(col %in% parts$compact$binary)
+  binary_column(parts$pop[[col]])
 }
 
 #' Estimates for each domain, from the whole sample
@@ -392,6 +489,10 @@ estimate_by <- function(parts, by, variance, level, df, what,
     notes <- c(notes, constant_note(NA, TRUE,
                                     domains = labels[levels_in[constant]]))
   }
+  if (any(!parts$respond)) {
+    notes <- c(notes, missing_note(sum(!parts$respond),
+                                   length(parts$respond)))
+  }
   out <- structure(out, class = c("drawn_by", "data.frame"),
                    what = what, estimator = if (what == "mean") estimator,
                    level = level, alternative = alternative, df = df_use,
@@ -412,8 +513,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
 #' Returns `key`, each sampled row's domain as a code into `labels`;
 #' `pop_key`, each frame row's, or `NULL` when the frame lacks a `by` column;
 #' `levels_in`, the codes of the domains with a sampled row, in key order;
-#' `pos`, each sampled row's position in `levels_in`; `idx`, the sampled rows
-#' of each domain in `levels_in`; and `aligned`, whether the frame's `by`
+#' `pos`, each sampled row's position in `levels_in`, `NA` for a row with `y`
+#' missing under `na_rm = TRUE`; `idx`, the sampled rows of each domain in
+#' `levels_in`, without those; and `aligned`, whether the frame's `by`
 #' columns agree with the sample's on the sampled rows, so that the frame can
 #' say which of its rows each domain holds.
 #'
@@ -445,10 +547,14 @@ domain_keys <- function(parts, by) {
     pop_key <- NULL
     labels <- group_label(levels(k))
   }
-  levels_in <- which(tabulate(key, length(labels)) > 0L)
+  # Rows with `y` missing, left out by `na_rm = TRUE`, belong to no domain,
+  # so each domain is the rows of its `by` values with `y` present.
+  use <- parts$respond %||% rep(TRUE, length(key))
+  levels_in <- which(tabulate(key[use], length(labels)) > 0L)
   pos <- match(key, levels_in)
-  idx <- split(seq_along(key),
-               structure(pos, levels = as.character(seq_along(levels_in)),
+  pos[!use] <- NA_integer_
+  idx <- split(seq_along(key)[use],
+               structure(pos[use], levels = as.character(seq_along(levels_in)),
                          class = "factor"))
   list(by = by, key = key, pop_key = pop_key, labels = labels,
        levels_in = levels_in, pos = pos, idx = unname(idx),
@@ -488,6 +594,14 @@ domain_estimates <- function(parts, dom, what, estimator) {
   size <- NULL
   if (what == "mean" && estimator == "ht") {
     if (is.null(dom$pop_key)) {
+      gone <- intersect(dom$by, parts$compact$dropped)
+      if (length(gone)) {
+        stop("estimator = \"ht\" needs each domain's size in the frame, ",
+             "and compact_sample() dropped ", quote_names(gone), " from the ",
+             "frame stored with `sample`. Name the `by` columns in `keep` ",
+             "when compacting, or rebuild the sample from the full frame ",
+             "with as_drawn().", call. = FALSE)
+      }
       stop("estimator = \"ht\" needs the domain's population size, and ",
            "the `by` columns are not in the population.", call. = FALSE)
     }
@@ -570,8 +684,13 @@ srs_domains <- function(parts, dom, z, ctx) {
   k <- length(dom$levels_in)
   if (is.null(lay)) return(rep(NA_real_, k))
   keep <- !is.na(lay$group)
-  v <- srs_variance_by(z[keep], lay$group[keep], dom$pos[keep], k, lay$n_g,
-                       lay$N_g)
+  # A row with `y` missing is in no domain. It still counts among its
+  # group's sampled rows, so it goes in a domain of its own, left out of the
+  # result, where its `z` of 0 adds nothing.
+  pos <- dom$pos
+  pos[is.na(pos)] <- k + 1L
+  v <- srs_variance_by(z[keep], lay$group[keep], pos[keep], k + 1L, lay$n_g,
+                       lay$N_g)[seq_len(k)]
   if (length(lay$lonely_rows)) {
     hit <- if (dom$aligned) {
       match(dom$pop_key[lay$lonely_rows], dom$levels_in)
@@ -600,7 +719,9 @@ estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
   w <- contrast_weights(contrast, dom)
   used <- which(w != 0)
   value <- sum(w[used] * est$est[used])
-  z <- w[dom$pos] * est$z
+  w_row <- w[dom$pos]
+  w_row[is.na(w_row)] <- 0
+  z <- w_row * est$z
   labels <- dom$labels[dom$levels_in[used]]
   var_out <- NULL
   if (what == "mean" && estimator == "hajek" && variance != "none") {
@@ -623,6 +744,11 @@ estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
                          parts$pi, variance, domain_frame(dom, used), ctx)
   out <- finish_estimate(value, var_out, parts, level, df, what = "contrast",
                          class = "drawn_contrast", alternative = alternative)
+  if (any(!parts$respond)) {
+    out$note <- paste(c(out$note, missing_note(sum(!parts$respond),
+                                               length(parts$respond))),
+                      collapse = " ")
+  }
   out$weights <- stats::setNames(w[used], labels)
   out$estimates <- stats::setNames(est$est[used], labels)
   out$what <- what
@@ -891,8 +1017,14 @@ deff.default <- function(object, ...) {
 }
 
 #' Shared argument handling for the estimators
+#'
+#' `na_rm` is `NULL` for ht_total(), which refuses a missing `y`, and the
+#' `na_rm` of ht_mean() otherwise. With `na_rm = TRUE` a missing `y` is
+#' allowed: `respond` marks the rows with `y` present, and `y` holds 0 in
+#' the others, so a sum over every row is a sum over those rows.
+#'
 #' @noRd
-ht_prepare <- function(sample, y, level, df = NULL) {
+ht_prepare <- function(sample, y, level, df = NULL, na_rm = FALSE) {
   state <- drawn_state(sample)
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
       level <= 0 || level >= 1) {
@@ -936,16 +1068,21 @@ ht_prepare <- function(sample, y, level, df = NULL) {
          "`sample`.", call. = FALSE)
   }
   missing_y <- is.na(yv) & !is.nan(yv)
-  if (any(missing_y)) {
-    stop(sum(missing_y), " value(s) of `y` are missing.", call. = FALSE)
+  if (any(missing_y) && !isTRUE(na_rm)) {
+    stop(missing_y_message(sample, missing_y, na_rm), call. = FALSE)
   }
-  if (!all(is.finite(yv))) {
-    bad <- which(!is.finite(yv))
+  if (length(missing_y) && all(missing_y)) {
+    stop("`y` is missing in every one of the ", length(missing_y), " ",
+         "sampled rows, so there is no mean to estimate.", call. = FALSE)
+  }
+  bad <- which(!is.finite(yv) & !missing_y)
+  if (length(bad)) {
     stop("`y` is ", paste(unique(as.character(yv[bad])), collapse = " or "),
          " in ", length(bad), " row(s) of `sample`: ", format_rows(bad),
          ". A total or mean needs a finite `y` for every sampled row.",
          call. = FALSE)
   }
+  yv[missing_y] <- 0
   # A sample saved by drawn 0.2.0 records no probabilities for drawn_state()
   # to compare `.prob` with, so only its type and range are checked.
   if (is.null(state$pi_all)) check_prob(sample)
@@ -958,7 +1095,7 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   pi_all <- state$pi_all
   list(design = state$design, rows = state$rows, pop = state$pop,
        units = state$units, pi_all = pi_all, y = yv, pi = sample$.prob,
-       sample = sample,
+       sample = sample, respond = !missing_y, compact = state$compact,
        y_name = if (is.character(y) && length(y) == 1L) y,
        y_logical = y_logical,
        reach = if (is.null(pi_all)) {
@@ -971,6 +1108,36 @@ ht_prepare <- function(sample, y, level, df = NULL) {
        } else {
          sum(!reachable(pi_all))
        })
+}
+
+#' Why a missing `y` is refused, and what to do instead
+#'
+#' A total over the rows with `y` present counts the others as 0, so it is
+#' low by about their share of the weight. ht_total() (`na_rm = NULL`) says
+#' so; ht_mean() points to its `na_rm`.
+#'
+#' @noRd
+missing_y_message <- function(sample, missing, na_rm) {
+  head <- paste0("`y` is missing in ", sum(missing), " of the ",
+                 length(missing), " sampled rows. ")
+  see <- "See \"Missing values and nonresponse\" in ?ht_total."
+  if (!is.null(na_rm)) {
+    return(paste0(head, "Set `na_rm = TRUE` to estimate the mean over the ",
+                  "rows with `y` present, as a domain of the sample, which ",
+                  "assumes the values are missing completely at random. ",
+                  see))
+  }
+  w <- 1 / sample$.prob
+  share <- sum(w[missing]) / sum(w)
+  paste0(head, "A total over the rows with `y` present counts the others ",
+         "as 0, so it is low by about their share of the weight",
+         if (is.finite(share)) {
+           paste0(", ", format(signif(100 * share, 2)), "% here")
+         }, ". ht_mean(na_rm = TRUE) estimates the mean over the rows with ",
+         "`y` present, with `by` for domains, as survey's `na.rm = TRUE` ",
+         "does after as_svydesign(). For a total, adjust the weights for ",
+         "nonresponse within weighting classes and estimate from them with ",
+         "as_svydesign(). ", see)
 }
 
 #' Warn when `.weight` is no longer `1 / .prob`
@@ -1238,8 +1405,13 @@ deff_value <- function(v, y, pi_i, N, n, what, divide_by = N) {
 
 #' @export
 print.drawn_mean <- function(x, ...) {
+  lines <- if (isTRUE(x$n_missing > 0)) {
+    c(missing = paste0(fmt_n(x$n_missing), " sampled row",
+                       if (x$n_missing > 1) "s", " left out, assumed missing ",
+                       "completely at random"))
+  }
   print_estimate(x, "mean", if (identical(x$estimator, "ht"))
-    "Horvitz-Thompson mean" else "Hajek mean")
+    "Horvitz-Thompson mean" else "Hajek mean", lines = lines)
 }
 
 #' @noRd

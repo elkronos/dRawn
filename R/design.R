@@ -79,7 +79,10 @@
 #' confidence interval on the design's degrees of freedom. [deff()] reports
 #' what the design cost in precision against simple random sampling, and
 #' [sample_summary()] reports what was actually drawn against what was in the
-#' frame.
+#' frame. [add_fieldwork()] joins fieldwork results to a sample by an id,
+#' [as_drawn()] rebuilds a sample read back from a file or a database, and
+#' [compact_sample()] drops the frame columns its design does not read before
+#' it is saved or shared.
 #'
 #' Going the other way, [plan_size()] solves for the sample size a given margin
 #' of error requires — the step *before* choosing a design. For analysis this

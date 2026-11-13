@@ -48,10 +48,13 @@
 #' of the frame as attributes, which is what lets [ht_total()], [ht_mean()],
 #' [sample_summary()] and [as_svydesign()] work from the sample alone.
 #'
-#' * The frame is copied when the sample is drawn. Later edits to `data`,
-#'   including data.table's in-place `:=`, `setorder()` and `setkey()`, do not
-#'   reach the sample, and saving the sample with [saveRDS()] saves the copy
-#'   with it.
+#' * The frame is copied when the sample is drawn, every column of it. Later
+#'   edits to `data`, including data.table's in-place `:=`, `setorder()` and
+#'   `setkey()`, do not reach the sample. Each sample holds its own copy, in
+#'   memory and in every file it is saved to with [saveRDS()], so a list of
+#'   samples from a large frame holds the frame once per sample, and a
+#'   sample sent to someone sends them the frame, with any personal data in
+#'   it. [compact_sample()] keeps only the columns the design reads.
 #' * Reordering the sample by `[`, `dplyr::arrange()` or
 #'   `data.table::setorder()` is safe, because each row finds its frame row
 #'   through `.row`.
@@ -60,7 +63,11 @@
 #'   that repeat rows keep the attributes but no longer match the rows that
 #'   were drawn, and the functions above refuse them. [merge()], column
 #'   selection (`s[, cols]`), [subset()] and [transform()] drop the attributes
-#'   altogether. Add fieldwork results with `s$col <- value`.
+#'   altogether. Add fieldwork results with [add_fieldwork()], which matches
+#'   them on an id, or with `s$col <- value`.
+#' * A CSV or spreadsheet file and a database table keep the rows and the
+#'   `.row` column but not the attributes. [as_drawn()] rebuilds the sample
+#'   from them, the design and the frame.
 #'
 #' `weights = TRUE` is not available for a design that samples **with
 #' replacement**, or a [design_certainty()] whose `rest` does. `.prob` there
