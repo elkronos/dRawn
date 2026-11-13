@@ -50,8 +50,8 @@
 #' @export
 design_certainty <- function(above, threshold, rest, na_rm = FALSE) {
   if (!is_design(rest)) {
-    stop("`rest` must be a design for the rows below the threshold, not a ",
-         class(rest)[1], ". See ?designs.", call. = FALSE)
+    stop("`rest` must be a design for the rows below the threshold, not ",
+         a_class(rest), ". See ?designs.", call. = FALSE)
   }
   if (inherits(rest, "drawn_design_certainty")) {
     stop("`rest` cannot itself be a certainty design; use one threshold.",

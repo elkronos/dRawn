@@ -168,9 +168,19 @@ print.drawn_design <- function(x, ...) {
   cat("<sampling design: ", design_type(x), ">\n", sep = "")
   params <- unclass(x)
   shown <- lapply(params, function(v) if (!is.null(v)) fmt_param(v))
-  # A temporal design without `tz` takes its zone from the data.
+  # A NULL that stands for a default worked out later is shown by what it
+  # means. A temporal design without `tz` takes its zone from the data.
   if (inherits(x, "drawn_design_temporal") && is.null(params$tz)) {
     shown$tz <- "from the time column, else UTC"
+  }
+  if (inherits(x, "drawn_design_systematic") && is.null(params$start)) {
+    shown$start <- "random"
+  }
+  if (inherits(x, "drawn_design_bootstrap")) {
+    if (is.null(params$n)) shown$n <- "nrow(data)"
+    if (is.null(params$block_length) && !identical(params$method, "simple")) {
+      shown$block_length <- "nrow(data)^(1/3), rounded down"
+    }
   }
   shown <- shown[!vapply(shown, is.null, logical(1))]
   if (length(shown) == 0L) {

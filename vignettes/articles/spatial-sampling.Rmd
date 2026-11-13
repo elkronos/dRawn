@@ -60,7 +60,7 @@ spread <- design_spread(c("x", "y"), n = 60, scale = FALSE)
 
 op <- par(mfrow = c(1, 2))
 plot(srs, grid, type = "map", coords = c("x", "y"), seed = 4,
-     main = "simple random")
+     main = "simple random", asp = 1)
 plot(spread, grid, type = "map", seed = 4, main = "spread")
 par(op)
 ```

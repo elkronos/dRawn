@@ -386,7 +386,7 @@ row_reservoir <- function(n) {
     check = function(block) {
       seen <<- seen + 1
       if (!is.data.frame(block)) {
-        stop("`data` returned a ", class(block)[1], " on call ", seen,
+        stop("`data` returned ", a_class(block), " on call ", seen,
              ", where `batches = TRUE` needs a data frame of rows. Return ",
              "each batch as a data frame, and NULL at the end of the stream.",
              call. = FALSE)
@@ -513,7 +513,7 @@ as_stream <- function(x, batches = FALSE, block = 10000L) {
                 give_back = give_back))
   }
   stop("`data` must be a data frame, list, connection, or zero-argument ",
-       "function for a reservoir design, not a ", class(x)[1], ".",
+       "function for a reservoir design, not ", a_class(x), ".",
        call. = FALSE)
 }
 

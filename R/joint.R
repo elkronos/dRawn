@@ -85,8 +85,8 @@
 joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
                        seed = NULL) {
   if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not a ",
-         class(design)[1], ". See ?designs.", call. = FALSE)
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
   }
   validate_data(data)
   check_flag(simulate, "simulate")

@@ -121,8 +121,8 @@
 #' @export
 draw <- function(data, design, seed = NULL, weights = FALSE) {
   if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not a ",
-         class(design)[1], ". See ?designs.", call. = FALSE)
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
   }
   check_flag(weights, "weights")
   warn_region(design, data)
@@ -133,7 +133,7 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   }
 
   if (!is.data.frame(data)) {
-    stop("`weights = TRUE` needs a data frame, not a ", class(data)[1], ".",
+    stop("`weights = TRUE` needs a data frame, not ", a_class(data), ".",
          call. = FALSE)
   }
   added <- c(".prob", ".weight", ".row")

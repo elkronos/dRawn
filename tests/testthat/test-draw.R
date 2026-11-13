@@ -197,3 +197,25 @@ test_that("a value outside an argument's choices is refused by name", {
                                  allocation_by = "w")$allocation, "neyman")
   expect_equal(ht_total(s, "y", variance = "jack")$method, "jackknife")
 })
+
+test_that("a printed design says what a NULL default means", {
+  out <- capture.output(print(design_bootstrap(20, method = "block")))
+  expect_true(any(grepl("^  n +nrow\\(data\\)$", out)))
+  expect_true(any(grepl("^  block_length +nrow\\(data\\)\\^\\(1/3\\), rounded down$",
+                        out)))
+  out <- capture.output(print(design_bootstrap(20)))
+  expect_false(any(grepl("block_length", out)))
+  out <- capture.output(print(design_systematic(interval = 5)))
+  expect_true(any(grepl("^  start +random$", out)))
+  out <- capture.output(print(design_systematic(interval = 5, start = 2)))
+  expect_true(any(grepl("^  start +2$", out)))
+})
+
+test_that("messages give a class its article", {
+  expect_error(draw(data.frame(id = 1:5), 1L),
+               "constructors, not an integer.", fixed = TRUE)
+  expect_error(draw(1:5, design_simple(n = 2), weights = TRUE),
+               "needs a data frame, not an integer.", fixed = TRUE)
+  expect_error(design_certainty("w", 1, list()),
+               "not a list.", fixed = TRUE)
+})

@@ -91,6 +91,122 @@ check_choice <- function(x, choices, arg) {
   choices[[i]]
 }
 
+#' A plot title: one string, or NULL for the default
+#'
+#' `main` also takes an expression, which `mtext()` draws as plotmath. `sub`
+#' is added to the line under the title as text, so it takes a string only.
+#'
+#' @noRd
+check_title <- function(x, arg) {
+  string <- is.character(x) && length(x) == 1L && !is.na(x)
+  math <- arg == "main" && (is.expression(x) || is.call(x))
+  if (is.null(x) || string || math) return(x)
+  stop("`", arg, "` must be a single string",
+       if (arg == "main") ", an expression", " or NULL, not ",
+       format_bad(x), ".", call. = FALSE)
+}
+
+#' The plot palette, with the user's entries in place of the defaults
+#'
+#' Checked before anything is drawn: an unknown name, a NULL or a value that
+#' is not one colour would otherwise stop the plot halfway through, or be
+#' ignored. A named character vector is read as a list.
+#'
+#' @noRd
+check_palette <- function(palette) {
+  base <- drawn_pal()
+  if (is.null(palette)) return(base)
+  if (is.character(palette) && !is.null(names(palette))) {
+    palette <- as.list(palette)
+  }
+  nm <- names(palette)
+  if (!is.list(palette) || is.data.frame(palette) ||
+      (length(palette) && (is.null(nm) || anyNA(nm) || !all(nzchar(nm))))) {
+    stop("`palette` must be a named list of colours, such as ",
+         "list(accent = \"darkred\"), not ",
+         if (is.character(palette)) "an unnamed character vector"
+         else a_class(palette), ".", call. = FALSE)
+  }
+  unknown <- setdiff(nm, names(base))
+  if (length(unknown)) {
+    stop("`palette` has ", if (length(unknown) == 1L) "an entry" else
+           "entries", " ", quote_names(unknown), ", which the plot does not ",
+         "use. Name entries from ", quote_names(names(base)), ".",
+         call. = FALSE)
+  }
+  for (k in nm) {
+    v <- palette[[k]]
+    ok <- (is.character(v) || is.numeric(v)) && length(v) == 1L &&
+      !is.na(v) &&
+      !inherits(tryCatch(grDevices::col2rgb(v), error = identity), "error")
+    if (!ok) {
+      shown <- if (is.null(v)) {
+        "NULL"
+      } else if (is.character(v) && length(v) == 1L && !is.na(v)) {
+        paste0("\"", v, "\"")
+      } else {
+        format_bad(v)
+      }
+      stop("`palette$", k, "` must be one colour, a name from colors() or ",
+           "a code such as \"#1B6B52\", not ", shown, ".", call. = FALSE)
+    }
+  }
+  utils::modifyList(base, palette)
+}
+
+#' Refuse `...` arguments to plot() that are not graphical parameters
+#'
+#' `...` reaches the call that sets up the panel. A name it does not take,
+#' such as `simulate`, was dropped with a warning from deep inside base
+#' graphics. Read by name only, so nothing in `...` is evaluated before the
+#' refusal.
+#'
+#' @noRd
+check_panel_args <- function(...) {
+  if (...length() == 0L) return(invisible(TRUE))
+  nm <- ...names()
+  if (is.null(nm)) nm <- rep("", ...length())
+  nm[is.na(nm)] <- ""
+  if (!all(nzchar(nm))) {
+    stop("Arguments in `...` must be named graphical parameters, such as ",
+         "`xlim = c(0, 10)`; ", sum(!nzchar(nm)), " ",
+         if (sum(!nzchar(nm)) == 1L) "has" else "have", " no name.",
+         call. = FALSE)
+  }
+  bad <- setdiff(nm, panel_parameters())
+  if (length(bad)) {
+    bad <- paste0("`", bad, "`")
+    if (length(bad) > 1L) {
+      bad <- paste(paste(bad[-length(bad)], collapse = ", "), "or",
+                   bad[length(bad)])
+    }
+    stop("plot() for a design does not take ", bad, ". Its ",
+         "`...` takes graphical parameters for the panel, such as `xlim`, ",
+         "`ylim`, `asp` or `log`.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' The names plot() of a design passes on to the panel
+#'
+#' The arguments of `plot.default()` that set up a panel, and the graphical
+#' parameters of `par()` that can be set. `panel.first` and `panel.last` are
+#' left out, since `...` is evaluated before the panel exists.
+#'
+#' @noRd
+panel_parameters <- function() {
+  c("xlim", "ylim", "log", "xlab", "ylab", "ann", "axes", "frame.plot",
+    "asp", "xgap.axis", "ygap.axis",
+    "adj", "ask", "bg", "bty", "cex", "cex.axis", "cex.lab", "cex.main",
+    "cex.sub", "col", "col.axis", "col.lab", "col.main", "col.sub", "crt",
+    "err", "family", "fg", "fig", "fin", "font", "font.axis", "font.lab",
+    "font.main", "font.sub", "lab", "las", "lend", "lheight", "ljoin",
+    "lmitre", "lty", "lwd", "mai", "mar", "mex", "mfcol", "mfg", "mfrow",
+    "mgp", "mkh", "new", "oma", "omd", "omi", "pch", "pin", "plt", "ps",
+    "pty", "smo", "srt", "tck", "tcl", "usr", "xaxp", "xaxs", "xaxt",
+    "xlog", "xpd", "yaxp", "yaxs", "yaxt", "ylbias", "ylog")
+}
+
 #' @noRd
 format_bad <- function(x) {
   if (is.character(x)) {
@@ -100,15 +216,28 @@ format_bad <- function(x) {
     return(paste0("a length-", length(x), " ", class(x)[1]))
   }
   if (is.na(x)) return("NA")
-  if (!is.numeric(x)) return(paste0("a ", class(x)[1]))
+  if (!is.numeric(x)) return(a_class(x))
   paste0(x)
 }
+
+#' A word with its indefinite article
+#'
+#' "an" before a vowel, so a class reads "an integer" and "a list".
+#'
+#' @noRd
+with_article <- function(word) {
+  paste(if (grepl("^[aeiouAEIOU]", word)) "an" else "a", word)
+}
+
+#' The class of `x`, with its article, for messages
+#' @noRd
+a_class <- function(x) with_article(class(x)[1])
 
 #' Validate a data frame and, optionally, that it holds the given columns
 #' @noRd
 validate_data <- function(data, required_columns = NULL, arg = "data") {
   if (!is.data.frame(data)) {
-    stop("`", arg, "` must be a data frame, not a ", class(data)[1], ".",
+    stop("`", arg, "` must be a data frame, not ", a_class(data), ".",
          call. = FALSE)
   }
   if (nrow(data) == 0L) {

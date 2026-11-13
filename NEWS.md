@@ -504,6 +504,23 @@
   large for a number, and refuses it for an unbounded `N` with a message
   naming `margin` and `level`. It stopped with "missing value where
   TRUE/FALSE needed", or returned `n = Inf`.
+* `plot()` checks `palette`, `main` and `sub` before it draws anything.
+  An entry of `palette` the plot does not use, such as `acent`, a `NULL`
+  entry, or a value that is not one colour is refused by name, and a named
+  character vector such as `c(accent = "red")` is read as a list. A colour
+  R did not know stopped the plot partway, with part of the page drawn, and
+  a bad `surface` left the margins changed for the next plot. A misspelt
+  entry was ignored, and a named vector stopped with "is.list(val) is not
+  TRUE".
+* `plot()` refuses an argument in `...` that is not a graphical parameter,
+  such as `simulate`, and names it. It was passed to the panel, where base
+  graphics dropped it with a warning.
+* `plot()` names `y` when the population is not a data frame, where it said
+  `data`. `plot(type = "map")` names the two columns when no row has both
+  coordinates, where base graphics stopped with "need finite 'xlim'
+  values".
+* Messages that name a class put "an" before a vowel, as in "not an
+  integer", where they said "not a integer".
 
 ## Behaviour changes
 
@@ -667,6 +684,43 @@
   It marked every row drawn in any replicate, which at the default 1,000
   replicates is every row. `plot(type = "probability")` no longer points a
   bootstrap to the selection view.
+* `plot()` passes `xlim`, `ylim`, `asp` and the other graphical parameters
+  in `...` to the panel in place of its own settings. Each one the plot also
+  set stopped with "formal argument matched by multiple actual arguments",
+  so a map could not be given `asp = 1` and the probability view could not
+  be zoomed. In `type = "probability"` the rules, the axis and the mean line
+  follow the limits given.
+* `plot(type = "map")` of a `design_spatial()`, or of a `design_spread()`
+  with `scale = FALSE`, draws both axes to the same scale, so the map shows
+  the distances the design works with. Longitude and latitude are drawn
+  with a degree of longitude at `cos()` of the middle latitude. Other
+  columns fill the panel as before, and `asp = NA` gives that back for these
+  two designs.
+* `plot(type = "map")` says under its title which columns of `across` it
+  leaves out when there are more than two, and how many selected rows it
+  could not place because a coordinate is missing. It used the first two
+  columns without saying so and counted rows it did not draw among those
+  selected. When it thins the background it keeps at most `max_dots` of the
+  unselected rows and says "background thinned to 50 of 210". Its note
+  "50 of 240 rows shown" came with 71 rows drawn.
+* The default title of `plot()`, and the description of a design in
+  messages, gives every argument that changes what the design draws when it
+  differs from the default: `replace`, `start`, `allocation_by`, `cost`,
+  `min_per_stratum`, `min_per_cluster`, `max_items`, `block_length`,
+  `output`, `batches`, `scale` and `na_rm`, the `coords` of
+  `design_spatial()`, the `above`, `threshold` and `rest` of
+  `design_certainty()`, and the `unit` of `design_temporal()`. Several
+  column names are wrapped in `c()`, so the title reads as R code.
+  `design_simple(n = 10)` and `design_simple(n = 10, replace = TRUE)` had
+  the same title, as did a reservoir with and without `max_items`, and a
+  certainty design's title had no arguments at all. `balanced = FALSE` is
+  left out. A title or subtitle too long for the figure is drawn smaller,
+  down to two thirds of its size, and past that is cut and ends in "...",
+  where it ran off the edge of the figure.
+* A printed design shows what a default left as `NULL` means: `start` is
+  `random` for `design_systematic()`, and `n` is `nrow(data)` and the
+  default `block_length` is `nrow(data)^(1/3), rounded down` for
+  `design_bootstrap()`.
 
 ## New
 
@@ -1029,6 +1083,10 @@
   before. `plan_size()` takes several values of `margin`, `sd`, `p`, `deff`
   and `response`, one per plan, and returns a data frame with a row per
   plan, and `as.data.frame()` turns a single plan into such a row.
+* `plot()` takes `sub`, a string added to the end of the line under the
+  title. A `sub` given before was matched to an internal argument of the
+  same name, and `type = "map"` stopped with 'graphical parameter "bg" has
+  the wrong length'.
 
 ## Speed and memory
 

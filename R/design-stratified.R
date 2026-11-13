@@ -629,8 +629,8 @@ stratum_allocation <- function(design, data) {
 #' @export
 allocation_table <- function(data, design) {
   if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not a ",
-         class(design)[1], ". See ?designs.", call. = FALSE)
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
   }
   validate_data(data)
   if (inherits(design, "drawn_design_certainty") &&

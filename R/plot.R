@@ -47,7 +47,15 @@ drawn_pal <- function() {
 #'     clumps and gaps against a spread one. For [design_spatial()] the
 #'     outline of `region` is drawn as well, with each edge of a
 #'     longitude/latitude region following its great circle under spherical
-#'     geometry, which is how the design decides which rows are inside.}
+#'     geometry, which is how the design decides which rows are inside.
+#'     The coordinates of [design_spatial()], and those of [design_spread()]
+#'     with `scale = FALSE`, get the same scale on both axes (`asp = 1`, or
+#'     `1 / cos()` of the middle latitude for longitude and latitude), so the
+#'     map shows the distances the design works with; other columns fill the
+#'     panel. When `across` names more than two columns, the first two place
+#'     the rows. The line under the title names the columns left out, counts
+#'     the selected rows that have no position and so are not drawn, and says
+#'     when the background is thinned.}
 #' }
 #'
 #' A design with `reserve` is shown by its main sample, without the reserves.
@@ -65,16 +73,32 @@ drawn_pal <- function() {
 #'   A larger frame is shown in runs of consecutive rows: in `"selection"` a
 #'   dot stands for a run and is filled when any row in it is selected, and in
 #'   `"probability"` a step spans the lowest and highest probability in its
-#'   run. `"map"` draws every selected row and an evenly spaced subset of the
-#'   others. The counts under the title cover the whole frame.
-#' @param main Title. Defaults to a description of the design.
-#' @param palette Named list overriding any of `surface`, `ink`, `secondary`,
-#'   `muted`, `recessive`, `accent`, `fill`, `rule`.
+#'   run. `"map"` draws every selected row and at most `max_dots` of the
+#'   others, evenly spaced through the frame. The counts under the title
+#'   cover the whole frame.
+#' @param main Title, a single string or an expression. Defaults to a
+#'   description of the design: its constructor and the arguments that
+#'   differ from their defaults.
+#' @param palette Named list, or named character vector, of colours
+#'   overriding any of `surface`, `ink`, `secondary`, `muted`, `recessive`,
+#'   `accent`, `fill`, `rule`. Each entry is one colour, a name from
+#'   [grDevices::colors()] or a code such as `"#1B6B52"`. Other names are
+#'   refused.
 #' @param coords For `type = "map"`, the two columns to place rows by, `c(x,
 #'   y)`, or one POINT geometry column. Defaults to the design's own `across`
 #'   ([design_spread()]) or `coords` ([design_spatial()]); required for any
 #'   other design. Date and date-time columns get date axes.
-#' @param ... Passed to the underlying plot call.
+#' @param sub A single string, added to the end of the line under the title,
+#'   after the counts the plot puts there.
+#' @param ... Graphical parameters for the call that sets up the panel, such
+#'   as `xlim`, `ylim`, `asp` or `log`. They replace the plot's own: `asp = 1`
+#'   gives any map the same scale on both axes, and `xlim` and `ylim` zoom in,
+#'   with the rules and the mean line of `"probability"` following them.
+#'   Axes and labels drawn by base graphics are off (`axes = FALSE`, `ann =
+#'   FALSE`) unless turned on here. The dots, steps and titles keep their
+#'   own look, so `col`, `cex` and `pch` here change nothing visible; their
+#'   colours come from `palette`. A name that is not a graphical parameter is
+#'   refused.
 #'
 #' @return `x`, invisibly. Called for the plot.
 #'
@@ -100,38 +124,58 @@ drawn_pal <- function() {
 #' @export
 plot.drawn_design <- function(x, y, type = c("selection", "probability", "map"),
                               seed = NULL, ncol = NULL, max_dots = 4000,
-                              main = NULL, palette = NULL, coords = NULL, ...) {
+                              main = NULL, palette = NULL, coords = NULL,
+                              sub = NULL, ...) {
   type <- check_choice(type, c("selection", "probability", "map"), "type")
   if (missing(y)) {
     stop("Pass the population data frame as the second argument: ",
          "plot(design, data).", call. = FALSE)
   }
-  validate_data(y)
+  validate_data(y, arg = "y")
   max_dots <- check_count(max_dots, "max_dots", allow_zero = FALSE)
   if (!is.null(ncol)) ncol <- check_count(ncol, "ncol", allow_zero = FALSE)
-
-  pal <- utils::modifyList(drawn_pal(), palette %||% list())
+  main <- check_title(main, "main")
+  sub <- check_title(sub, "sub")
+  pal <- check_palette(palette)
+  check_panel_args(...)
+  dots <- list(...)
   main <- main %||% design_label(x)
 
   if (type == "probability") {
-    return(plot_probability(x, y, max_dots, main, pal, ...))
-  }
-  # A design with `reserve` is shown by its main sample.
-  if (type == "map") {
-    n_pop <- nrow(y)
-    shown <- if (n_pop > max_dots) {
-      round(seq(1, n_pop, length.out = max_dots))
-    } else {
-      seq_len(n_pop)
-    }
-    sub <- if (length(shown) < n_pop) {
-      paste0(fmt_n(length(shown)), " of ", fmt_n(n_pop), " rows shown")
-    }
-    plot_map(main_design(x), y, coords, shown, seed, main, sub, pal, ...)
+    plot_probability(x = x, y = y, max_dots = max_dots, main = main,
+                     sub = sub, pal = pal, dots = dots)
+  } else if (type == "map") {
+    # A design with `reserve` is shown by its main sample.
+    plot_map(x = main_design(x), y = y, coords = coords, max_dots = max_dots,
+             seed = seed, main = main, sub = sub, pal = pal, dots = dots)
   } else {
-    plot_selection(main_design(x), y, max_dots, seed, ncol, main, pal, ...)
+    plot_selection(x = main_design(x), y = y, max_dots = max_dots,
+                   seed = seed, ncol = ncol, main = main, sub = sub,
+                   pal = pal, dots = dots)
   }
   invisible(x)
+}
+
+#' Set up the panel: the plot's own settings, replaced by any in `...`
+#'
+#' A limit given as NULL keeps the plot's own. Returns the arguments used, so
+#' the caller can read the limits the panel was drawn with.
+#'
+#' @noRd
+panel_frame <- function(defaults, dots) {
+  args <- utils::modifyList(defaults, dots)
+  for (lim in c("xlim", "ylim")) {
+    if (is.null(args[[lim]])) args[[lim]] <- defaults[[lim]]
+  }
+  do.call(graphics::plot, args)
+  args
+}
+
+#' The line under the title: its parts, those present, side by side
+#' @noRd
+subtitle <- function(...) {
+  parts <- c(...)
+  paste(parts[nzchar(parts)], collapse = "   |   ")
 }
 
 #' Runs of consecutive frame rows, one per dot or step
@@ -294,38 +338,110 @@ row_ticks <- function(n) {
 fmt_n <- function(n) formatC(n, format = "d", big.mark = ",")
 
 #' A one-line description of the design, for the default title
+#'
+#' The arguments that decide what is drawn, in R syntax. A vector of names
+#' is wrapped in `c()`, and a nested design is shown by its own label.
+#' Arguments at their default are left out, except the `allocation` and
+#' `method` rules and a temporal design's `unit`, which say what `n` and
+#' `interval` mean. The window of a temporal design, `from`, `to` and `tz`,
+#' is left out to keep the title to one line.
+#'
 #' @noRd
 design_label <- function(x) {
   p <- unclass(x)
-  # One start and no reserves are the defaults, and say nothing about the
-  # design.
-  if (identical(p$n_starts, 1L)) p$n_starts <- NULL
-  if (identical(p$reserve, 0L)) p$reserve <- NULL
+  defaults <- list(replace = FALSE, reserve = 0L, n_starts = 1L,
+                   min_per_stratum = 0L, min_per_cluster = 0L,
+                   max_items = Inf, scale = TRUE, batches = FALSE,
+                   output = "rows", balanced = FALSE, na_rm = FALSE,
+                   crs = 4326)
+  for (k in intersect(names(defaults), names(p))) {
+    v <- p[[k]]
+    if (is.atomic(v) && length(v) == 1L && !is.na(v) &&
+        isTRUE(v == defaults[[k]])) {
+      p[k] <- list(NULL)
+    }
+  }
+  # A coordinate reference system given as an object has no short form.
+  if (!is.null(p$crs) && !(is.atomic(p$crs) && length(p$crs) == 1L)) {
+    p$crs <- NULL
+  }
   p <- p[!vapply(p, function(v) is.null(v) || inherits(v, c("sf", "sfc")),
                  logical(1))]
-  keep <- intersect(c("strata", "clusters", "weights", "across", "size",
-                      "time", "n", "reserve",
-                      "n_clusters", "interval", "n_starts", "order_by",
-                      "per_interval", "n_replicates",
-                      "allocation", "method", "balanced", "within"), names(p))
-  bits <- vapply(keep, function(k) paste0(k, " = ", fmt_param(p[[k]])),
+  keep <- intersect(c("strata", "clusters", "weights", "above", "threshold",
+                      "across", "coords", "size", "time", "n", "replace",
+                      "reserve", "n_clusters", "interval", "unit", "start",
+                      "n_starts", "order_by", "per_interval", "n_replicates",
+                      "max_items", "allocation", "allocation_by", "cost",
+                      "min_per_stratum", "min_per_cluster", "method",
+                      "block_length", "balanced", "scale",
+                      "crs", "within", "rest", "output", "batches",
+                      "na_rm"), names(p))
+  bits <- vapply(keep, function(k) paste0(k, " = ", label_param(p[[k]])),
                  character(1))
   paste0("design_", design_type(x), "(", paste(bits, collapse = ", "), ")")
 }
 
+#' One argument's value in a design label
+#'
+#' As printed, with a vector of several values wrapped in `c()`.
+#'
+#' @noRd
+label_param <- function(v) {
+  shown <- fmt_param(v)
+  several <- is.atomic(v) && length(v) > 1L && length(v) <= 6L &&
+    is.null(names(v)) && !inherits(v, c("POSIXt", "Date"))
+  if (several) paste0("c(", shown, ")") else shown
+}
+
 #' Title above the panel, subtitle beneath it, both left-aligned
+#'
+#' Each starts at the left edge of the panel. One too long to end inside the
+#' figure is shrunk to fit, down to two thirds of its size, and text still
+#' too long at that size is cut and ends in "...", so a long default title
+#' is not cut off unseen at the edge of the figure.
+#'
 #' @noRd
 draw_titles <- function(main, sub, pal) {
-  graphics::mtext(main, side = 3, line = 1.55, adj = 0, cex = 0.9,
-                  font = 2, col = pal$ink, xpd = NA)
+  title <- fit_line(main, 0.9, font = 2)
+  graphics::mtext(title$text, side = 3, line = 1.55, adj = 0,
+                  cex = title$cex, font = 2, col = pal$ink, xpd = NA)
   if (!is.null(sub) && nzchar(sub)) {
-    graphics::mtext(sub, side = 3, line = 0.5, adj = 0, cex = 0.72,
-                    col = pal$secondary, xpd = NA)
+    below <- fit_line(sub, 0.72)
+    graphics::mtext(below$text, side = 3, line = 0.5, adj = 0,
+                    cex = below$cex, col = pal$secondary, xpd = NA)
   }
 }
 
+#' A line above the panel, at the size and length that end inside the figure
 #' @noRd
-plot_selection <- function(x, y, max_dots, seed, ncol, main, pal, ...) {
+fit_line <- function(text, cex, font = 1) {
+  room <- graphics::par("pin")[1] + graphics::par("mai")[4]
+  # strwidth() scales by par("cex"), and mtext() does not.
+  width <- function(x, size) {
+    graphics::strwidth(x, units = "inches", font = font,
+                       cex = size / graphics::par("cex"))
+  }
+  wide <- max(width(text, cex))
+  if (!is.finite(wide) || wide <= room) {
+    return(list(text = text, cex = cex))
+  }
+  smallest <- cex * 2 / 3
+  cex <- max(cex * room / wide, smallest)
+  # Font sizes come in steps, so the width does not shrink in proportion.
+  while (cex > smallest && max(width(text, cex)) > room) {
+    cex <- max(cex - 0.02, smallest)
+  }
+  if (is.character(text) && width(text, cex) > room) {
+    cut <- paste0(substring(text, 1, seq_len(nchar(text) - 1L)), "...")
+    fits <- which(width(cut, cex) <= room)
+    if (length(fits)) text <- cut[max(fits)]
+  }
+  list(text = text, cex = cex)
+}
+
+#' @noRd
+plot_selection <- function(x, y, max_dots, seed, ncol, main, sub, pal,
+                           dots = list()) {
   counts <- plot_counts(x, y, seed)
   view <- selection_view(counts, max_dots)
   sel <- view$filled
@@ -333,8 +449,11 @@ plot_selection <- function(x, y, max_dots, seed, ncol, main, pal, ...) {
   k <- length(sel)
   # A second line under the grid needs room.
   bottom <- if (is.null(view$key)) 2.4 else 3.2
-  op <- graphics::par(mar = c(bottom, 1.4, 3.6, 1.4), bg = pal$surface)
+  # The old values are taken first, so a value par() refuses partway through
+  # cannot leave the margins changed for the next plot.
+  op <- graphics::par(c("mar", "bg"))
   on.exit(graphics::par(op), add = TRUE)
+  graphics::par(mar = c(bottom, 1.4, 3.6, 1.4), bg = pal$surface)
 
   # Shape the grid to the panel so it fills the space instead of floating in it.
   if (is.null(ncol)) {
@@ -346,8 +465,9 @@ plot_selection <- function(x, y, max_dots, seed, ncol, main, pal, ...) {
   gx <- ((seq_len(k) - 1L) %% ncol) + 1L
   gy <- nr - ((seq_len(k) - 1L) %/% ncol)
 
-  graphics::plot(gx, gy, type = "n", axes = FALSE, ann = FALSE,
-                 xlim = c(0.4, ncol + 0.6), ylim = c(0.4, nr + 0.6), ...)
+  panel_frame(list(x = gx, y = gy, type = "n", axes = FALSE, ann = FALSE,
+                   xlim = c(0.4, ncol + 0.6), ylim = c(0.4, nr + 0.6)),
+              dots)
 
   graphics::points(gx[!sel], gy[!sel], pch = 19, cex = 0.5, col = pal$recessive)
   # A surface-coloured ring goes on first, so adjacent selected dots stay
@@ -367,7 +487,7 @@ plot_selection <- function(x, y, max_dots, seed, ncol, main, pal, ...) {
                      lwd = if (ring_cex < 1.5) 0.7 else 1, col = pal$accent)
   }
 
-  draw_titles(main, selection_label(x, counts), pal)
+  draw_titles(main, subtitle(selection_label(x, counts), sub), pal)
   graphics::mtext("frame order, left to right, top to bottom", side = 1,
                   line = 0.8, adj = 0, cex = 0.68, col = pal$muted, xpd = NA)
   if (!is.null(view$key)) {
@@ -378,7 +498,7 @@ plot_selection <- function(x, y, max_dots, seed, ncol, main, pal, ...) {
 }
 
 #' @noRd
-plot_probability <- function(x, y, max_dots, main, pal, ...) {
+plot_probability <- function(x, y, max_dots, main, sub, pal, dots = list()) {
   # Keep the real reason. Assuming "no closed form" sent anyone with a missing
   # column, or a fixed `start`, off in entirely the wrong direction. A
   # bootstrap is not sent to the selection view, which shows one replicate
@@ -394,17 +514,23 @@ plot_probability <- function(x, y, max_dots, main, pal, ...) {
   view <- probability_view(p, max_dots)
   n <- view$n
   top <- view$top
-  ylim <- c(0, if (!is.finite(top) || top <= 0) 1 else top * 1.14)
-  xlim <- c(0.5, n + 0.5)
 
-  op <- graphics::par(mar = c(3.6, 4.4, 3.6, 1.4), bg = pal$surface)
+  op <- graphics::par(c("mar", "bg"))
   on.exit(graphics::par(op), add = TRUE)
-  graphics::plot(NA, xlim = xlim, ylim = ylim, axes = FALSE,
-                 ann = FALSE, xaxs = "i", yaxs = "i", ...)
+  graphics::par(mar = c(3.6, 4.4, 3.6, 1.4), bg = pal$surface)
+  # The rules, the mean line and the axis follow the limits the panel was
+  # drawn with, which `xlim` and `ylim` in `...` replace.
+  frame <- panel_frame(list(
+    x = NA, xlim = c(0.5, n + 0.5),
+    ylim = c(0, if (!is.finite(top) || top <= 0) 1 else top * 1.14),
+    axes = FALSE, ann = FALSE, xaxs = "i", yaxs = "i"
+  ), dots)
+  xlim <- frame$xlim
+  ylim <- frame$ylim
 
   # Rules sit behind the data, so the eye reads level before shape.
-  ticks <- pretty(c(0, ylim[2]), n = 4)
-  ticks <- ticks[ticks >= 0 & ticks <= ylim[2]]
+  ticks <- pretty(ylim, n = 4)
+  ticks <- ticks[ticks >= min(ylim) & ticks <= max(ylim)]
   graphics::abline(h = ticks, col = pal$rule, lwd = 1)
 
   sx <- view$x
@@ -440,15 +566,16 @@ plot_probability <- function(x, y, max_dots, main, pal, ...) {
   graphics::mtext("inclusion probability", side = 2, line = 3.0, cex = 0.72,
                   col = pal$secondary)
 
-  draw_titles(main, probability_label(view), pal)
+  draw_titles(main, subtitle(probability_label(view), sub), pal)
   invisible(x)
 }
 
 #' @noRd
-plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
+plot_map <- function(x, y, coords, max_dots, seed, main, sub, pal,
+                     dots = list()) {
   coords <- coords %||% x$across %||% x$coords
   if (!is.null(coords)) {
-    validate_data(y, required_columns = coords)
+    validate_data(y, required_columns = coords, arg = "y")
     pos <- coordinate_columns(y, coords, "coords")
   }
   if (is.null(coords) || length(pos) < 2L) {
@@ -456,27 +583,45 @@ plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
          "`coords = c(\"x\", \"y\")`, or the name of a POINT geometry ",
          "column.", call. = FALSE)
   }
-  # A geometry column gives two coordinates, so a spread design's `across`
-  # may hold more than two; the first two place the rows.
+  # A spread design's `across` may hold more than two coordinates. The first
+  # two place the rows, and the line under the title names the others.
+  left_out <- names(pos)[-(1:2)]
   pos <- pos[1:2]
   axis_ok <- function(v) is.numeric(v) || inherits(v, c("Date", "POSIXt"))
   if (!axis_ok(pos[[1]]) || !axis_ok(pos[[2]])) {
     stop("`", names(pos)[1], "` and `", names(pos)[2], "` must both be ",
          "numeric, dates or date-times.", call. = FALSE)
   }
+  px <- pos[[1]]
+  py <- pos[[2]]
+  placed <- is.finite(as.numeric(px)) & is.finite(as.numeric(py))
+  if (!any(placed)) {
+    stop("`", names(pos)[1], "` and `", names(pos)[2], "` are not both ",
+         "finite in any row of `y`, so the map has no row to place. Pass ",
+         "`coords` naming the columns that hold each row's position.",
+         call. = FALSE)
+  }
 
   counts <- plot_counts(x, y, seed)
   sel <- counts > 0
+  ring <- counts > 1
+  lost <- sum(sel & !placed)
 
   # Thinning a map would hide exactly the gaps it exists to show, so every
-  # selected row is drawn and only the unselected background is thinned.
-  bg <- setdiff(shown, which(sel))
-  px <- pos[[1]]
-  py <- pos[[2]]
+  # selected row is drawn and only the unselected background is thinned,
+  # evenly through the frame.
+  others <- which(!sel & placed)
+  bg <- if (length(others) > max_dots) {
+    others[round(seq(1, length(others), length.out = max_dots))]
+  } else {
+    others
+  }
 
-  op <- graphics::par(mar = c(3.6, 3.8, 3.6, 1.4), bg = pal$surface)
+  op <- graphics::par(c("mar", "bg"))
   on.exit(graphics::par(op), add = TRUE)
-  graphics::plot(px, py, type = "n", axes = FALSE, ann = FALSE, asp = NA, ...)
+  graphics::par(mar = c(3.6, 3.8, 3.6, 1.4), bg = pal$surface)
+  panel_frame(list(x = px, y = py, type = "n", axes = FALSE, ann = FALSE,
+                   asp = map_asp(x, y, coords, pos)), dots)
   graphics::box(col = pal$rule)
   # A spatial design's region, drawn under the rows so the rows inside it
   # and outside it can be told apart.
@@ -494,15 +639,58 @@ plot_map <- function(x, y, coords, shown, seed, main, sub, pal, ...) {
   graphics::points(px[bg], py[bg], pch = 19, cex = 0.45, col = pal$recessive)
   graphics::points(px[sel], py[sel], pch = 21, cex = 1.05, lwd = 1.5,
                    col = pal$surface, bg = pal$accent)
-  ring <- counts > 1
   graphics::points(px[ring], py[ring], pch = 1, cex = 1.7, lwd = 1,
                    col = pal$accent)
   graphics::mtext(names(pos)[1], side = 1, line = 2.1, cex = 0.72,
                   col = pal$secondary)
   graphics::mtext(names(pos)[2], side = 2, line = 2.6, cex = 0.72,
                   col = pal$secondary)
-  repeats <- if (any(ring)) "ringed rows were drawn more than once"
-  draw_titles(main, paste(c(selection_label(x, counts), repeats, sub),
-                          collapse = "   |   "), pal)
+  draw_titles(main, subtitle(
+    selection_label(x, counts),
+    if (any(ring)) "ringed rows were drawn more than once",
+    if (length(left_out)) {
+      paste0("placed by ", names(pos)[1], " and ", names(pos)[2], ", not ",
+             paste(left_out, collapse = ", "))
+    },
+    if (lost) {
+      paste0(fmt_n(lost), " selected row", if (lost != 1) "s",
+             " not shown, missing ", names(pos)[1], " or ", names(pos)[2])
+    },
+    if (length(bg) < length(others)) {
+      paste0("background thinned to ", fmt_n(length(bg)), " of ",
+             fmt_n(length(others)))
+    },
+    sub
+  ), pal)
   invisible(x)
+}
+
+#' The aspect ratio of a map
+#'
+#' The coordinates a design measures distance in, those of
+#' [design_spatial()] and of [design_spread()] with `scale = FALSE`, get the
+#' same scale on both axes, so the map shows the distances the design works
+#' with. A degree of longitude spans `cos(latitude)` degrees of latitude, so
+#' longitude and latitude get `1 / cos()` of the middle latitude. Other
+#' columns, scaled ones and dates fill the panel, as `asp = NA` does.
+#'
+#' @noRd
+map_asp <- function(design, data, coords, pos) {
+  measured <- inherits(design, "drawn_design_spatial") ||
+    (inherits(design, "drawn_design_spread") && isFALSE(design$scale))
+  timed <- any(vapply(pos, inherits, logical(1), what = c("Date", "POSIXt")))
+  if (!measured || timed || !identical(coords, design$across %||%
+                                       design$coords)) {
+    return(NA)
+  }
+  crs <- if (inherits(design, "drawn_design_spatial")) {
+    spatial_crs(design, data)
+  } else if (length(coords) == 1L && inherits(data[[coords]], "sfc")) {
+    sf::st_crs(data[[coords]])
+  }
+  if (!is.null(crs) && isTRUE(sf::st_is_longlat(crs))) {
+    lat <- mean(range(pos[[2]], finite = TRUE))
+    return(1 / cos(lat * pi / 180))
+  }
+  1
 }

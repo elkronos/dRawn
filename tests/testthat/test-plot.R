@@ -302,3 +302,274 @@ test_that("a bootstrap is plotted by its first replicate", {
   expect_match(conditionMessage(err), "has no inclusion probability")
   expect_no_match(conditionMessage(err), "type = \"selection\"", fixed = TRUE)
 })
+
+test_that("palette, main and sub are checked before anything is drawn", {
+  pop <- data.frame(id = 1:50)
+  d <- design_simple(n = 5)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  op <- graphics::par(mar = c(5.1, 4.1, 4.1, 2.1))
+  on.exit(graphics::par(op), add = TRUE, after = FALSE)
+  before <- graphics::par(c("mar", "bg"))
+
+  expect_error(plot(d, pop, palette = list(surface = "offwhite")),
+               "`palette$surface` must be one colour", fixed = TRUE)
+  expect_identical(graphics::par(c("mar", "bg")), before)
+  expect_error(plot(d, pop, palette = list(acent = "red")),
+               "`palette` has an entry `acent`, which the plot does not use",
+               fixed = TRUE)
+  expect_error(plot(d, pop, palette = list(accent = NULL)),
+               "`palette$accent` must be one colour, a name from colors() or a code such as \"#1B6B52\", not NULL.",
+               fixed = TRUE)
+  expect_error(plot(d, pop, palette = list(accent = c("red", "blue"))),
+               "`palette$accent` must be one colour", fixed = TRUE)
+  expect_error(plot(d, pop, palette = "red"), "named list of colours")
+  expect_error(plot(d, pop, main = c("a", "b")),
+               "`main` must be a single string, an expression or NULL")
+  expect_error(plot(d, pop, sub = 1), "`sub` must be a single string or NULL")
+  expect_identical(graphics::par(c("mar", "bg")), before)
+
+  # A named character vector is a palette too, and an expression a title.
+  shown <- NULL
+  local_mocked_bindings(draw_titles = function(main, sub, pal) {
+    shown <<- list(main = main, accent = pal$accent)
+  })
+  plot(d, pop, seed = 1, palette = c(accent = "red"),
+       main = expression(alpha))
+  expect_identical(shown, list(main = expression(alpha), accent = "red"))
+})
+
+test_that("an error while drawing leaves the margins as they were", {
+  pop <- data.frame(id = 1:50, x = 1:50, y = 50:1)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  op <- graphics::par(mar = c(5.1, 4.1, 4.1, 2.1))
+  on.exit(graphics::par(op), add = TRUE, after = FALSE)
+  before <- graphics::par(c("mar", "bg"))
+  local_mocked_bindings(draw_titles = function(main, sub, pal) stop("boom"))
+  for (type in c("selection", "probability", "map")) {
+    expect_error(plot(design_simple(n = 5), pop, type = type,
+                      coords = c("x", "y"), seed = 1), "boom")
+    expect_identical(graphics::par(c("mar", "bg")), before, info = type)
+  }
+  # A background par() refuses after it has set the margins. The margins
+  # were left set for the next plot.
+  local_mocked_bindings(check_palette = function(palette) {
+    utils::modifyList(drawn:::drawn_pal(), list(surface = "offwhite"))
+  })
+  for (type in c("selection", "probability", "map")) {
+    expect_error(plot(design_simple(n = 5), pop, type = type,
+                      coords = c("x", "y"), seed = 1), "offwhite")
+    expect_identical(graphics::par(c("mar", "bg")), before, info = type)
+  }
+})
+
+test_that("`sub` is added to the line under the title in every view", {
+  pop <- data.frame(id = 1:100, x = (1:100) %% 10, y = (1:100) %/% 10)
+  d <- design_simple(n = 10)
+  shown <- NULL
+  local_mocked_bindings(draw_titles = function(main, sub, pal) shown <<- sub)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  plot(d, pop, seed = 1, sub = "pilot frame, May")
+  expect_equal(shown, "10 of 100 rows selected   |   pilot frame, May")
+  plot(d, pop, type = "probability", sub = "pilot frame, May")
+  expect_equal(shown, "range 0.1 to 0.1   |   pilot frame, May")
+  # The map stopped with 'graphical parameter "bg" has the wrong length'.
+  plot(d, pop, type = "map", coords = c("x", "y"), seed = 1,
+       sub = "pilot frame, May")
+  expect_equal(shown, "10 of 100 rows selected   |   pilot frame, May")
+})
+
+test_that("graphical parameters in `...` replace the plot's own", {
+  pop <- data.frame(id = 1:100, x = (1:100 %% 10) * 1000, y = (1:100) %/% 10)
+  window <- function(calls) calls[["C_plot_window"]]
+
+  # Each of these stopped with 'matched by multiple actual arguments'.
+  calls <- recorded_calls(plot(design_simple(n = 10), pop,
+                               type = "probability", ylim = c(0, 1),
+                               xlim = c(1, 50)))
+  expect_equal(window(calls)[[1]], c(1, 50))
+  expect_equal(window(calls)[[2]], c(0, 1))
+  # The rules and the axis follow the limits given.
+  axes <- calls[names(calls) == "C_axis"]
+  side_2 <- axes[vapply(axes, function(a) a[[1]] == 2, logical(1))][[1]]
+  expect_equal(side_2[[2]], seq(0, 1, by = 0.2))
+  expect_equal(calls[["C_segments"]][[1]], 1)
+  expect_equal(calls[["C_segments"]][[3]], 50)
+
+  calls <- recorded_calls(plot(design_simple(n = 10), pop, seed = 1,
+                               xlim = c(0, 30)))
+  expect_equal(window(calls)[[1]], c(0, 30))
+
+  calls <- recorded_calls(plot(design_simple(n = 10), pop, type = "map",
+                               coords = c("x", "y"), seed = 1, asp = 1,
+                               xlim = c(0, 5000)))
+  expect_equal(window(calls)[[1]], c(0, 5000))
+  expect_equal(window(calls)[[4]], 1)
+
+  # Coordinates a design measures distance in get one scale on both axes;
+  # other columns, and scaled ones, fill the panel.
+  asp_of <- function(design, ...) {
+    window(recorded_calls(plot(design, pop, type = "map", seed = 1, ...)))[[4]]
+  }
+  expect_equal(asp_of(design_spread(c("x", "y"), n = 10, scale = FALSE)), 1)
+  expect_true(is.na(asp_of(design_spread(c("x", "y"), n = 10))))
+  expect_true(is.na(asp_of(design_simple(n = 10), coords = c("x", "y"))))
+  expect_true(is.na(asp_of(design_spread(c("x", "y"), n = 10, scale = FALSE),
+                           asp = NA)))
+})
+
+test_that("a longitude/latitude map is scaled by its middle latitude", {
+  skip_if_not_installed("sf")
+  pop <- data.frame(id = 1:100, lon = (1:100 %% 10) / 10,
+                    lat = 59.5 + (1:100 %/% 10) / 10)
+  box <- sf::st_sfc(sf::st_polygon(list(cbind(c(0, 1, 1, 0, 0),
+                                             c(59, 59, 61, 61, 59)))),
+                    crs = 4326)
+  des <- design_spatial(c("lon", "lat"), box, n = 10)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  asp <- NULL
+  local_mocked_bindings(panel_frame = function(defaults, dots) {
+    asp <<- defaults$asp
+    do.call(graphics::plot, defaults)
+  })
+  suppressWarnings(plot(des, pop, type = "map", seed = 1))
+  expect_equal(asp, 1 / cos(mean(range(pop$lat)) * pi / 180))
+})
+
+test_that("`...` takes graphical parameters and nothing else", {
+  pop <- data.frame(id = 1:50)
+  d <- design_simple(n = 5)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_error(plot(d, pop, simulate = TRUE),
+               "plot() for a design does not take `simulate`.", fixed = TRUE)
+  expect_error(plot(d, pop, simulate = TRUE, R = 10),
+               "does not take `simulate` or `R`.", fixed = TRUE)
+  expect_error(plot(d, pop, panel.first = stop("evaluated")),
+               "does not take `panel.first`", fixed = TRUE)
+  expect_error(plot(d, pop, "selection", 1, NULL, 4000, NULL, NULL, NULL,
+                    NULL, 5),
+               "must be named graphical parameters")
+  expect_silent(plot(d, pop, seed = 1, col = "red", cex = 2, las = 1))
+})
+
+test_that("the map names columns it leaves out and rows it cannot place", {
+  pop <- data.frame(id = 1:240, x = (1:240 * 7) %% 31, yy = (1:240 * 11) %% 37,
+                    z = (1:240 * 13) %% 41)
+  shown <- NULL
+  local_mocked_bindings(draw_titles = function(main, sub, pal) shown <<- sub)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  plot(design_spread(c("x", "yy", "z"), n = 30, scale = FALSE), pop,
+       type = "map", seed = 5)
+  expect_equal(shown,
+               "30 of 240 rows selected   |   placed by x and yy, not z")
+
+  d <- design_simple(n = 30)
+  ids <- draw(pop, d, seed = 5)$id
+  gaps <- pop
+  gaps$x[ids[1:3]] <- NA
+  gaps$yy[ids[4]] <- Inf
+  plot(d, gaps, type = "map", coords = c("x", "yy"), seed = 5)
+  expect_equal(shown, paste0("30 of 240 rows selected   |   4 selected rows ",
+                             "not shown, missing x or yy"))
+
+  # The background holds the 210 rows not selected, and 50 of them are drawn.
+  plot(d, pop, type = "map", coords = c("x", "yy"), seed = 5, max_dots = 50)
+  expect_equal(shown, paste0("30 of 240 rows selected   |   background ",
+                             "thinned to 50 of 210"))
+
+  gaps$x <- NA_real_
+  expect_error(plot(d, gaps, type = "map", coords = c("x", "yy"), seed = 5),
+               "`x` and `yy` are not both finite in any row of `y`",
+               fixed = TRUE)
+})
+
+test_that("the default title gives the arguments that differ by design", {
+  label <- drawn:::design_label
+  expect_equal(label(design_stratified(c("site", "flag"), n = 30)),
+               paste0("design_stratified(strata = c(\"site\", \"flag\"), ",
+                      "n = 30, allocation = \"proportional\")"))
+  expect_equal(label(design_simple(n = 10, replace = TRUE)),
+               "design_simple(n = 10, replace = TRUE)")
+  expect_equal(label(design_systematic(interval = 8, start = 3,
+                                       order_by = "w")),
+               "design_systematic(interval = 8, start = 3, order_by = \"w\")")
+  expect_equal(label(design_reservoir(n = 30, max_items = 150)),
+               "design_reservoir(n = 30, max_items = 150)")
+  expect_equal(label(design_reservoir(n = 30)), "design_reservoir(n = 30)")
+  expect_equal(label(design_certainty("w", 100, design_simple(n = 20))),
+               paste0("design_certainty(above = \"w\", threshold = 100, ",
+                      "rest = design_simple(n = 20))"))
+  expect_equal(label(design_bootstrap(20, method = "block",
+                                      block_length = 5)),
+               paste0("design_bootstrap(n_replicates = 20, ",
+                      "method = \"block\", block_length = 5)"))
+  expect_equal(label(design_temporal("ts", "2024-01-01", "2024-01-02", 24,
+                                     5)),
+               paste0("design_temporal(time = \"ts\", interval = 24, ",
+                      "unit = \"hours\", per_interval = 5)"))
+  expect_equal(label(design_stratified("site", n = 30, allocation = "neyman",
+                                       allocation_by = "w",
+                                       min_per_stratum = 2)),
+               paste0("design_stratified(strata = \"site\", n = 30, ",
+                      "allocation = \"neyman\", allocation_by = \"w\", ",
+                      "min_per_stratum = 2)"))
+  expect_equal(label(design_cluster("cl", n_clusters = 4)),
+               "design_cluster(clusters = \"cl\", n_clusters = 4)")
+  expect_equal(label(design_spread(c("x", "y"), n = 10, scale = FALSE)),
+               paste0("design_spread(across = c(\"x\", \"y\"), n = 10, ",
+                      "scale = FALSE)"))
+
+  # Without sf regions or functions, a label is the call that builds the
+  # design.
+  designs <- list(
+    design_simple(n = 10, replace = TRUE),
+    design_stratified(c("site", "flag"), n = 30, min_per_stratum = 1,
+                      na_rm = TRUE),
+    design_systematic(interval = 7, n_starts = 2),
+    design_multistage("cl", n_clusters = 2, n = 6, min_per_cluster = 1),
+    design_weighted("w", n = 5, method = "poisson"),
+    design_certainty("w", 10, design_stratified("s", 5,
+                                                allocation = c(a = 2L, b = 3L))),
+    design_bootstrap(20, method = "circular", output = "indices"),
+    design_reservoir(n = 3, max_items = 50, batches = TRUE)
+  )
+  for (des in designs) {
+    expect_equal(eval(parse(text = label(des))), des, info = label(des))
+  }
+})
+
+test_that("plot names `y` when it is not a data frame", {
+  expect_error(plot(design_simple(n = 2), as.list(data.frame(id = 1:5))),
+               "`y` must be a data frame, not a list.", fixed = TRUE)
+  expect_error(plot(design_simple(n = 2), data.frame(id = integer())),
+               "`y` has no rows.", fixed = TRUE)
+})
+
+test_that("a title too long for the figure is shrunk to fit", {
+  pop <- data.frame(id = 1:50)
+  title_of <- function(main) {
+    calls <- recorded_calls(plot(design_simple(n = 5), pop, seed = 1,
+                                 main = main))
+    calls[names(calls) == "C_mtext"][[1]]
+  }
+  short <- title_of("short")
+  expect_equal(short[[1]], "short")
+  expect_equal(short[[8]], 0.9)
+  main <- strrep("design_stratified(strata = \"band\") ", 3)
+  long <- title_of(main)
+  expect_equal(long[[1]], main)
+  expect_lt(long[[8]], 0.9)
+  expect_gt(long[[8]], 0.6)
+  # Past two thirds of its size, the text is cut and says so.
+  longest <- title_of(strrep("x", 1000))
+  expect_equal(longest[[8]], 0.6)
+  expect_match(longest[[1]], "^x+\\.\\.\\.$")
+  expect_lt(nchar(longest[[1]]), 1000)
+})

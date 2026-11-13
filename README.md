@@ -173,7 +173,7 @@ plots$biomass <- 100 + 80 * plots$x + 60 * sin(4 * plots$y) + rnorm(400, 0, 10)
 
 op <- par(mfrow = c(1, 2))
 plot(design_simple(n = 40), plots, type = "map", coords = c("x", "y"), seed = 3,
-     main = "simple random")
+     main = "simple random", asp = 1)
 plot(design_spread(c("x", "y"), n = 40, scale = FALSE), plots, type = "map",
      seed = 3, main = "spread (local pivotal method)")
 par(op)

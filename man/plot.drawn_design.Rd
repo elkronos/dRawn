@@ -14,6 +14,7 @@
   main = NULL,
   palette = NULL,
   coords = NULL,
+  sub = NULL,
   ...
 )
 }
@@ -34,19 +35,35 @@ fills the panel at its current aspect ratio.}
 A larger frame is shown in runs of consecutive rows: in \code{"selection"} a
 dot stands for a run and is filled when any row in it is selected, and in
 \code{"probability"} a step spans the lowest and highest probability in its
-run. \code{"map"} draws every selected row and an evenly spaced subset of the
-others. The counts under the title cover the whole frame.}
+run. \code{"map"} draws every selected row and at most \code{max_dots} of the
+others, evenly spaced through the frame. The counts under the title
+cover the whole frame.}
 
-\item{main}{Title. Defaults to a description of the design.}
+\item{main}{Title, a single string or an expression. Defaults to a
+description of the design: its constructor and the arguments that
+differ from their defaults.}
 
-\item{palette}{Named list overriding any of \code{surface}, \code{ink}, \code{secondary},
-\code{muted}, \code{recessive}, \code{accent}, \code{fill}, \code{rule}.}
+\item{palette}{Named list, or named character vector, of colours
+overriding any of \code{surface}, \code{ink}, \code{secondary}, \code{muted}, \code{recessive},
+\code{accent}, \code{fill}, \code{rule}. Each entry is one colour, a name from
+\code{\link[grDevices:colors]{grDevices::colors()}} or a code such as \code{"#1B6B52"}. Other names are
+refused.}
 
 \item{coords}{For \code{type = "map"}, the two columns to place rows by, \code{c(x, y)}, or one POINT geometry column. Defaults to the design's own \code{across}
 (\code{\link[=design_spread]{design_spread()}}) or \code{coords} (\code{\link[=design_spatial]{design_spatial()}}); required for any
 other design. Date and date-time columns get date axes.}
 
-\item{...}{Passed to the underlying plot call.}
+\item{sub}{A single string, added to the end of the line under the title,
+after the counts the plot puts there.}
+
+\item{...}{Graphical parameters for the call that sets up the panel, such
+as \code{xlim}, \code{ylim}, \code{asp} or \code{log}. They replace the plot's own: \code{asp = 1}
+gives any map the same scale on both axes, and \code{xlim} and \code{ylim} zoom in,
+with the rules and the mean line of \code{"probability"} following them.
+Axes and labels drawn by base graphics are off (\code{axes = FALSE}, \code{ann = FALSE}) unless turned on here. The dots, steps and titles keep their
+own look, so \code{col}, \code{cex} and \code{pch} here change nothing visible; their
+colours come from \code{palette}. A name that is not a graphical parameter is
+refused.}
 }
 \value{
 \code{x}, invisibly. Called for the plot.
@@ -80,7 +97,15 @@ how evenly the sample covers the space: compare a simple random sample's
 clumps and gaps against a spread one. For \code{\link[=design_spatial]{design_spatial()}} the
 outline of \code{region} is drawn as well, with each edge of a
 longitude/latitude region following its great circle under spherical
-geometry, which is how the design decides which rows are inside.}
+geometry, which is how the design decides which rows are inside.
+The coordinates of \code{\link[=design_spatial]{design_spatial()}}, and those of \code{\link[=design_spread]{design_spread()}}
+with \code{scale = FALSE}, get the same scale on both axes (\code{asp = 1}, or
+\code{1 / cos()} of the middle latitude for longitude and latitude), so the
+map shows the distances the design works with; other columns fill the
+panel. When \code{across} names more than two columns, the first two place
+the rows. The line under the title names the columns left out, counts
+the selected rows that have no position and so are not drawn, and says
+when the background is thinned.}
 }
 
 A design with \code{reserve} is shown by its main sample, without the reserves.

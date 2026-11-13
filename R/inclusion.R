@@ -116,8 +116,8 @@
 inclusion_prob <- function(data, design, simulate = FALSE, R = 5000,
                            seed = NULL) {
   if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not a ",
-         class(design)[1], ". See ?designs.", call. = FALSE)
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
   }
   validate_data(data)
   check_flag(simulate, "simulate")
@@ -185,8 +185,8 @@ sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
 #' @export
 certainty_set <- function(data, design) {
   if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not a ",
-         class(design)[1], ". See ?designs.", call. = FALSE)
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
   }
   size <- if (inherits(design, "drawn_design_weighted") &&
               design$method %in% c("systematic", "poisson")) {

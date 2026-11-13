@@ -774,7 +774,7 @@ ratio_parts <- function(parts, ratio) {
   }
   x_all <- pop[[ratio]]
   if (!is.numeric(x_all) && !is.logical(x_all)) {
-    stop("`ratio` names `", ratio, "`, a ", class(x_all)[1], " column of ",
+    stop("`ratio` names `", ratio, "`, ", a_class(x_all), " column of ",
          "the frame. Name a numeric column.", call. = FALSE)
   }
   x_all <- as.numeric(x_all)
@@ -1991,7 +1991,7 @@ read_variable <- function(sample, y, arg, several = FALSE) {
     name <- y
     v <- sample[[y]]
     if (!is.numeric(v) && !is.logical(v)) {
-      stop("`", arg, "` names `", y, "`, a ", class(v)[1], " column of ",
+      stop("`", arg, "` names `", y, "`, ", a_class(v), " column of ",
            "`sample`. Name a numeric or logical column.", call. = FALSE)
     }
   }
@@ -2016,7 +2016,6 @@ variable_forms <- function(y, arg, several, sample) {
   } else {
     "one column name or a numeric vector"
   }
-  a <- function(word) paste(if (grepl("^[aeiou]", word)) "an" else "a", word)
   what <- if (is.null(y)) {
     "NULL"
   } else if (is.character(y) && length(y) > 1L) {
@@ -2027,12 +2026,12 @@ variable_forms <- function(y, arg, several, sample) {
              "none of them a column of `sample`"
            })
   } else if (is.atomic(y)) {
-    paste0(a(class(y)[1]), " vector of length ", length(y),
+    paste0(a_class(y), " vector of length ", length(y),
            if (length(y) != nrow(sample)) {
              paste0(", and `sample` has ", nrow(sample), " rows")
            })
   } else {
-    a(class(y)[1])
+    a_class(y)
   }
   # A character vector as long as the sample is more likely categories than
   # column names.

@@ -131,8 +131,8 @@ format_rows <- function(x) {
 drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
   if (!is.data.frame(sample)) {
     stop_not_drawn(paste0("must be a data frame returned by ",
-                          "draw(..., weights = TRUE), not a ",
-                          class(sample)[1], "."), arg)
+                          "draw(..., weights = TRUE), not ",
+                          a_class(sample), "."), arg)
   }
   design <- attr(sample, "drawn_design", exact = TRUE)
   drawn <- attr(sample, "drawn_rows", exact = TRUE)
@@ -276,7 +276,7 @@ check_prob <- function(sample, expected = NULL, arg = "sample") {
                           "draw().", fix), arg)
   }
   if (!is.numeric(p)) {
-    stop_not_drawn(paste0("has a ", class(p)[1], " `.prob` column, so it ",
+    stop_not_drawn(paste0("has ", a_class(p), " `.prob` column, so it ",
                           "was changed after draw().", fix), arg)
   }
   # A probability of 1 can carry rounding error from a sum, so the upper
@@ -364,7 +364,7 @@ sample_rows <- function(sample, drawn, N, arg) {
   }
   if (!is.numeric(ids)) {
     stop_not_drawn(paste0(
-      "has a ", class(ids)[1], " `.row` column, where draw() puts the frame ",
+      "has ", a_class(ids), " `.row` column, where draw() puts the frame ",
       "row of each sampled row. Estimate from the sample as draw() returned ",
       "it."), arg)
   }
@@ -496,16 +496,16 @@ sample_rows <- function(sample, drawn, N, arg) {
 #' @export
 as_drawn <- function(data, design, frame, by = NULL) {
   if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not a ",
-         class(design)[1], ". See ?designs.", call. = FALSE)
+    stop("`design` must come from one of the design_*() constructors, not ",
+         a_class(design), ". See ?designs.", call. = FALSE)
   }
   if (!is.data.frame(data)) {
-    stop("`data` must be a data frame of the sampled rows, not a ",
-         class(data)[1], ".", call. = FALSE)
+    stop("`data` must be a data frame of the sampled rows, not ",
+         a_class(data), ".", call. = FALSE)
   }
   if (!is.data.frame(frame)) {
-    stop("`frame` must be the data frame the sample was drawn from, not a ",
-         class(frame)[1], ".", call. = FALSE)
+    stop("`frame` must be the data frame the sample was drawn from, not ",
+         a_class(frame), ".", call. = FALSE)
   }
   if (samples_with_replacement(design)) {
     stop("`design` samples with replacement, and draw() gives such a sample ",
@@ -665,7 +665,7 @@ frame_rows <- function(data, frame, by) {
            "`frame` in `by`.", call. = FALSE)
     }
     if (!is.numeric(stored)) {
-      stop("`data` has a ", class(stored)[1], " `.row` column, where draw() ",
+      stop("`data` has ", a_class(stored), " `.row` column, where draw() ",
            "puts the frame row of each sampled row. Name an id column of ",
            "`data` and `frame` in `by` instead.", call. = FALSE)
     }
@@ -841,8 +841,8 @@ fixed_size <- function(design) {
 add_fieldwork <- function(sample, field, by) {
   drawn_state(sample, reserves = TRUE)
   if (!is.data.frame(field)) {
-    stop("`field` must be a data frame of fieldwork results, not a ",
-         class(field)[1], ".", call. = FALSE)
+    stop("`field` must be a data frame of fieldwork results, not ",
+         a_class(field), ".", call. = FALSE)
   }
   by <- check_columns(by, "by")
   for (where in c("sample", "field")) {

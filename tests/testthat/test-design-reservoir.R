@@ -351,8 +351,16 @@ test_that("batches = TRUE refuses what is not a batch of rows", {
   pop <- data.frame(id = 1:3, v = 4:6)
   expect_error(draw(calls(pop, as.matrix(pop)), des),
                "returned a matrix on call 2")
+  expect_error(draw(calls(pop, 1:3), des),
+               "returned an integer on call 2", fixed = TRUE)
   expect_error(draw(calls(pop, cbind(pop, z = 1)), des),
                "Batch 2 from `data` adds `z`")
   expect_error(draw(calls(pop, pop[2:1]), des),
                "Batch 2 from `data` has the columns `v`, `id`")
+})
+
+test_that("a stream of the wrong kind is named with its article", {
+  expect_error(draw(1:10, design_reservoir(n = 2)),
+               "zero-argument function for a reservoir design, not an integer.",
+               fixed = TRUE)
 })

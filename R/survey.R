@@ -413,7 +413,7 @@ check_replicate_base <- function(sample) {
                           "weights to replicate.", fix))
   }
   if (!is.numeric(w)) {
-    stop_not_drawn(paste0("has a ", class(w)[1], " `.weight` column, where ",
+    stop_not_drawn(paste0("has ", a_class(w), " `.weight` column, where ",
                           "draw() puts a number.", fix))
   }
   bad <- !is.finite(w)
@@ -494,7 +494,7 @@ frame_totals <- function(sample, formula, table = FALSE) {
          if (inherits(formula, "formula")) {
            paste0("`", deparse1(formula), "`, which has a left-hand side")
          } else {
-           paste("a", class(formula)[1])
+           a_class(formula)
          }, ".", call. = FALSE)
   }
   vars <- setdiff(all.vars(formula), ".")
