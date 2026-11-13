@@ -18,22 +18,38 @@ design_stratified(
 \item{strata}{One or more column names defining the strata. Several columns
 are cross-classified.}
 
-\item{n}{Total rows to draw across all strata, under either allocation.}
+\item{n}{Total rows to draw across all strata, under any allocation. With
+counts in \code{allocation} it can be left out and is their sum; when given,
+it must equal that sum.}
 
-\item{allocation}{How \code{n} is split across strata. \code{"proportional"} gives each
-stratum a share of \code{n} in proportion to its size; \code{"equal"} splits \code{n}
-evenly; \code{"neyman"} gives shares proportional to \code{size * sd}, using the
-column named by \code{allocation_by} (Neyman 1934). Neyman minimises the
-variance of a total for a fixed \code{n} by putting more rows where the values
-vary most, and is the right choice when you have a frame variable
-correlated with what you are measuring. Under any rule, a stratum that
-would be allocated more rows than it holds is taken whole and the rest of
-\code{n} re-split over the others by the same rule (Cochran 1977, section 5.9).}
+\item{allocation}{How \code{n} is split across strata: a rule, or the count for
+each stratum. Of the rules, \code{"proportional"} gives each stratum a share
+of \code{n} in proportion to its size; \code{"equal"} splits \code{n} evenly;
+\code{"neyman"} gives shares proportional to \code{size * sd}, using the column
+named by \code{allocation_by} (Neyman 1934). Neyman minimises the variance of
+a total for a fixed \code{n} by putting more rows where the values vary most,
+and is the right choice when you have a frame variable correlated with
+what you are measuring. Under any rule, a stratum that would be
+allocated more rows than it holds is taken whole, one that would get
+fewer than \code{min_per_stratum} gets that many, and the rest of \code{n} is
+re-split over the others by the same rule (Cochran 1977, section 5.9).
+
+Counts are a named vector, such as \code{c(north = 10, south = 5, east = 5)},
+when \code{strata} is one column, its names matched to that column's values
+as text; or a data frame holding the \code{strata} columns and a column \code{n},
+matched on the values themselves. Every stratum of the frame needs a
+count, 0 included, and a count for a stratum the frame does not have is
+refused, so a misspelt name cannot quietly leave a stratum out. Without
+replacement no count may exceed the rows in its stratum. The design then
+draws exactly those counts, and the inclusion probabilities, variances
+and \code{\link[=as_svydesign]{as_svydesign()}} follow them.}
 
 \item{allocation_by}{Column whose within-stratum standard deviation drives
-\code{allocation = "neyman"}. Ignored otherwise.}
+\code{allocation = "neyman"}. Ignored otherwise. Every row allocated over needs
+a finite value.}
 
-\item{min_per_stratum}{Minimum rows from each stratum. With the default of
+\item{min_per_stratum}{Minimum rows from each stratum, under an allocation
+rule. With the default of
 \code{0}, a stratum smaller than about \code{N / n} can be allocated no rows at all;
 its rows then have inclusion probability 0 and a total estimated from the
 sample silently leaves them out, so \code{\link[=draw]{draw()}} warns when that happens. \code{1}
@@ -41,7 +57,10 @@ makes every stratum reachable, which is what an unbiased
 Horvitz-Thompson total needs, and \code{2} also lets every stratum contribute
 to the variance estimate. Over-sampling a small stratum this way does
 \emph{not} bias an estimate made with the design weights, which correct for it;
-it only moves precision around.}
+it only moves precision around. Without replacement a stratum smaller
+than the floor is taken whole, so \code{n} must cover \code{min_per_stratum} rows
+from each stratum, or all of a smaller one. With counts in \code{allocation},
+give each stratum its count there instead.}
 
 \item{replace}{Sample with replacement within each stratum?}
 
@@ -60,9 +79,9 @@ with per-stratum rounding.
 Each stratum first gets the whole part of its share of \code{n}. The rows left
 over go one at a time to the strata with the largest fractional parts. When
 two strata tie, the one with more rows not yet allocated goes first, and
-after that the one that comes first in key order. When \code{min_per_stratum}
-pushes the total past \code{n}, rows are taken back from the strata with the
-smallest fractional parts first, ties again going by key order.
+after that the one that comes first in key order. \code{min_per_stratum} and
+the size of each stratum bound the shares before they are rounded, so the
+rounding never takes a stratum below its floor or past its size.
 
 Key order is the order of the levels for a factor column and the sorted
 values for any other column, with text sorted byte by byte as in the C
@@ -84,6 +103,10 @@ table(draw(df, design_stratified("site", n = 20), seed = 1)$site)
 # "rare" row gets no allocation, and draw() warns that it is unreachable
 skewed <- data.frame(id = 1:1000, g = c(rep("common", 999), "rare"))
 draw(skewed, design_stratified("g", n = 10, min_per_stratum = 1), seed = 1)$g
+
+# A count for each stratum, drawn as given; `n` is their sum
+fixed <- design_stratified("site", allocation = c(a = 8, b = 4, c = 4, d = 4))
+table(draw(df, fixed, seed = 1)$site)
 
 }
 \references{

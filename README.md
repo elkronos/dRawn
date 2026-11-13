@@ -217,8 +217,7 @@ ht_total(one_each, "value")
 #>   `south`, `west` each have a single sampled row, so the variation
 #>   within them cannot be measured and leaving them out would understate
 #>   the standard error. Draw at least two rows per stratum
-#>   (min_per_stratum = 2). The stratified jackknife needs at least two
-#>   units in each stratum, and 4 strata have one.
+#>   (min_per_stratum = 2).
 ```
 
 ## Learn more

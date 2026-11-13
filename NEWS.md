@@ -205,6 +205,20 @@
   row's own probability is 0.125, and `simulate = TRUE` gave it 0. It now
   gets the row's own probability on both paths. `rows` that are not whole
   numbers are refused, where 1.7 was read as row 1.
+* **`min_per_stratum` broke the allocation rule between the strata it did not
+  raise.** The rows a stratum needed to reach the floor were taken back one
+  at a time from the others, whatever their shares, so those were no longer
+  split in proportion to size, evenly or by `size * sd`. Under Neyman
+  allocation with a floor of 4, two large strata with spreads of 1 and 3 got
+  19 and 101 rows where the rule gives 35 and 85, and the variance of a total
+  was 14% higher. The weights followed the rows drawn, so estimates were not
+  biased, only less precise. A stratum is now held at its floor or its size
+  and the rest of `n` re-split by the rule over the others, as for a stratum
+  taken whole, which under Neyman allocation is the split of least variance
+  within those bounds. When taking whole every stratum with a Neyman share
+  leaves rows over, strata whose `allocation_by` does not vary share them in
+  proportion to size, as when no stratum varies, where they were split
+  evenly. `min_per_cluster` in `design_multistage()` is applied the same way.
 
 ## Refusals and clearer errors
 
@@ -274,8 +288,9 @@
 * `variance = "jackknife"` reports `method = "none"` when the jackknife gives
   no figure, as for a systematic or Poisson sample, which is what `?ht_total`
   says. It reported `"jackknife"`, in `by` tables too. Its note for strata
-  with one unit says how many there are, where it read "needs two units per
-  stratum as well" with nothing before it.
+  with one unit names them, in the words the analytic estimator uses, where
+  it read "needs two units per stratum as well" with nothing before it, so
+  `variance = "auto"` gives that reason once.
 * A `df` below 1 is refused. It was accepted and the interval dropped without
   a word. When the design leaves 0 degrees of freedom, as a Poisson sample of
   one row does, the note says that, and `print()` shows it. It blamed one
@@ -308,6 +323,21 @@
 * A missing coordinate under `design_spatial()` is reported in the same
   words by `draw()` and `inclusion_prob()`, naming the two `coords`
   columns.
+* `design_stratified()` accepts a `min_per_stratum` larger than some strata
+  when `n` covers it. Without replacement such a stratum is taken whole, so
+  the floor needs only its rows: 7 rows meet a floor of 2 over strata of 1,
+  1, 1 and 100 rows, where 8 were asked for. The message gives the number
+  needed and says how many strata are taken whole.
+* Neyman allocation refuses an infinite `allocation_by` value, as it refused
+  a missing one. The spread of a stratum holding `Inf` came out as `NaN` and
+  was read as none, so the stratum with the most extreme values was
+  allocated no rows. Finite values large enough to overflow `sd()` are
+  rescaled first and split as the same values on a smaller scale.
+* The warning for a stratum allocated no rows says when Neyman allocation
+  gave it no share because `allocation_by` is constant within it. It then
+  suggests `min_per_stratum = 1`, since a larger `n` reaches such a stratum
+  only once every other stratum is taken whole. `design_stratified()` with
+  `n = 0` no longer warns for every stratum.
 
 ## Behaviour changes
 
@@ -381,6 +411,10 @@
 * `sample_summary()` gains `N_reachable`, the rows the design gives a
   probability above 0, and prints the sampling fraction over them. `N` is
   still every row of the frame.
+* A stratified design whose `min_per_stratum` raises a stratum, or a
+  multistage design whose `min_per_cluster` raises a cluster, can allocate
+  different counts than drawn 0.2.0 did, as above, and a seed then selects
+  different rows. Designs where no floor binds allocate and draw as before.
 
 ## New
 
@@ -410,6 +444,15 @@
   attribute, the smallest size among them, can be passed to
   `design_certainty()` to take the same rows with the cut-off made
   explicit.
+* `design_stratified()` takes the number of rows to draw from each stratum
+  as `allocation`: a named vector such as
+  `c(north = 10, south = 5, east = 5)`, or for several `strata` columns a
+  data frame of those columns and `n`. `n` can be left out and is their sum.
+  A stratum of the frame with no count, a count for a stratum the frame does
+  not have and, without replacement, a count above the rows in its stratum
+  are refused by name. `inclusion_prob()`, `joint_prob()`, the variance
+  estimators, `as_svydesign()` and `sample_summary()` follow the counts as
+  given.
 
 ## Speed and memory
 
@@ -497,6 +540,9 @@
   between-cluster component, which came to 3.3 times the true variance in one
   example with 30 of 40 clusters selected. `?design_multistage` and
   `?inclusion_prob` give the probability under `replace = TRUE`.
+* `?designs` and `?design_stratified` name all three allocation rules,
+  `"neyman"` included, where they described `"proportional"` and `"equal"`
+  only.
 
 # drawn 0.2.0
 

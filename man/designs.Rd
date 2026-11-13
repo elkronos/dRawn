@@ -37,10 +37,12 @@ Arguments mean the same thing everywhere they appear:
 \code{\link[=design_temporal]{design_temporal()}} uses \code{per_interval} precisely because that one \emph{is} per
 group, and \code{\link[=design_cluster]{design_cluster()}} has no \code{n} at all because the row count
 follows from which clusters were selected.
-\item \code{allocation} always says how a total is split across groups, either
-\code{"proportional"} or \code{"equal"}. Splitting is exact: the largest-remainder
-method is used, so a request for 60 rows returns 60 rather than drifting
-with per-group rounding.
+\item \code{allocation} always says how a total is split across groups:
+\code{"proportional"}, \code{"equal"} or, in \code{\link[=design_stratified]{design_stratified()}} only,
+\code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}} also takes the count for each stratum
+in place of a rule, and \code{n} is then their total. Splitting is exact: the
+largest-remainder method is used, so a request for 60 rows returns 60
+rather than drifting with per-group rounding.
 \item \code{na_rm} always decides whether rows with a missing key are dropped or raise
 an error. It is never silently assumed either way.
 \item Groups always come in key order, whether strata, \code{by} domains or the

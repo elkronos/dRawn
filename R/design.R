@@ -30,10 +30,12 @@
 #'   [design_temporal()] uses `per_interval` precisely because that one *is* per
 #'   group, and [design_cluster()] has no `n` at all because the row count
 #'   follows from which clusters were selected.
-#' * `allocation` always says how a total is split across groups, either
-#'   `"proportional"` or `"equal"`. Splitting is exact: the largest-remainder
-#'   method is used, so a request for 60 rows returns 60 rather than drifting
-#'   with per-group rounding.
+#' * `allocation` always says how a total is split across groups:
+#'   `"proportional"`, `"equal"` or, in [design_stratified()] only,
+#'   `"neyman"`. [design_stratified()] also takes the count for each stratum
+#'   in place of a rule, and `n` is then their total. Splitting is exact: the
+#'   largest-remainder method is used, so a request for 60 rows returns 60
+#'   rather than drifting with per-group rounding.
 #' * `na_rm` always decides whether rows with a missing key are dropped or raise
 #'   an error. It is never silently assumed either way.
 #' * Groups always come in key order, whether strata, `by` domains or the
@@ -156,6 +158,10 @@ fmt_param <- function(v) {
   }
   if (is.function(v)) return("<function>")
   if (is_design(v)) return(design_label(v))
+  # Counts given per stratum as `allocation`.
+  if (is.data.frame(v) || (is.numeric(v) && !is.null(names(v)))) {
+    return(fmt_counts(v))
+  }
   if (inherits(v, "POSIXt") || inherits(v, "Date")) return(format(v))
   if (is.character(v)) {
     return(paste0("\"", v, "\"", collapse = ", "))

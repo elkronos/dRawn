@@ -199,3 +199,252 @@ test_that("an sf frame draws the same strata as the plain frame", {
   expect_equal(ht_total(s, "y")$se,
                ht_total(draw(plain, des, seed = 1, weights = TRUE), "y")$se)
 })
+
+# ---- floors and caps -------------------------------------------------------
+
+test_that("a floor holds the allocation rule among the strata it leaves free", {
+  # Raising a stratum to min_per_stratum took the rows back one at a time
+  # from the others, which broke the rule between them. Under Neyman
+  # allocation `a` and `b` got 19 and 101 rows where the rule gives 35.3 and
+  # 84.7, which cost 14% in variance.
+  bounded <- function(n, share, lower, upper) {
+    f <- function(l) sum(pmin(pmax(l * share, lower), upper)) - n
+    l <- stats::uniroot(f, c(0, max(upper / share)), tol = 1e-12)$root
+    pmin(pmax(l * share, lower), upper)
+  }
+  sizes <- c(a = 5000, b = 4000,
+             stats::setNames(rep(10, 20), paste0("s", 1:20)))
+  sp <- c(1, 3, rep(1, 20))
+  got <- drawn:::allocate(200, sizes, "neyman", 4, spread = sp)
+  want <- bounded(200, sizes * sp, pmin(4, sizes), sizes)
+  expect_equal(sum(got), 200L)
+  expect_true(all(abs(got - want) < 1))
+  expect_equal(unname(got), c(35L, 85L, rep(4L, 20)))
+
+  got <- drawn:::allocate(200, sizes, "proportional", 4)
+  expect_true(all(abs(got - bounded(200, sizes, pmin(4, sizes), sizes)) < 1))
+  expect_equal(unname(got[1:2]), c(67L, 53L))
+
+  # The same through a frame, on both the draw and the probabilities
+  d <- data.frame(g = rep(c("a", "b", paste0("s", 1:20)),
+                          times = c(500, 400, rep(10, 20))))
+  des <- design_stratified("g", n = 200, min_per_stratum = 4)
+  p <- inclusion_prob(d, des)
+  expect_equal(p[match(c("a", "b", "s1"), d$g)], c(67 / 500, 53 / 400, 0.4))
+  expect_equal(c(table(draw(d, des, seed = 1)$g)[c("a", "b")]),
+               c(a = 67L, b = 53L))
+})
+
+test_that("a floor larger than a stratum asks only for that stratum's rows", {
+  # Each of the three one-row strata is taken whole, so 7 rows cover a floor
+  # of 2. The check counted 2 for every stratum and refused anything under 8.
+  d <- data.frame(id = 1:103, g = c("a", "b", "c", rep("d", 100)))
+  got <- draw(d, design_stratified("g", n = 7, min_per_stratum = 2), seed = 1)
+  expect_equal(as.vector(table(got$g)), c(1L, 1L, 1L, 4L))
+  expect_error(
+    draw(d, design_stratified("g", n = 4, min_per_stratum = 2), seed = 1),
+    paste0("`min_per_stratum` = 2 needs at least 5 rows across these 4 ",
+           "strata, with the 3 strata smaller than 2 taken whole, but `n` ",
+           "is 4."), fixed = TRUE)
+  # With replacement a one-row stratum can give the floor in repeats.
+  expect_error(
+    inclusion_prob(d, design_stratified("g", n = 7, min_per_stratum = 2,
+                                        replace = TRUE)),
+    "needs at least 8 rows", fixed = TRUE)
+})
+
+test_that("Neyman refuses an infinite allocation_by", {
+  # sd() of a stratum holding Inf is NaN, which was read as no spread: the
+  # stratum with the most extreme values was allocated nothing.
+  d <- data.frame(id = 1:60, g = rep(c("a", "b", "c"), each = 20),
+                  v = c(1:20 * 50, (1:40 * 7) %% 13))
+  d$v[3] <- Inf
+  des <- design_stratified("g", n = 15, allocation = "neyman",
+                           allocation_by = "v")
+  expect_error(draw(d, des, seed = 1), "1 value(s) of `v` are missing or non-finite",
+               fixed = TRUE)
+  expect_error(inclusion_prob(d, des), "missing or non-finite")
+
+  # Finite values whose standard deviation overflows split as the same
+  # values on a smaller scale do.
+  d$v[3] <- 150
+  big <- d
+  big$v <- big$v * 1e305
+  expect_equal(inclusion_prob(big, des), inclusion_prob(d, des))
+})
+
+test_that("strata left with no spread after a cap are split by size", {
+  # The Neyman shares are 50, 0 and 0. `a` is taken whole, and the 25 rows
+  # left went to `b` and `c` equally, 12 and 13. A Neyman split over strata
+  # with no spread goes by size, 6 and 19, as it does when no stratum has any.
+  d <- data.frame(g = rep(c("a", "b", "c"), times = c(5, 100, 300)),
+                  v = c(1:5 * 10, rep(3, 400)))
+  des <- design_stratified("g", n = 30, allocation = "neyman",
+                           allocation_by = "v")
+  p <- inclusion_prob(d, des)
+  expect_equal(p[c(1, 6, 106)], c(1, 6 / 100, 19 / 300))
+})
+
+test_that("the empty-stratum warning gives the cause it has", {
+  # A Neyman stratum with constant values gets rows only once every other
+  # stratum is taken whole, so "Raise `n`" pointed the wrong way.
+  z <- data.frame(id = 1:60, g = rep(c("a", "b", "c"), each = 20),
+                  v = c(rep(5, 20), (1:40 * 7) %% 13))
+  des <- design_stratified("g", n = 12, allocation = "neyman",
+                           allocation_by = "v")
+  w <- tryCatch(draw(z, des, seed = 1), drawn_empty_stratum = function(w) w)
+  expect_s3_class(w, "drawn_warning")
+  expect_match(conditionMessage(w), paste0(
+    "`v` is constant within it, so Neyman allocation gives it no share ",
+    "until every other stratum is taken whole. Set min_per_stratum = 1"),
+    fixed = TRUE)
+  expect_no_match(conditionMessage(w), "Raise `n`", fixed = TRUE)
+
+  # A stratum with spread but too small a share can still be reached by a
+  # larger `n`, and the message keeps that advice for it.
+  mixed <- data.frame(g = rep(c("a", "b", "c"), times = c(20, 2, 200)),
+                      v = c(rep(5, 20), 1, 2, 1:200 %% 10))
+  w <- tryCatch(
+    draw(mixed, design_stratified("g", n = 10, allocation = "neyman",
+                                  allocation_by = "v"), seed = 1),
+    drawn_empty_stratum = function(w) w)
+  expect_match(conditionMessage(w), "2 strata (`a`, `b`)", fixed = TRUE)
+  expect_match(conditionMessage(w), "`v` is constant within `a`, so",
+               fixed = TRUE)
+  expect_match(conditionMessage(w), "Raise `n`, or set min_per_stratum = 1",
+               fixed = TRUE)
+
+  # n = 0 asks for no rows, and gets none without a warning per stratum, as
+  # design_simple(n = 0) does.
+  d <- data.frame(id = 1:10, g = rep(c("a", "b"), each = 5))
+  expect_no_warning(got <- draw(d, design_stratified("g", n = 0), seed = 1))
+  expect_equal(nrow(got), 0L)
+})
+
+# ---- counts per stratum ----------------------------------------------------
+
+counts_frame <- function() {
+  data.frame(id = 1:100,
+             site = rep(c("north", "south", "east", "west"),
+                        times = c(40, 30, 20, 10)),
+             y = (1:100 * 37) %% 23 + 1)
+}
+
+test_that("counts given per stratum are drawn as given, on every path", {
+  d <- counts_frame()
+  counts <- c(north = 4, south = 6, east = 5, west = 5)
+  des <- design_stratified("site", allocation = counts)
+  expect_identical(des$n, 20L)
+  expect_identical(design_stratified("site", n = 20, allocation = counts)$n,
+                   20L)
+  expect_output(print(des), "c(north = 4, south = 6, east = 5, west = 5)",
+                fixed = TRUE)
+
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  expect_equal(c(table(s$site))[names(counts)], counts)
+  N_h <- c(table(d$site))
+  want <- unname(counts[d$site] / N_h[d$site])
+  expect_equal(inclusion_prob(d, des), want)
+  expect_equal(s$.prob, want[s$.row])
+  expect_equal(joint_prob(d, des, rows = c(1, 2, 41)),
+               matrix(c(0.1, 0.1 * 3 / 39, 0.1 * 0.2,
+                        0.1 * 3 / 39, 0.1, 0.1 * 0.2,
+                        0.1 * 0.2, 0.1 * 0.2, 0.2), 3))
+
+  # The variance is the stratified form over the counts as given.
+  v <- sum(vapply(names(counts), function(h) {
+    yh <- s$y[s$site == h]
+    N_h[[h]]^2 * (1 - counts[[h]] / N_h[[h]]) * stats::var(yh) / counts[[h]]
+  }, numeric(1)))
+  expect_equal(ht_total(s, "y")$variance, v)
+  expect_equal(ht_total(s, "y", variance = "jackknife")$variance, v)
+  sm <- sample_summary(s)$by_group
+  expect_equal(sm$drawn[match(names(counts), sm$group)], unname(counts))
+
+  skip_if_not_installed("survey")
+  expect_equal(
+    unname(survey::SE(survey::svytotal(~y, as_svydesign(s)))[1]),
+    ht_total(s, "y")$se)
+})
+
+test_that("counts for several strata columns come as a data frame", {
+  d <- data.frame(id = 1:40, g = rep(c("a", "b"), 20),
+                  h = rep(c(1.5, 2), each = 20))
+  spec <- data.frame(h = c(1.5, 2, 1.5, 2), g = c("a", "a", "b", "b"),
+                     n = c(2, 3, 4, 1))
+  des <- design_stratified(c("g", "h"), allocation = spec)
+  expect_identical(des$n, 10L)
+  got <- draw(d, des, seed = 3)
+  expect_equal(c(table(paste(got$g, got$h))),
+               c("a 1.5" = 2L, "a 2" = 3L, "b 1.5" = 4L, "b 2" = 1L))
+  expect_equal(inclusion_prob(d, des)[c(1, 2, 21, 22)],
+               c(2, 4, 3, 1) / 10)
+
+  # A factor column is matched on its values, not its level order.
+  f <- counts_frame()
+  f$site <- factor(f$site, levels = c("west", "east", "south", "north"))
+  des <- design_stratified("site",
+                           allocation = c(north = 4, south = 6, east = 5,
+                                          west = 5))
+  expect_equal(c(table(draw(f, des, seed = 1)$site)),
+               c(west = 5L, east = 5L, south = 6L, north = 4L))
+})
+
+test_that("counts that do not fit the frame are refused by name", {
+  d <- counts_frame()
+  expect_error(
+    draw(d, design_stratified("site", allocation = c(north = 4, south = 6,
+                                                     east = 5)), seed = 1),
+    "`allocation` has no entry for 1 stratum of `data`: `west`.",
+    fixed = TRUE)
+  expect_error(
+    inclusion_prob(d, design_stratified(
+      "site", allocation = c(north = 4, south = 6, east = 5, west = 5,
+                             nrth = 1))),
+    "`allocation` names 1 stratum that `data` does not have: `nrth`.",
+    fixed = TRUE)
+  over <- design_stratified("site", allocation = c(north = 4, south = 6,
+                                                   east = 5, west = 11))
+  expect_error(draw(d, over, seed = 1),
+               "Stratum `west` has 10 row(s) but `allocation` asks for 11.",
+               fixed = TRUE)
+  expect_error(inclusion_prob(d, over), "asks for 11", fixed = TRUE)
+  over$replace <- TRUE
+  expect_equal(nrow(draw(d, over, seed = 1)), 26L)
+
+  # A count of 0 leaves the stratum unreachable, and says so.
+  expect_warning(
+    draw(d, design_stratified("site", allocation = c(north = 4, south = 0,
+                                                     east = 5, west = 5)),
+         seed = 1),
+    "Give each stratum a count of at least 1 in `allocation`",
+    class = "drawn_empty_stratum")
+})
+
+test_that("counts are checked when the design is built", {
+  four <- c(north = 4, south = 6, east = 5, west = 5)
+  expect_error(design_stratified("site", n = 21, allocation = four),
+               "`n` (21) is not the sum of the counts in `allocation` (20)",
+               fixed = TRUE)
+  expect_error(design_stratified("site", allocation = four,
+                                 min_per_stratum = 2),
+               "count of at least 2", fixed = TRUE)
+  expect_error(design_stratified("site", allocation = c(a = 2.5, b = 4)),
+               "stratum `a` has 2.5", fixed = TRUE)
+  expect_error(design_stratified("site", allocation = c(a = -1, b = 4)),
+               "whole numbers of 0 or more")
+  expect_error(design_stratified("site", allocation = c(4, 6)),
+               "must be named by stratum")
+  expect_error(design_stratified("site", allocation = c(a = 1, a = 4)),
+               "gives stratum `a` more than once", fixed = TRUE)
+  expect_error(design_stratified(c("g", "h"), allocation = c(a = 1)),
+               "a data frame with columns `g`, `h` and `n`", fixed = TRUE)
+  expect_error(design_stratified("g", allocation = data.frame(g = "a",
+                                                              count = 3)),
+               "missing column: `n`", fixed = TRUE)
+  expect_error(design_stratified("site"), "`n` is missing", fixed = TRUE)
+  # Counts passed as `n` are pointed to `allocation`.
+  expect_error(design_stratified("site", n = four),
+               "Give the count for each stratum as `allocation`",
+               fixed = TRUE)
+})

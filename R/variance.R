@@ -933,7 +933,17 @@ lonely_note <- function(group, rows, noun, fix, domain = NULL) {
   if (known_domain(domain, length(code))) {
     lonely <- lonely & tabulate(code[domain], k) > 0L
   }
-  lonely <- levels(group)[lonely]
+  lonely_text(levels(group)[lonely], noun, fix, domain)
+}
+
+#' The refusal of lonely groups, naming them
+#'
+#' `lonely` holds the groups' key levels, in key order. Shared by the analytic
+#' estimators and the jackknife, so the two refuse a sample in the same words
+#' and `variance = "auto"` says it once.
+#'
+#' @noRd
+lonely_text <- function(lonely, noun, fix, domain = NULL) {
   if (!length(lonely)) return(NULL)
   shown <- group_label(utils::head(lonely, 5L))
   many <- length(lonely) > 1L
@@ -952,6 +962,19 @@ lonely_note <- function(group, rows, noun, fix, domain = NULL) {
            paste0(" cannot be measured and leaving ", them, " out would ",
                   "understate the standard error. ")
          }, fix)
+}
+
+#' What to change so that no stratum or interval holds one sampled row
+#' @noRd
+lonely_fix <- function(design) {
+  if (inherits(design, "drawn_design_temporal")) {
+    return("Draw at least two rows per interval (per_interval = 2).")
+  }
+  if (has_counts(design)) {
+    return(paste0("Draw at least two rows per stratum (a count of 2 or more ",
+                  "for each in `allocation`)."))
+  }
+  "Draw at least two rows per stratum (min_per_stratum = 2)."
 }
 
 #' Does `domain` mark which of `n` frame rows belong to a domain?
@@ -988,8 +1011,7 @@ ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i,
                                                 domain = NULL, ctx = NULL) {
   out <- srs_within_groups(
     design, srs_groups(design, data, ctx), rows, y, domain,
-    c("stratum", "strata"),
-    "Draw at least two rows per stratum (min_per_stratum = 2).")
+    c("stratum", "strata"), lonely_fix(design))
   if (is.null(out)) return(NextMethod())
   out
 }
@@ -1004,8 +1026,7 @@ ht_variance.drawn_design_temporal <- function(design, data, rows, y, pi_i,
                                               domain = NULL, ctx = NULL) {
   srs_within_groups(
     design, srs_groups(design, data, ctx), rows, y, domain,
-    c("interval", "intervals"),
-    "Draw at least two rows per interval (per_interval = 2).")
+    c("interval", "intervals"), lonely_fix(design))
 }
 
 #' Each sampled row's group, for every domain's variance in one pass
@@ -1367,7 +1388,7 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
 
   v <- 0
   n_psu <- 0L
-  lonely <- 0L
+  lonely <- integer(0)
   for (k in seq_along(st$levels)) {
     in_h <- by_stratum[[k]]
     # Each unit's total in the stratum. The replicates are symmetric in the
@@ -1377,7 +1398,7 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
     f <- st$fpc[k]
     n_psu <- n_psu + m
     if (m < 2L) {
-      if (f > 0 && st$in_domain[k]) lonely <- lonely + 1L
+      if (f > 0 && st$in_domain[k]) lonely <- c(lonely, k)
       next
     }
     reps <- (total - sum(sums)) + (sum(sums) - sums) * m / (m - 1)
@@ -1394,16 +1415,16 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
                                        "with certainty")
                               }, ". Draw more units below certainty.")))
   }
-  if (lonely > 0L) {
+  if (length(lonely)) {
     noun <- if (inherits(design, "drawn_design_temporal")) {
       c("interval", "intervals")
     } else {
       c("stratum", "strata")
     }
-    return(list(variance = NA_real_, method = "jackknife", note = paste0(
-      "The stratified jackknife needs at least two units in each ", noun[1],
-      ", and ", lonely, " ", noun[if (lonely == 1L) 1L else 2L],
-      if (lonely == 1L) " has" else " have", " one.")))
+    lonely <- lonely[order(st$levels[lonely])]
+    return(list(variance = NA_real_, method = "jackknife",
+                note = lonely_text(st$labels[lonely], noun,
+                                   lonely_fix(design), domain)))
   }
   if (!is.finite(v)) {
     return(list(variance = NA_real_, method = "jackknife",
@@ -1475,8 +1496,10 @@ jackknife_refusal <- function(design) {
 #' certainty is in every sample, so the fixed units in the frame are the ones
 #' in the sample. A stratum taken whole drops out.
 #'
-#' Returns each row's `stratum`, the `levels` listed, their `fpc` and
-#' `in_domain`, in the same order. `in_domain` is `FALSE` for a stratum that
+#' Returns each row's `stratum`, the `levels` listed, their `labels`, `fpc`
+#' and `in_domain`, in the same order. The levels are integer codes in key
+#' order, and the labels the key's levels, as the analytic estimators name
+#' the same strata and intervals. `in_domain` is `FALSE` for a stratum that
 #' `domain`, a logical vector over the frame, shows to hold no unit of the
 #' domain, and `TRUE` otherwise.
 #'
@@ -1487,18 +1510,25 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
   grp <- from_context(ctx, "strata", switch(design_type(design),
     stratified = {
       key <- group_key2(units, pop, design$strata)
-      list(sample = as.integer(key$x), pop = as.integer(key$table))
+      list(sample = as.integer(key$x), pop = as.integer(key$table),
+           labels = levels(key$x))
     },
-    temporal = list(
-      sample = as.integer(temporal_bucket(design, units)),
-      pop = as.integer(temporal_bucket(design, pop))
-    ),
+    temporal = {
+      # Keyed as srs_groups() keys the intervals, so the two name them alike.
+      key <- key_from_columns(list(c(temporal_bucket(design, units),
+                                     temporal_bucket(design, pop))))
+      code <- as.integer(key)
+      list(sample = code[seq_len(nrow(units))],
+           pop = code[nrow(units) + seq_len(nrow(pop))],
+           labels = levels(key))
+    },
     NULL
   ))
   if (is.null(grp)) {
     m <- length(unique(psu[!fixed]))
     n_fixed <- length(unique(psu[fixed]))
     return(list(stratum = rep("all", nrow(units)), levels = "all",
+                labels = "all",
                 fpc = jackknife_fpc(design, pop, m, n_fixed, ctx),
                 in_domain = TRUE))
   }
@@ -1511,7 +1541,7 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
   } else {
     rep(TRUE, length(lev))
   }
-  list(stratum = grp$sample, levels = lev,
+  list(stratum = grp$sample, levels = lev, labels = grp$labels[lev],
        fpc = ifelse(free_h > n_h, 1 - n_h / free_h, 0),
        in_domain = in_domain)
 }
