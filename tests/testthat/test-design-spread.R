@@ -501,3 +501,66 @@ test_that("a row with a tiny target probability still competes", {
   expect_equal(inclusion_prob(d, des)[1], 5 * 2e-9 / sum(d$w))
   expect_equal(nrow(draw(d, des, seed = 1)), 5L)
 })
+
+test_that("reserve is refused with size or strata, and checked against N", {
+  expect_equal(design_spread(c("x", "y"), n = 5)$reserve, 0L)
+  expect_error(design_spread(c("x", "y"), n = 5, size = "size", reserve = 2),
+               "Leave out `size` or `reserve`")
+  expect_error(design_spread(c("x", "y"), n = 5, strata = "g", reserve = 2),
+               "Leave out `strata` or `reserve`")
+  expect_error(design_spread(c("x", "y"), n = 5, reserve = -1),
+               "must be non-negative")
+  d <- spread_pop(20)
+  expect_error(draw(d, design_spread(c("x", "y"), n = 15, reserve = 6)),
+               "`n` and `reserve` together \\(21\\) cannot exceed")
+})
+
+test_that("a spread list adds reserves disjoint from the main sample", {
+  d <- spread_pop()
+  des <- design_spread(c("x", "y"), n = 30, reserve = 10)
+  s <- draw(d, des, seed = 4)
+  expect_equal(names(s), c(".reserve", names(d)))
+  expect_identical(s$.reserve, c(integer(30), 1:10))
+  expect_false(anyDuplicated(s$id) > 0)
+  main <- s$id[s$.reserve == 0]
+  expect_identical(main, draw(d, design_spread(c("x", "y"), n = 30),
+                              seed = 4)$id)
+  expect_identical(main, sort(main))
+
+  w <- draw(d, des, seed = 4, weights = TRUE)
+  expect_equal(w$.prob, rep(0.1, 40))
+  expect_equal(inclusion_prob(d, des), rep(0.1, 300))
+  expect_error(ht_total(w, "smooth"), "use_reserves\\(\\)")
+})
+
+test_that("the reserves of a spread list are spread over the space", {
+  d <- spread_pop()
+  nn <- function(p) {
+    m <- as.matrix(stats::dist(p[, c("x", "y")]))
+    diag(m) <- Inf
+    mean(apply(m, 1, min))
+  }
+  des <- design_spread(c("x", "y"), n = 30, scale = FALSE, reserve = 15)
+  gap <- vapply(1:20, function(i) {
+    s <- draw(d, des, seed = i)
+    c(reserve = nn(s[s$.reserve > 0, ]),
+      srs = nn(draw(d, design_simple(n = 15), seed = i)))
+  }, numeric(2))
+  expect_gt(mean(gap[1, ]), 1.15 * mean(gap[2, ]))
+})
+
+test_that("use_reserves() on a spread list keeps the local mean variance", {
+  d <- spread_pop()
+  s <- draw(d, design_spread(c("x", "y"), n = 30, reserve = 10), seed = 2,
+            weights = TRUE)
+  gone <- s$id[c(1, 5, 9, 31)]
+  u <- use_reserves(s, ifelse(s$.reserve <= 4, s$id %in% gone, NA))
+  expect_equal(nrow(u), 30L)
+  expect_equal(u$.reserve, c(integer(27), 2:4))
+  expect_equal(u$.prob, rep(30 / 296, 30))
+  expect_equal(inclusion_prob(d, attr(u, "drawn_design"))[gone], rep(0, 4))
+  r <- ht_total(u, "smooth")
+  expect_equal(r$method, "local mean")
+  expect_equal(r$unreachable, 4L)
+  expect_true(is.finite(r$se) && r$se > 0)
+})

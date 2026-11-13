@@ -67,6 +67,10 @@ refused when they are not \code{n_clusters} clusters or a cluster does not hold
 the rows the design takes from it. Keep the rows with no response, with
 \code{y} missing, and estimate a mean with \code{ht_mean(na_rm = TRUE)}; see
 "Missing values and nonresponse" in \code{\link[=ht_total]{ht_total()}}.
+
+A list from a design with \code{reserve} is rebuilt whole, the main sample and
+every reserve, with the \code{.reserve} column \code{\link[=draw]{draw()}} added, which records
+the order the reserves are used in. Pass the result to \code{\link[=use_reserves]{use_reserves()}}.
 }
 
 \section{What comes back}{

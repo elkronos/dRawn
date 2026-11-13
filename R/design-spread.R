@@ -103,6 +103,26 @@
 #' the first draw's frame and design, so [ht_total()] refuses it; use
 #' `strata` instead.
 #'
+#' @section Reserves:
+#' `reserve` lists that many more rows after the main sample, to visit in
+#' place of rows found unavailable in the field, as [design_simple()] does.
+#' The reserves are a second spread sample, of `reserve` rows at equal
+#' probability from the rows the main sample left, so they cover the space
+#' as evenly as the main sample does, and they come in random order.
+#' [draw()] returns the main sample in frame order followed by the reserves,
+#' with an integer `.reserve` column: 0 for the main sample, and 1, 2, ...
+#' for the reserves, in the order they are used. The main sample is the one
+#' the design without `reserve` draws with the same seed.
+#'
+#' [use_reserves()] takes the list and what the visits found, and returns
+#' the sample to estimate from. It weights the rows used as a spread sample
+#' of `n` from the frame without the `u` rows found unavailable, at
+#' probability `n / (N - u)`. That is the average of the rows' probabilities,
+#' not each row's own, so the weights are an approximation. The variance is
+#' the local mean estimator, as for any spread sample. Only an unstratified
+#' design without `size`, whose rows all have probability `n / N`, takes
+#' `reserve`.
+#'
 #' @section Cost:
 #' Each step finds a nearest neighbour among the rows still undecided, so the
 #' draw takes time proportional to `N^2`: under a second for 5,000 rows, and
@@ -138,6 +158,9 @@
 #'   [design_stratified()]: every stratum of the frame needs one, a count for
 #'   a stratum the frame does not have is refused, and no count may exceed
 #'   the rows in its stratum. Only with `strata`.
+#' @param reserve Number of reserve rows to list after the main sample, to
+#'   replace rows found unavailable in the field. Not available with `size`
+#'   or `strata`. See "Reserves".
 #'
 #' @return A design object, for use with [draw()].
 #'
@@ -192,11 +215,13 @@
 #' @family designs
 #' @seealso [draw()], [design_spatial()] to restrict sampling to a region,
 #'   [design_weighted()] for size-proportional selection without spreading,
-#'   [design_stratified()] for the allocation rules, [allocation_table()].
+#'   [design_stratified()] for the allocation rules, [allocation_table()],
+#'   [use_reserves()].
 #' @export
 design_spread <- function(across, n, size = NULL, scale = TRUE,
                           na_rm = FALSE, strata = NULL,
-                          allocation = c("proportional", "equal")) {
+                          allocation = c("proportional", "equal"),
+                          reserve = 0) {
   across <- check_columns(across, "across")
   if (is.null(strata)) {
     if (!missing(allocation)) {
@@ -226,14 +251,28 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
       n <- check_count(n, "n")
     }
   }
+  size <- if (is.null(size)) NULL else check_columns(size, "size", 1L)
+  scale <- check_flag(scale, "scale")
+  na_rm <- check_flag(na_rm, "na_rm")
+  reserve <- check_count(reserve, "reserve")
+  if (reserve > 0L && (!is.null(size) || !is.null(strata))) {
+    by <- if (!is.null(size)) "size" else "strata"
+    stop("`reserve` needs every row at the same probability, and `", by,
+         "` ", if (by == "size") {
+           "makes it proportional to size"
+         } else {
+           "splits `n` over strata"
+         }, ". Leave out `", by, "` or `reserve`.", call. = FALSE)
+  }
   new_design("spread", list(
     across = across,
     strata = strata,
     n = n,
     allocation = allocation,
-    size = if (is.null(size)) NULL else check_columns(size, "size", 1L),
-    scale = check_flag(scale, "scale"),
-    na_rm = check_flag(na_rm, "na_rm")
+    size = size,
+    scale = scale,
+    na_rm = na_rm,
+    reserve = reserve
   ))
 }
 
@@ -283,6 +322,10 @@ spread_frame <- function(design, data) {
                          paste0("`", c(cols, strata), "`", collapse = ", ")))
   keep <- which(!bad)
   if (!length(keep)) stop("Every row has a missing value.", call. = FALSE)
+  # Rows use_reserves() found unavailable are outside the design's frame.
+  if (!is.null(design[["unavailable"]])) {
+    keep <- intersect(keep, available_rows(design, nrow(data)))
+  }
 
   x <- matrix(vapply(x_cols, function(v) as.numeric(v[keep]),
                      numeric(length(keep))),
@@ -296,6 +339,7 @@ spread_frame <- function(design, data) {
       stop("`n` (", design$n, ") cannot exceed the number of rows (",
            length(keep), ").", call. = FALSE)
     }
+    check_reserve_size(design, length(keep))
     al <- list(idx = list(seq_along(keep)), sizes = length(keep),
                n_alloc = design$n)
   } else {
@@ -350,7 +394,18 @@ draw_design.drawn_design_spread <- function(design, data) {
   picked <- unlist(lapply(fr$idx, function(i) {
     i[local_pivotal(fr$pi[i], fr$x[i, , drop = FALSE])]
   }), use.names = FALSE)
-  reindex(data, fr$keep[picked], sort = TRUE)
+  r <- reserve_size(design)
+  if (r == 0L) return(reindex(data, fr$keep[picked], sort = TRUE))
+
+  # The reserves are a second pivotal sample, of `reserve` rows at equal
+  # probability from the rows the main sample left, so they are spread over
+  # the space too. They are used in random order.
+  left <- setdiff(seq_along(fr$keep), picked)
+  spare <- left[local_pivotal(rep(r / length(left), length(left)),
+                              fr$x[left, , drop = FALSE])]
+  spare <- spare[sample.int(length(spare))]
+  out <- reindex(data, fr$keep[c(sort(picked), spare)])
+  with_reserve(out, design$n, r)
 }
 
 #' The local pivotal method, LPM2

@@ -27,6 +27,10 @@
 #'   [design_spread()]      \tab `n / N`, or `n * p_i` with a `size` column; with `strata`, the same within each stratum \cr
 #' }
 #'
+#' A design with `reserve` gives the probabilities of its main sample, which
+#' the reserves do not change. The design of a sample from [use_reserves()]
+#' gives `n / (N - u)`, and `0` for the `u` rows found unavailable.
+#'
 #' Four cases have no closed form, and the package refuses to invent one:
 #'
 #' * `design_multistage(allocation = "proportional")` — the stage-two allocation
@@ -214,6 +218,8 @@ certainty_set <- function(data, design) {
 #' @noRd
 simulate_inclusion <- function(data, design, R, seed) {
   refuse_simulation(design)
+  # The probabilities of a design with `reserve` are its main sample's.
+  design <- main_design(design)
   n_rows <- nrow(data)
   key <- ".drawn_row_id"
   if (key %in% names(data)) {

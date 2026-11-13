@@ -63,6 +63,11 @@ design_certainty <- function(above, threshold, rest, na_rm = FALSE) {
          "`.replicate` column and present resampled duplicates as distinct ",
          "units.", call. = FALSE)
   }
+  if (reserve_size(rest) > 0L) {
+    stop("`rest` has `reserve = ", reserve_size(rest), "`, and a certainty ",
+         "design lists no reserves. Leave `reserve` out of `rest`.",
+         call. = FALSE)
+  }
   if (!is.numeric(threshold) || length(threshold) != 1L || is.na(threshold)) {
     stop("`threshold` must be a single number.", call. = FALSE)
   }

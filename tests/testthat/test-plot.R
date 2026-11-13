@@ -126,3 +126,21 @@ test_that("a spatial map draws the region's outline as the design reads it", {
                             coords = c("lon", "lat"), seed = 1))
   expect_false("C_polygon" %in% calls)
 })
+
+test_that("a design with reserves is plotted by its main sample", {
+  pop <- data.frame(id = 1:100, x = (1:100) %% 10, y = (1:100) %/% 10)
+  f <- tempfile(fileext = ".png")
+  grDevices::png(f); on.exit({grDevices::dev.off(); unlink(f)}, add = TRUE)
+  shown <- NULL
+  local_mocked_bindings(draw_titles = function(main, sub, pal) {
+    shown <<- c(main, sub)
+  })
+
+  des <- design_simple(n = 10, reserve = 5)
+  expect_identical(plot(des, pop, seed = 1), des)
+  expect_equal(shown, c("design_simple(n = 10, reserve = 5)",
+                        "10 of 100 rows selected"))
+  spread <- design_spread(c("x", "y"), n = 10, reserve = 5)
+  expect_identical(plot(spread, pop, type = "map", seed = 1), spread)
+  expect_match(shown[2], "^10 of 100")
+})

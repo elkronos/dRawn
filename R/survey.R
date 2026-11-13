@@ -705,6 +705,12 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
            fpc2 = sizes[cluster],
            ids = stats::as.formula("~.cluster + .unit"), cluster = cluster)
     },
+    simple = {
+      # Rows use_reserves() found unavailable are outside the population.
+      list(stratum = NULL,
+           fpc = rep(length(available_rows(design, nrow(pop))), nrow(dat)),
+           ids = one)
+    },
     reservoir = {
       # Rows past `max_items` are never read, so the population is the rows
       # the stream reached, not the whole frame.

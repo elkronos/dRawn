@@ -855,6 +855,24 @@
   missing completely at random. `?ht_total` has a section on missing values
   and nonresponse, with the weighting-class adjustment to use when that
   assumption fails, and the estimation article shows the steps.
+* `design_simple()` and `design_spread()` take `reserve`, a number of units
+  to list after the main sample for replacing units that fieldwork finds
+  cannot be reached. `draw()` returns the main sample and then the
+  reserves, numbered in the order they are used by a new `.reserve`
+  column; the main sample is the one the design draws without `reserve`.
+  For `design_simple()` the list is one random draw, and for
+  `design_spread()` the reserves are a second spread sample from the rows
+  the main sample left, so they cover the space evenly too.
+  `design_spread()` takes `reserve` only without `size` and `strata`, and
+  `design_certainty()` refuses a `rest` with `reserve`. A printed simple or
+  spread design shows a `reserve` line. `ht_total()`, `ht_mean()`,
+  `as_svydesign()` and `sample_summary()` refuse the list. The new
+  `use_reserves()` takes it with the units found unavailable, replaces them
+  with the first available reserves, and returns a sample weighted at
+  `n / (N - u)` over the frame without the `u` units found unavailable. Its
+  estimates describe the units that can be reached, and `?use_reserves`
+  says what that assumes. `as_drawn()` rebuilds a list read back from a
+  file through its `.reserve` column.
 
 ## Speed and memory
 

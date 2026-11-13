@@ -21,6 +21,11 @@
 # file, through rebuild_sample(), which every function that makes a weighted
 # sample other than draw() uses. compact_sample() replaces the stored frame
 # with its design columns and records what it dropped (`drawn_compact`).
+#
+# A design with `reserve` gives a list rather than a sample: the main sample
+# and then the reserves, with `drawn_rows` in that order, which is the order
+# the reserves are used in. drawn_state() refuses it unless the caller reads
+# lists, and use_reserves() turns it into a sample.
 
 #' Copy a data frame column by column
 #'
@@ -91,10 +96,17 @@ format_rows <- function(x) {
 #' (every frame row's inclusion probability at draw time, `NULL` for a sample
 #' saved by drawn 0.2.0), `units` (`pop[rows, ]`, the frame's copy of each
 #' sample row), `selection` (the codes of the clusters selected, for a
-#' sample weighted conditional on them, else `NULL`) and `compact` (what
-#' compact_sample() dropped from the stored frame, else `NULL`). In a
-#' conditional sample, `pi_all` is `NA` for the rows of clusters not
-#' selected; count the rows a design can reach with reachable().
+#' sample weighted conditional on them, else `NULL`), `compact` (what
+#' compact_sample() dropped from the stored frame, else `NULL`) and `reserve`
+#' (for a list from a design with `reserve`, each row's place among the
+#' reserves, 0 for the main sample, else `NULL`). In a conditional sample,
+#' `pi_all` is `NA` for the rows of clusters not selected; count the rows a
+#' design can reach with reachable().
+#'
+#' A list from a design with `reserve` is refused unless `reserves` is
+#' `TRUE`, since it is not a sample to estimate from until use_reserves()
+#' has replaced the units found unavailable. Its `.reserve` column, when it
+#' has one, must agree with the order the reserves were drawn in.
 #'
 #' `rows` comes from the `.row` column, so reordering a sample, by `[`,
 #' dplyr::arrange() or data.table::setorder(), changes nothing. A subset, a
@@ -116,7 +128,7 @@ format_rows <- function(x) {
 #' selection.
 #'
 #' @noRd
-drawn_state <- function(sample, arg = "sample") {
+drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
   if (!is.data.frame(sample)) {
     stop_not_drawn(paste0("must be a data frame returned by ",
                           "draw(..., weights = TRUE), not a ",
@@ -129,6 +141,14 @@ drawn_state <- function(sample, arg = "sample") {
   compact <- attr(sample, "drawn_compact", exact = TRUE)
   if (is.null(design) || is.null(drawn) || is.null(pop)) {
     stop_not_drawn(arg = arg)
+  }
+  r <- reserve_size(design)
+  if (r > 0L && !reserves) {
+    stop_not_drawn(paste0(
+      "lists the ", design$n, " units of a main sample and ", r, " reserve",
+      if (r > 1L) "s", " (`reserve = ", r, "`), so it is not yet a sample to ",
+      "estimate from. Pass the list to use_reserves() with the units found ",
+      "unavailable marked, and estimate from the sample it returns."), arg)
   }
 
   if (is.null(pi_all)) {
@@ -152,7 +172,32 @@ drawn_state <- function(sample, arg = "sample") {
   check_drift(design, pop, pi_all, arg, selection)
   list(design = design, pop = pop, rows = rows, pi_all = pi_all,
        units = pop[rows, , drop = FALSE], selection = selection,
-       compact = compact)
+       compact = compact,
+       reserve = if (r > 0L) list_places(sample, rows, drawn, design$n, arg))
+}
+
+#' Each row's place among a list's reserves, checked against `.reserve`
+#'
+#' `drawn` holds the frame rows of the main sample and then of the reserves
+#' in the order they are used, so a row's place in it, less `n`, is its
+#' reserve number, and 0 for a row of the main sample.
+#'
+#' @noRd
+list_places <- function(sample, rows, drawn, n, arg = "sample") {
+  place <- pmax(match(rows, drawn) - n, 0L)
+  col <- sample[[".reserve"]]
+  if (!is.null(col)) {
+    ok <- is.numeric(col) && is.null(dim(col)) && !anyNA(col) &&
+      all(col == place)
+    if (!ok) {
+      stop_not_drawn(paste0(
+        "has `.reserve` values that differ from the order its reserves were ",
+        "drawn in, so `.reserve` was changed after draw(). use_reserves() ",
+        "uses the reserves in the order drawn; keep `.reserve` as draw() set ",
+        "it."), arg)
+    }
+  }
+  as.integer(place)
 }
 
 #' Frame rows a sample's design could have drawn
@@ -403,6 +448,10 @@ sample_rows <- function(sample, drawn, N, arg) {
 #' `y` missing, and estimate a mean with `ht_mean(na_rm = TRUE)`; see
 #' "Missing values and nonresponse" in [ht_total()].
 #'
+#' A list from a design with `reserve` is rebuilt whole, the main sample and
+#' every reserve, with the `.reserve` column [draw()] added, which records
+#' the order the reserves are used in. Pass the result to [use_reserves()].
+#'
 #' @section What comes back:
 #' The rows of `data` in their own order, with `.prob`, `.weight` and `.row`
 #' first and the other columns of `data` after them. `.prob` and `.weight`
@@ -495,7 +544,19 @@ as_drawn <- function(data, design, frame, by = NULL) {
          "row(s) ", format_rows(rows[zero]), ". Pass the design and the ",
          "frame the sample was drawn with.", call. = FALSE)
   }
-  if (fixed_size(design)) {
+  r <- reserve_size(design)
+  if (r > 0L) {
+    # A list: the main sample and its reserves, whose order comes from
+    # `.reserve`.
+    listed <- as.numeric(design$n) + r
+    if (nrow(data) != listed) {
+      stop("`data` has ", nrow(data), " rows, and `design` lists ",
+           listed, ": ", design$n, " in the main sample and ", r,
+           " reserve", if (r > 1L) "s", ". Rebuild the whole list as draw() ",
+           "returned it, then pass it to use_reserves().", call. = FALSE)
+    }
+    reserve <- rebuilt_reserve(data, design$n, r)
+  } else if (fixed_size(design)) {
     expected <- sum(pi_all)
     if (abs(nrow(data) - expected) > 1e-6 * max(1, expected)) {
       stop("`data` has ", nrow(data), " rows, and `design` draws ",
@@ -518,7 +579,36 @@ as_drawn <- function(data, design, frame, by = NULL) {
            "the sample was drawn with.", call. = FALSE)
     }
   }
+  if (r > 0L) {
+    return(rebuild_sample(data, design, frame, rows, pi_all, selection,
+                          reserve = reserve, drawn = rows[order(reserve)]))
+  }
   rebuild_sample(data, design, frame, rows, pi_all, selection)
+}
+
+#' Each row's reserve number, from the `.reserve` column of a list
+#'
+#' A list drawn with `reserve = r` numbers its `n` main rows 0 and its
+#' reserves 1 to `r`, the order they are used in, which nothing else in a
+#' file records.
+#'
+#' @noRd
+rebuilt_reserve <- function(data, n, r) {
+  col <- data[[".reserve"]]
+  if (is.null(col)) {
+    stop("`data` has no `.reserve` column, which records the order of the ",
+         "reserves `design` lists. Keep the `.reserve` column draw() added.",
+         call. = FALSE)
+  }
+  ok <- is.numeric(col) && is.null(dim(col)) && !anyNA(col) &&
+    all(col == trunc(col)) &&
+    identical(sort(as.integer(col)), c(integer(n), seq_len(r)))
+  if (!ok) {
+    stop("`data` has a `.reserve` column that does not hold 0 for ", n,
+         " rows and each of 1 to ", r, " once, as draw() set it. Restore it ",
+         "from the list draw() returned.", call. = FALSE)
+  }
+  as.integer(col)
 }
 
 #' Set the columns and attributes of a weighted sample on rows of a frame
@@ -530,16 +620,24 @@ as_drawn <- function(data, design, frame, by = NULL) {
 #' `drawn_*` attributes `data` already has are replaced, so drawn_state()
 #' accepts the result on the same terms as a sample from draw().
 #'
+#' `reserve`, when given, is each row's reserve number, set as a `.reserve`
+#' column after `.row`. `drawn` is the frame rows in the order recorded as
+#' `drawn_rows`, which for a list is the main sample and then the reserves
+#' in the order they are used. `compact` is what compact_sample() dropped
+#' from `frame`, kept as `drawn_compact`.
+#'
 #' @noRd
 rebuild_sample <- function(data, design, frame, rows, pi_all,
-                           selection = NULL) {
-  added <- c(".prob", ".weight", ".row")
+                           selection = NULL, reserve = NULL, drawn = rows,
+                           compact = NULL) {
+  added <- c(".prob", ".weight", ".row", if (!is.null(reserve)) ".reserve")
   out <- data
   for (col in intersect(added, names(out))) out[[col]] <- NULL
   p <- pi_all[rows]
   out[[".prob"]] <- p
   out[[".weight"]] <- 1 / p
   out[[".row"]] <- rows
+  if (!is.null(reserve)) out[[".reserve"]] <- as.integer(reserve)
   out <- out[, c(added, setdiff(names(out), added)), drop = FALSE]
   for (a in grep("^drawn_", names(attributes(out)), value = TRUE)) {
     attr(out, a) <- NULL
@@ -547,10 +645,11 @@ rebuild_sample <- function(data, design, frame, rows, pi_all,
   attr(out, "drawn_design") <- design
   # `.row` holds `rows` itself, so the attribute gets its own copy, as in
   # draw().
-  attr(out, "drawn_rows") <- copy_column(rows)
+  attr(out, "drawn_rows") <- copy_column(drawn)
   attr(out, "drawn_population") <- snapshot_frame(frame)
   attr(out, "drawn_pi") <- pi_all
   if (!is.null(selection)) attr(out, "drawn_selection") <- selection
+  if (!is.null(compact)) attr(out, "drawn_compact") <- compact
   table_ready(out)
 }
 
@@ -715,6 +814,10 @@ fixed_size <- function(design) {
 #' that is not in `sample`, a missing id, and a column of `field` that
 #' `sample` already has are refused. Ids are compared as in [as_drawn()].
 #'
+#' A list from a design with `reserve` takes fieldwork columns too, such as
+#' which units were found unavailable, before [use_reserves()] turns it into
+#' the sample to estimate from.
+#'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`, or
 #'   by [as_drawn()].
 #' @param field A data frame of results: the `by` columns and the columns to
@@ -733,10 +836,10 @@ fixed_size <- function(design) {
 #' s <- add_fieldwork(s, field, by = "id")
 #' ht_mean(s, "spend", na_rm = TRUE)
 #'
-#' @seealso [as_drawn()], [ht_mean()]
+#' @seealso [as_drawn()], [ht_mean()], [use_reserves()]
 #' @export
 add_fieldwork <- function(sample, field, by) {
-  drawn_state(sample)
+  drawn_state(sample, reserves = TRUE)
   if (!is.data.frame(field)) {
     stop("`field` must be a data frame of fieldwork results, not a ",
          class(field)[1], ".", call. = FALSE)
@@ -804,6 +907,177 @@ add_fieldwork <- function(sample, field, by) {
   table_ready(out)
 }
 
+#' Replace unavailable units from a reserve list
+#'
+#' [design_simple()] and [design_spread()] with `reserve` give a list: the
+#' `n` units of the main sample, then the reserves, with a `.reserve` column
+#' that numbers them 1, 2, ... in the order they are used. Visit every unit
+#' of the main sample, and for each one found unavailable, visit the next
+#' reserve, until the units found available make up `n`.
+#' `use_reserves()` takes the list and what the visits found, and returns the
+#' sample to estimate from: the units of the main sample found available,
+#' and as many reserves, taken in order, as replace the others.
+#'
+#' @section What the estimates describe:
+#' Replacing units changes the population being estimated. The sample that
+#' comes back stands for the units of the frame that can be reached, and its
+#' totals and means are theirs, not the whole frame's. It is weighted as a
+#' sample of `n` drawn at equal probability from the frame without the `u`
+#' listed units found unavailable: each unit used has probability
+#' `n / (N - u)`, and the units found unavailable have probability 0, so
+#' [ht_total()] and [ht_mean()] count them among the frame rows the estimate
+#' does not cover.
+#'
+#' The probabilities assume that every unit of the frame nobody visited is
+#' available. A frame that holds more unavailable units than were found has
+#' fewer than `N - u` units that can be reached, and the totals are too high
+#' by about the share of the frame those units make up. The Hajek mean of
+#' [ht_mean()] does not depend on `N - u` and is not affected.
+#'
+#' For [design_simple()] the weighting is exact under that assumption, when
+#' the reserves suffice. The list is one random draw in random order, so its
+#' first `n` available units are a simple random sample of `n` from the
+#' available units of the frame, and the variance is that of a simple random
+#' sample from `N - u`. For
+#' [design_spread()] the reserves are a second spread sample from the rows
+#' the main sample left, in random order. The units used are spread over the
+#' space, and under the same assumption their probabilities average
+#' `n / (N - u)`, but each unit's own probability is not known exactly, so
+#' the weights are an approximation. The variance is the local mean
+#' estimator over the units used.
+#'
+#' Reserves are for units that cannot be reached or measured at all. A unit
+#' that is reached but gives no answer is nonresponse: keep it in the sample
+#' with `y` missing, as "Missing values and nonresponse" in [ht_total()]
+#' describes.
+#'
+#' @section Marking the visits:
+#' `unavailable` holds one value for each row of `sample`: `TRUE` for a unit
+#' found unavailable, `FALSE` for one found available, and `NA` for one not
+#' visited. Every unit of the main sample needs `TRUE` or `FALSE`, and so
+#' does each reserve up to the one that completes the sample; a missing
+#' value there is refused, with the frame row named. Reserves visited past
+#' that one are not used, and those of them found unavailable count among
+#' the `u` units outside the population. When the reserves run out first,
+#' the sample holds fewer than `n` units and is weighted as a sample of that
+#' many, with a warning.
+#'
+#' @section What comes back:
+#' The units used, in the order of `sample`, with `.prob`, `.weight`, `.row`
+#' and `.reserve` first. `.reserve` is 0 for a unit of the main sample and
+#' the reserve's number for a unit that replaced one. The design stored with
+#' the result is the list's design with `n` the number of units used, no
+#' `reserve`, and the frame rows found unavailable recorded as
+#' `unavailable`; [inclusion_prob()] of it gives those rows probability 0.
+#'
+#' @param sample A list from [draw()] with `weights = TRUE` and a design
+#'   with `reserve`, or from [as_drawn()].
+#' @param unavailable A logical vector with one value for each row of
+#'   `sample`, in its order, or the name of such a column of `sample`. See
+#'   "Marking the visits".
+#'
+#' @return A weighted sample, ready for [ht_total()], [ht_mean()],
+#'   [as_svydesign()] and [sample_summary()].
+#'
+#' @examples
+#' pop <- data.frame(id = 1:200, spend = (1:200) %% 37)
+#' s <- draw(pop, design_simple(n = 20, reserve = 5), seed = 1, weights = TRUE)
+#' table(s$.reserve)
+#'
+#' # Two units of the main sample could not be reached, nor could the first
+#' # reserve; reserves 2 and 3 replaced them, and 4 and 5 were not visited
+#' gone <- c(s$id[c(3, 11)], s$id[s$.reserve == 1])
+#' found <- ifelse(s$.reserve <= 3, s$id %in% gone, NA)
+#' used <- use_reserves(s, found)
+#' table(used$.reserve)
+#' ht_total(used, "spend")
+#'
+#' @seealso [design_simple()], [design_spread()], [add_fieldwork()] to add
+#'   what the visits found to the list.
+#' @export
+use_reserves <- function(sample, unavailable) {
+  state <- drawn_state(sample, reserves = TRUE)
+  design <- state$design
+  r <- reserve_size(design)
+  if (r == 0L || is.null(state$reserve)) {
+    stop("`sample` was drawn with no `reserve`, so it lists no reserves to ",
+         "use. Estimate from it as it is.", call. = FALSE)
+  }
+  gone <- visit_findings(sample, unavailable)
+  place <- state$reserve
+  rows <- state$rows
+  main <- place == 0L
+  open <- main & is.na(gone)
+  if (any(open)) {
+    stop("`unavailable` is missing for ", sum(open), " unit(s) of the main ",
+         "sample, at frame row(s) ", format_rows(rows[open]), ". Visit every ",
+         "unit of the main sample and mark it TRUE or FALSE.", call. = FALSE)
+  }
+
+  # Each unavailable unit of the main sample is replaced by the next reserve
+  # found available, in the order of `.reserve`.
+  used <- main & !gone
+  need <- sum(gone[main])
+  at <- match(seq_len(r), place)
+  for (k in seq_len(r)) {
+    if (need == 0L) break
+    i <- at[k]
+    if (is.na(gone[i])) {
+      stop("`unavailable` is missing for reserve ", k, ", at frame row ",
+           rows[i], ", which is needed to replace ", need, " more ",
+           "unavailable unit(s). Visit the reserves in order and mark each ",
+           "one TRUE or FALSE.", call. = FALSE)
+    }
+    if (!gone[i]) {
+      used[i] <- TRUE
+      need <- need - 1L
+    }
+  }
+  m <- sum(used)
+  if (m == 0L) {
+    stop("Every unit `sample` lists was found unavailable, so there is no ",
+         "sample to estimate from.", call. = FALSE)
+  }
+  if (need > 0L) {
+    warn_drawn(paste0(
+      "The ", r, " reserve(s) of `sample` ran out with ", need, " unavailable ",
+      "unit(s) of the main sample not replaced, so the sample holds ", m,
+      " units rather than ", design$n, ". It is weighted as a sample of ", m,
+      " from the units not found unavailable."), "drawn_reserves_short")
+  }
+
+  resolved <- design
+  resolved$n <- as.integer(m)
+  resolved$reserve <- 0L
+  resolved$unavailable <- sort(rows[gone %in% TRUE])
+  pi_all <- exact_inclusion(resolved, state$pop)
+  keep <- which(used)
+  rebuild_sample(reindex(sample, keep), resolved, state$pop, rows[keep],
+                 pi_all, reserve = place[keep], compact = state$compact)
+}
+
+#' What the visits to a list found, as a logical vector over its rows
+#' @noRd
+visit_findings <- function(sample, unavailable) {
+  if (is.character(unavailable) && length(unavailable) == 1L &&
+      !is.na(unavailable)) {
+    if (!unavailable %in% names(sample)) {
+      stop("`sample` has no column `", unavailable, "`.", call. = FALSE)
+    }
+    unavailable <- sample[[unavailable]]
+  }
+  if (!is.logical(unavailable) || !is.null(dim(unavailable)) ||
+      length(unavailable) != nrow(sample)) {
+    stop("`unavailable` must be a logical vector with one value for each of ",
+         "the ", nrow(sample), " rows of `sample`, or the name of such a ",
+         "column, not ", format_bad(unavailable), ". Mark a unit TRUE when it ",
+         "was found unavailable, FALSE when it was available and NA when it ",
+         "was not visited; `sample$id %in% ids` turns a list of ids into ",
+         "such a vector.", call. = FALSE)
+  }
+  as.vector(unavailable)
+}
+
 #' Drop the frame columns a sample's design does not need
 #'
 #' A weighted sample holds its own copy of the whole frame, every column of
@@ -853,7 +1127,7 @@ add_fieldwork <- function(sample, field, by) {
 #' @seealso [draw()], [as_drawn()]
 #' @export
 compact_sample <- function(sample, keep = NULL) {
-  state <- drawn_state(sample)
+  state <- drawn_state(sample, reserves = TRUE)
   pop <- state$pop
   if (!is.null(keep)) {
     keep <- check_columns(keep, "keep")

@@ -69,7 +69,9 @@ including \code{\link[=design_systematic]{design_systematic()}} with \code{order
 The two exceptions are the ones where draw order is meaningful:
 \code{\link[=design_simple]{design_simple()}} and \code{\link[=design_weighted]{design_weighted()}} return rows in the order they
 were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns replicates in order with a
-leading \code{.replicate} column.
+leading \code{.replicate} column. A design with \code{reserve} returns its main
+sample and then its reserves, in the order they are used, with a
+leading \code{.reserve} column.
 }
 }
 
@@ -90,6 +92,8 @@ confidence interval on the design's degrees of freedom. \code{\link[=deff]{deff(
 what the design cost in precision against simple random sampling, and
 \code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn against what was in the
 frame. \code{\link[=add_fieldwork]{add_fieldwork()}} joins fieldwork results to a sample by an id,
+\code{\link[=use_reserves]{use_reserves()}} replaces the units of a list from \code{\link[=design_simple]{design_simple()}} or
+\code{\link[=design_spread]{design_spread()}} with \code{reserve} that were found unavailable,
 \code{\link[=as_drawn]{as_drawn()}} rebuilds a sample read back from a file or a database, and
 \code{\link[=compact_sample]{compact_sample()}} drops the frame columns its design does not read before
 it is saved or shared.

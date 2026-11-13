@@ -167,6 +167,7 @@ format_gb <- function(bytes) {
 #' @noRd
 simulate_joint <- function(data, design, rows, R, seed) {
   refuse_simulation(design)
+  design <- main_design(design)
   key <- ".drawn_row_id"
   if (key %in% names(data)) {
     stop("`data` already has a column called `", key,
@@ -271,12 +272,18 @@ joint_inclusion.drawn_design_simple <- function(design, data, rows) {
     no_joint_form("`design_simple(replace = TRUE)`",
                   "Use replace = FALSE, or estimate variance by resampling.")
   }
-  simple_setup(design, data)
-  N <- nrow(data)
+  keep <- simple_setup(design, data)
+  N <- length(keep)
   n <- design$n
   k <- length(rows)
   out <- matrix(if (N > 1) n * (n - 1) / (N * (N - 1)) else 0, k, k)
   out[diag_index(k)] <- n / N
+  # Rows use_reserves() found unavailable are never drawn.
+  gone <- !rows %in% keep
+  if (any(gone)) {
+    out[gone, ] <- 0
+    out[, gone] <- 0
+  }
   out
 }
 

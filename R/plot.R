@@ -45,6 +45,8 @@ drawn_pal <- function() {
 #'     geometry, which is how the design decides which rows are inside.}
 #' }
 #'
+#' A design with `reserve` is shown by its main sample, without the reserves.
+#'
 #' Base graphics, so there is no plotting dependency to install.
 #'
 #' @param x A design object.
@@ -116,10 +118,13 @@ plot.drawn_design <- function(x, y, type = c("selection", "probability", "map"),
   if (type == "probability") {
     return(plot_probability(x, y, shown, main, sub, pal, ...))
   }
+  # A design with `reserve` is shown by its main sample.
   if (type == "map") {
-    return(plot_map(x, y, coords, shown, seed, main, sub, pal, ...))
+    plot_map(main_design(x), y, coords, shown, seed, main, sub, pal, ...)
+  } else {
+    plot_selection(main_design(x), y, shown, seed, ncol, main, sub, pal, ...)
   }
-  plot_selection(x, y, shown, seed, ncol, main, sub, pal, ...)
+  invisible(x)
 }
 
 #' @noRd
@@ -129,12 +134,14 @@ fmt_n <- function(n) formatC(n, format = "d", big.mark = ",")
 #' @noRd
 design_label <- function(x) {
   p <- unclass(x)
-  # One start is the default, and says nothing about the design.
+  # One start and no reserves are the defaults, and say nothing about the
+  # design.
   if (identical(p$n_starts, 1L)) p$n_starts <- NULL
+  if (identical(p$reserve, 0L)) p$reserve <- NULL
   p <- p[!vapply(p, function(v) is.null(v) || inherits(v, c("sf", "sfc")),
                  logical(1))]
   keep <- intersect(c("strata", "clusters", "weights", "across", "size",
-                      "time", "n",
+                      "time", "n", "reserve",
                       "n_clusters", "interval", "n_starts", "order_by",
                       "per_interval", "n_replicates",
                       "allocation", "method", "balanced", "within"), names(p))

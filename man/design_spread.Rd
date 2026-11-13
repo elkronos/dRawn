@@ -11,7 +11,8 @@ design_spread(
   scale = TRUE,
   na_rm = FALSE,
   strata = NULL,
-  allocation = c("proportional", "equal")
+  allocation = c("proportional", "equal"),
+  reserve = 0
 )
 }
 \arguments{
@@ -48,6 +49,10 @@ frame of the \code{strata} columns and \code{n}. Counts follow the rules of
 \code{\link[=design_stratified]{design_stratified()}}: every stratum of the frame needs one, a count for
 a stratum the frame does not have is refused, and no count may exceed
 the rows in its stratum. Only with \code{strata}.}
+
+\item{reserve}{Number of reserve rows to list after the main sample, to
+replace rows found unavailable in the field. Not available with \code{size}
+or \code{strata}. See "Reserves".}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -164,6 +169,28 @@ the first draw's frame and design, so \code{\link[=ht_total]{ht_total()}} refuse
 \code{strata} instead.
 }
 
+\section{Reserves}{
+
+\code{reserve} lists that many more rows after the main sample, to visit in
+place of rows found unavailable in the field, as \code{\link[=design_simple]{design_simple()}} does.
+The reserves are a second spread sample, of \code{reserve} rows at equal
+probability from the rows the main sample left, so they cover the space
+as evenly as the main sample does, and they come in random order.
+\code{\link[=draw]{draw()}} returns the main sample in frame order followed by the reserves,
+with an integer \code{.reserve} column: 0 for the main sample, and 1, 2, ...
+for the reserves, in the order they are used. The main sample is the one
+the design without \code{reserve} draws with the same seed.
+
+\code{\link[=use_reserves]{use_reserves()}} takes the list and what the visits found, and returns
+the sample to estimate from. It weights the rows used as a spread sample
+of \code{n} from the frame without the \code{u} rows found unavailable, at
+probability \code{n / (N - u)}. That is the average of the rows' probabilities,
+not each row's own, so the weights are an approximation. The variance is
+the local mean estimator, as for any spread sample. Only an unstratified
+design without \code{size}, whose rows all have probability \code{n / N}, takes
+\code{reserve}.
+}
+
 \section{Cost}{
 
 Each step finds a nearest neighbour among the rows still undecided, so the
@@ -226,7 +253,8 @@ natural resources. \emph{Journal of the American Statistical Association}, 99,
 \seealso{
 \code{\link[=draw]{draw()}}, \code{\link[=design_spatial]{design_spatial()}} to restrict sampling to a region,
 \code{\link[=design_weighted]{design_weighted()}} for size-proportional selection without spreading,
-\code{\link[=design_stratified]{design_stratified()}} for the allocation rules, \code{\link[=allocation_table]{allocation_table()}}.
+\code{\link[=design_stratified]{design_stratified()}} for the allocation rules, \code{\link[=allocation_table]{allocation_table()}},
+\code{\link[=use_reserves]{use_reserves()}}.
 
 Other designs: 
 \code{\link{design_bootstrap}()},

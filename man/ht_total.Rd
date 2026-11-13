@@ -396,6 +396,12 @@ with \code{survey}'s \code{na.rm = TRUE}. \code{survey} treats the adjusted weig
 fixed, so its standard errors leave out that the adjustment factors were
 estimated from the sample. \code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} keep to \code{.prob}
 and do not see the adjustment. The estimation article shows the steps.
+
+A unit that cannot be reached at all, rather than one that does not
+answer, can be replaced from a reserve list drawn with the sample:
+\code{reserve} in \code{\link[=design_simple]{design_simple()}} and \code{\link[=design_spread]{design_spread()}}, then
+\code{\link[=use_reserves]{use_reserves()}}. The estimates then describe the units that can be
+reached.
 }
 
 \section{Which columns are read}{

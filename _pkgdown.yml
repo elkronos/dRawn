@@ -46,10 +46,12 @@ reference:
 
 - title: From fieldwork to estimate
   desc: >
-    Join fieldwork results to a sample, rebuild one read back from a file,
-    and drop frame columns before saving or sharing one.
+    Join fieldwork results to a sample, replace units found unavailable from
+    a reserve list, rebuild a sample read back from a file, and drop frame
+    columns before saving or sharing one.
   contents:
   - add_fieldwork
+  - use_reserves
   - as_drawn
   - compact_sample
 

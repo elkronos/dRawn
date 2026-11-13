@@ -5,7 +5,7 @@
 #' @section What you get back:
 #' A data frame with the same class and the same columns, in the same order, as
 #' `data`. `weights = TRUE` prepends three columns (see "Design weights"), and
-#' two designs qualify it further:
+#' some designs qualify it further:
 #'
 #' * [design_bootstrap()] prepends a `.replicate` column identifying which
 #'   replicate each row belongs to, so all replicates come back in one frame.
@@ -16,6 +16,12 @@
 #'   rather than a data frame, because there is nothing to make a data frame
 #'   out of. With `batches = TRUE` it returns the rows sampled from a
 #'   function's data frames as one data frame.
+#' * [design_simple()] and [design_spread()] with `reserve` return a list:
+#'   the main sample, then the reserves, with a leading integer `.reserve`
+#'   column that is 0 for the main sample and numbers the reserves 1, 2, ...
+#'   in the order they are used. With `weights = TRUE` it follows `.row`,
+#'   and `.prob` is the main sample's probability for every row.
+#'   [use_reserves()] turns the list into the sample to estimate from.
 #'
 #' @section Design weights:
 #' `weights = TRUE` prepends three columns: `.prob`, the probability that the

@@ -4,7 +4,7 @@
 \alias{design_simple}
 \title{Simple random sampling}
 \usage{
-design_simple(n, replace = FALSE)
+design_simple(n, replace = FALSE, reserve = 0)
 }
 \arguments{
 \item{n}{Number of rows to draw. A single non-negative whole number.}
@@ -13,6 +13,11 @@ design_simple(n, replace = FALSE)
 declines a with-replacement design: \code{.prob} would be the chance of
 appearing at least once, which does not weight a sample holding
 duplicates. See \code{\link[=draw]{draw()}}.}
+
+\item{reserve}{Number of reserve units to list after the main sample, to
+replace units found unavailable in the field. A single non-negative whole
+number; \code{n + reserve} cannot exceed the rows of the frame. Not available
+with \code{replace = TRUE}. See "Reserves".}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -20,14 +25,46 @@ A design object, for use with \code{\link[=draw]{draw()}}.
 \description{
 Draws \code{n} rows uniformly at random.
 }
+\section{Reserves}{
+
+Fieldwork often finds that some sampled units cannot be reached: a site
+with no access, a business that has closed, a plot under water. \code{reserve}
+draws that many more units with the main sample, as a list to replace them
+from. \code{\link[=draw]{draw()}} returns the \code{n} units of the main sample followed by the
+\code{reserve} units, with an integer \code{.reserve} column: 0 for the main sample,
+and 1, 2, ... for the reserves, in the order they are used. The list is
+one random draw of \code{n + reserve} units in random order, so the main sample
+is a simple random sample of \code{n}, the one the design without \code{reserve}
+draws with the same seed, and the first \code{k} units of the list are a
+simple random sample of \code{k} for any \code{k}.
+
+Visit every unit of the main sample, and for each one found unavailable,
+visit the next reserve. \code{\link[=use_reserves]{use_reserves()}} takes the list and what the
+visits found, and returns the sample to estimate from: the first \code{n} units
+of the list found available. They are a simple random sample of \code{n} from
+the units of the frame that are available, and \code{\link[=use_reserves]{use_reserves()}} weights
+them as one, with probability \code{n / (N - u)} when \code{u} listed units were
+found unavailable. Replacing units changes what is estimated: the totals
+and means are those of the units that can be reached, not of the whole
+frame. "What the estimates describe" in \code{\link[=use_reserves]{use_reserves()}} has the details.
+
+Until then the list is not a sample to estimate from. \code{\link[=inclusion_prob]{inclusion_prob()}}
+and the \code{.prob} column give every row the main sample's probability,
+\code{n / N}, and \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=as_svydesign]{as_svydesign()}} and
+\code{\link[=sample_summary]{sample_summary()}} refuse the list.
+}
+
 \examples{
 df <- data.frame(id = 1:100)
 draw(df, design_simple(n = 10), seed = 1)
 draw(df, design_simple(n = 150, replace = TRUE), seed = 1)
 
+# Ten units and three reserves, used in the order of `.reserve`
+draw(df, design_simple(n = 10, reserve = 3), seed = 1)
+
 }
 \seealso{
-\code{\link[=draw]{draw()}}
+\code{\link[=draw]{draw()}}, \code{\link[=use_reserves]{use_reserves()}}
 
 Other designs: 
 \code{\link{design_bootstrap}()},

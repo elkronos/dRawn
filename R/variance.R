@@ -290,6 +290,12 @@
 #' estimated from the sample. `ht_total()` and [ht_mean()] keep to `.prob`
 #' and do not see the adjustment. The estimation article shows the steps.
 #'
+#' A unit that cannot be reached at all, rather than one that does not
+#' answer, can be replaced from a reserve list drawn with the sample:
+#' `reserve` in [design_simple()] and [design_spread()], then
+#' [use_reserves()]. The estimates then describe the units that can be
+#' reached.
+#'
 #' @section Which columns are read:
 #' `ht_total()` and [ht_mean()] divide by `.prob`, the inclusion probabilities
 #' [draw()] attached, and read strata, clusters, time stamps and the other
@@ -1051,7 +1057,8 @@ srs_one_group <- function(z, n, N) {
 #' @noRd
 srs_groups <- function(design, data, ctx = NULL) {
   from_context(ctx, "srs_groups", switch(design_type(design),
-    simple = list(n_g = design$n, N_g = nrow(data)),
+    simple = list(n_g = design$n,
+                  N_g = length(available_rows(design, nrow(data)))),
     reservoir = {
       # Rows past `max_items` are never read: the sample is a simple random
       # one from the rows before it.
@@ -2092,8 +2099,9 @@ jackknife_fpc <- function(design, pop, m, n_fixed = 0L, ctx = NULL) {
 #' Rows of the frame a design can select
 #'
 #' The population a finite population correction counts. Rows a design drops,
-#' through `na_rm`, past `max_items` or outside its region or window, have
-#' probability 0 and are not part of it; counting them put the correction
+#' through `na_rm`, past `max_items`, outside its region or window, or because
+#' use_reserves() found them unavailable, have probability 0 and are not part
+#' of it; counting them put the correction
 #' for a systematic or PPS design with `na_rm` too close to 1. The count is
 #' read from the design's own columns, so it needs no inclusion probabilities
 #' and is defined for a design without a closed form, such as
@@ -2108,6 +2116,7 @@ reachable_rows <- function(design, pop) {
     sum(!Reduce(`|`, lapply(cols, function(col) is.na(pop[[col]]))))
   }
   switch(design_type(design),
+    simple = length(available_rows(design, n)),
     reservoir = reservoir_reach(design, n),
     spatial = sum(spatial_inside(design, pop)),
     temporal = sum(!is.na(temporal_bucket(design, pop))),
@@ -2120,7 +2129,7 @@ reachable_rows <- function(design, pop) {
       if (!is.null(design$strata)) {
         bad <- bad | is.na(group_key(pop, design$strata))
       }
-      sum(!bad)
+      sum(!bad[available_rows(design, n)])
     },
     stratified = keyed(c(design$strata, design$within$order_by)),
     cluster = ,

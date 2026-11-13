@@ -74,6 +74,8 @@ longitude/latitude region following its great circle under spherical
 geometry, which is how the design decides which rows are inside.}
 }
 
+A design with \code{reserve} is shown by its main sample, without the reserves.
+
 Base graphics, so there is no plotting dependency to install.
 }
 \examples{

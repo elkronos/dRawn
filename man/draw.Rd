@@ -27,7 +27,7 @@ Applies a sampling design to data.
 
 A data frame with the same class and the same columns, in the same order, as
 \code{data}. \code{weights = TRUE} prepends three columns (see "Design weights"), and
-two designs qualify it further:
+some designs qualify it further:
 \itemize{
 \item \code{\link[=design_bootstrap]{design_bootstrap()}} prepends a \code{.replicate} column identifying which
 replicate each row belongs to, so all replicates come back in one frame.
@@ -38,6 +38,12 @@ counts instead, with a column per replicate.
 rather than a data frame, because there is nothing to make a data frame
 out of. With \code{batches = TRUE} it returns the rows sampled from a
 function's data frames as one data frame.
+\item \code{\link[=design_simple]{design_simple()}} and \code{\link[=design_spread]{design_spread()}} with \code{reserve} return a list:
+the main sample, then the reserves, with a leading integer \code{.reserve}
+column that is 0 for the main sample and numbers the reserves 1, 2, ...
+in the order they are used. With \code{weights = TRUE} it follows \code{.row},
+and \code{.prob} is the main sample's probability for every row.
+\code{\link[=use_reserves]{use_reserves()}} turns the list into the sample to estimate from.
 }
 }
 

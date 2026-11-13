@@ -33,6 +33,10 @@ estimates the mean over the rows with a result (see "Missing values and
 nonresponse" in \code{\link[=ht_total]{ht_total()}}). An id that appears twice in \code{field}, an id
 that is not in \code{sample}, a missing id, and a column of \code{field} that
 \code{sample} already has are refused. Ids are compared as in \code{\link[=as_drawn]{as_drawn()}}.
+
+A list from a design with \code{reserve} takes fieldwork columns too, such as
+which units were found unavailable, before \code{\link[=use_reserves]{use_reserves()}} turns it into
+the sample to estimate from.
 }
 \examples{
 pop <- data.frame(id = 1:200, site = rep(c("a", "b"), times = c(150, 50)))
@@ -45,5 +49,5 @@ ht_mean(s, "spend", na_rm = TRUE)
 
 }
 \seealso{
-\code{\link[=as_drawn]{as_drawn()}}, \code{\link[=ht_mean]{ht_mean()}}
+\code{\link[=as_drawn]{as_drawn()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=use_reserves]{use_reserves()}}
 }

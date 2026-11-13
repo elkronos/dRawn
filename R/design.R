@@ -62,7 +62,9 @@
 #'   The two exceptions are the ones where draw order is meaningful:
 #'   [design_simple()] and [design_weighted()] return rows in the order they
 #'   were drawn, and [design_bootstrap()] returns replicates in order with a
-#'   leading `.replicate` column.
+#'   leading `.replicate` column. A design with `reserve` returns its main
+#'   sample and then its reserves, in the order they are used, with a
+#'   leading `.reserve` column.
 #'
 #' @section Estimating from a sample:
 #' Because a design is a value, it can report its own inclusion probabilities
@@ -80,6 +82,8 @@
 #' what the design cost in precision against simple random sampling, and
 #' [sample_summary()] reports what was actually drawn against what was in the
 #' frame. [add_fieldwork()] joins fieldwork results to a sample by an id,
+#' [use_reserves()] replaces the units of a list from [design_simple()] or
+#' [design_spread()] with `reserve` that were found unavailable,
 #' [as_drawn()] rebuilds a sample read back from a file or a database, and
 #' [compact_sample()] drops the frame columns its design does not read before
 #' it is saved or shared.

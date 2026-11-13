@@ -67,6 +67,10 @@ Most do, and those are computed exactly:
 \code{\link[=design_spread]{design_spread()}}      \tab \code{n / N}, or \code{n * p_i} with a \code{size} column; with \code{strata}, the same within each stratum \cr
 }
 
+A design with \code{reserve} gives the probabilities of its main sample, which
+the reserves do not change. The design of a sample from \code{\link[=use_reserves]{use_reserves()}}
+gives \code{n / (N - u)}, and \code{0} for the \code{u} rows found unavailable.
+
 Four cases have no closed form, and the package refuses to invent one:
 \itemize{
 \item \code{design_multistage(allocation = "proportional")} — the stage-two allocation
