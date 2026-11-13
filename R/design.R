@@ -36,6 +36,11 @@
 #'   with per-group rounding.
 #' * `na_rm` always decides whether rows with a missing key are dropped or raise
 #'   an error. It is never silently assumed either way.
+#' * Groups always come in key order, whether strata, `by` domains or the
+#'   rows of [sample_summary()]: a factor's levels, or the sorted values of any
+#'   other column, with text sorted byte by byte as in the C locale. A seed
+#'   therefore draws the same rows in every locale, and an `order_by` column
+#'   of text is walked in the same order everywhere.
 #' * `replace` always means sampling with replacement within whatever group the
 #'   design works on, and always rules out `draw(weights = TRUE)`: an inclusion
 #'   probability describes distinct units, and a sample holding duplicates

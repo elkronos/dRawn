@@ -446,3 +446,30 @@ test_that("an empty sample is refused before it reaches survey", {
   s <- draw(pop, design_spread(c("a", "b"), n = 0), seed = 1, weights = TRUE)
   expect_error(as_svydesign(s), "`sample` has no rows", fixed = TRUE)
 })
+
+test_that("strata from several columns reach survey without carriage returns", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  d$flag <- d$spend > 250
+  s <- draw(d, design_stratified(c("site", "flag"), n = 60,
+                                 min_per_stratum = 2), seed = 7, weights = TRUE)
+  st <- as.character(as_svydesign(s)$strata[, 1])
+  expect_false(any(grepl("\r", st, fixed = TRUE)))
+  expect_setequal(unique(st), paste(s$site, s$flag, sep = " . "))
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~spend,
+                                                      as_svydesign(s)))),
+               ht_total(s, "spend")$se, tolerance = 1e-6)
+
+  # Labels that would read alike once joined are handed over as codes, so
+  # survey keeps the two strata apart.
+  e <- data.frame(id = 1:40, a = rep(c("x . y", "x"), each = 20),
+                  b = rep(c("z", "y . z"), each = 20),
+                  spend = 1:40 + 0.5 * (1:40 %% 3))
+  s2 <- draw(e, design_stratified(c("a", "b"), n = 8), seed = 1,
+             weights = TRUE)
+  st2 <- as.character(as_svydesign(s2)$strata[, 1])
+  expect_equal(length(unique(st2)), 2L)
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~spend,
+                                                      as_svydesign(s2)))),
+               ht_total(s2, "spend")$se, tolerance = 1e-6)
+})

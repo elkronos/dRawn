@@ -172,6 +172,11 @@ domain's total is estimated from \verb{y * (row in domain)} over the whole sampl
 so the same design and the same variance machinery apply (Särndal, Swensson
 and Wretman 1992, section 10.3).
 
+Domains come out in key order: a factor's levels, numbers and dates in
+sequence, and text sorted byte by byte as in the C locale, the same in every
+session. A domain with no sampled row is left out, as \code{survey::svyby()}
+leaves it out.
+
 A sample grouped with \code{dplyr::group_by()} is estimated as a whole, with a
 warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}.
 }

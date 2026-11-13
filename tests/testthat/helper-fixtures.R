@@ -69,3 +69,48 @@ expect_same_schema <- function(out, input) {
   expect_identical(names(out), names(input))
   expect_identical(class(out), class(input))
 }
+
+# Evaluates `code` under a collation that sorts "a" before "B", as most
+# non-C locales do, and restores the session's collation afterwards. Skips
+# where no such locale is installed. R reads the collation for text from the
+# LC_ALL and LC_COLLATE environment variables before the locale, and testthat
+# sets the second to "C", so both are set here too.
+with_other_collation <- function(code) {
+  old <- Sys.getlocale("LC_COLLATE")
+  old_env <- Sys.getenv(c("LC_ALL", "LC_COLLATE"), unset = NA)
+  on.exit({
+    for (nm in names(old_env)) {
+      if (is.na(old_env[[nm]])) {
+        Sys.unsetenv(nm)
+      } else {
+        do.call(Sys.setenv, as.list(old_env[nm]))
+      }
+    }
+    Sys.setlocale("LC_COLLATE", old)
+  }, add = TRUE)
+  Sys.unsetenv("LC_ALL")
+  for (loc in c("en_US.UTF-8", "C.UTF-8", "C.utf8")) {
+    Sys.setenv(LC_COLLATE = loc)
+    if (nzchar(suppressWarnings(Sys.setlocale("LC_COLLATE", loc))) &&
+        identical(sort(c("B", "a")), c("a", "B"))) {
+      return(code)
+    }
+  }
+  skip("No installed locale sorts \"a\" before \"B\".")
+}
+
+# A point frame for the tests that pass an sf object as `data`.
+sf_points <- function() {
+  skip_if_not_installed("sf")
+  d <- data.frame(
+    id = 1:60,
+    site = rep(c("a", "b", "c"), times = c(30, 20, 10)),
+    cl = rep(sprintf("c%02d", 1:12), each = 5),
+    x = (1:60 %% 7) / 7,
+    yy = (1:60 %% 11) / 11,
+    y = 10 + (1:60 %% 13)
+  )
+  d$lon <- -60 + 2 * d$id
+  d$lat <- -30 + d$id
+  sf::st_as_sf(d, coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+}

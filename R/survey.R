@@ -206,18 +206,28 @@ refuse_nested <- function(prefix, what, why) {
 #' @noRd
 survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
   one <- stats::as.formula("~1")
-  by_group <- function(sizes, lab) {
-    whole <- taken_whole(lab, dat$.prob)
-    fpc <- as.integer(sizes[lab])
+  # `code` holds each frame row's group as a position in `labels`; the
+  # sampled units are frame rows `rows`.
+  by_group <- function(code, labels) {
+    sizes <- tabulate(code, length(labels))
+    unit <- code[rows]
+    whole <- taken_whole(unit, dat$.prob)
+    fpc <- sizes[unit]
     fpc[whole] <- 1L
-    list(stratum = paste0(prefix, lab), fpc = fpc, ids = one, whole = whole)
+    list(stratum = paste0(prefix, labels[unit]), fpc = fpc, ids = one,
+         whole = whole)
   }
 
   switch(design_type(design),
-    stratified = by_group(table(group_key(pop, design$strata)),
-                          as.character(group_key(units, design$strata))),
-    temporal = by_group(table(temporal_bucket(design, pop)),
-                        temporal_bucket(design, units)),
+    stratified = {
+      key <- group_key(pop, design$strata)
+      by_group(as.integer(key), unique_labels(key))
+    },
+    temporal = {
+      bucket <- temporal_bucket(design, pop)
+      labels <- unique(bucket[!is.na(bucket)])
+      by_group(match(bucket, labels), labels)
+    },
     weighted = {
       if (design$method != "poisson") {
         # Neither package has the joint probabilities of systematic PPS.
@@ -242,9 +252,10 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
         return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
                     ids = stats::as.formula("~.cluster"), cluster = cluster))
       }
-      sizes <- table(labels[!is.na(labels)])
+      present <- unique(labels[!is.na(labels)])
+      sizes <- tabulate(match(labels, present), length(present))
       list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
-           fpc2 = as.integer(sizes[as.character(cluster)]),
+           fpc2 = sizes[match(cluster, present)],
            ids = stats::as.formula("~.cluster + .unit"), cluster = cluster)
     },
     reservoir = {

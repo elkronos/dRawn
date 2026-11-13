@@ -99,3 +99,40 @@ test_that("a recoded stratum column does not change domain variances", {
     expect_equal(attr(got, "df"), attr(want, "df"), label = v)
   }
 })
+
+test_that("domains come out in key order, not sorted as text", {
+  d <- dom_pop()
+  d$month <- rep(1:12, length.out = 400)
+  d$mfac <- factor(month.abb[d$month], levels = month.abb)
+  d$case <- c("a", "B", "b")[(d$id %/% 12) %% 3 + 1]
+  s <- draw(d, design_simple(n = 120), seed = 1, weights = TRUE)
+  expect_equal(ht_total(s, "y", by = "month")$month, 1:12)
+  expect_equal(as.character(ht_total(s, "y", by = "mfac")$mfac), month.abb)
+  expect_equal(ht_total(s, "y", by = "case")$case, c("B", "a", "b"))
+  with_other_collation(
+    expect_equal(ht_total(s, "y", by = "case")$case, c("B", "a", "b"))
+  )
+  # Several columns: the first varies slowest.
+  two <- ht_total(s, "y", by = c("mfac", "case"))
+  expect_gt(nrow(two), 12)
+  expect_identical(order(as.integer(two$mfac), match(two$case, c("B", "a", "b"))),
+                   seq_len(nrow(two)))
+})
+
+test_that("domains and summaries of an sf sample carry no geometry", {
+  pts <- sf_points()
+  plain <- sf::st_drop_geometry(pts)
+  des <- design_cluster("cl", n_clusters = 5)
+  s <- draw(pts, des, seed = 1, weights = TRUE)
+  by_site <- ht_total(s, "y", by = "site")
+  expect_false(inherits(by_site, "sf"))
+  expect_false("geometry" %in% names(by_site))
+  want <- ht_total(draw(plain, des, seed = 1, weights = TRUE), "y",
+                   by = "site")
+  expect_equal(as.data.frame(by_site), as.data.frame(want))
+  expect_equal(sample_summary(s)$by_group,
+               sample_summary(draw(plain, des, seed = 1,
+                                   weights = TRUE))$by_group)
+  st <- draw(pts, design_stratified("site", n = 12), seed = 1, weights = TRUE)
+  expect_equal(sample_summary(st)$by_group$in_frame, c(30L, 20L, 10L))
+})

@@ -189,3 +189,15 @@ test_that("hands off to survey, and plots as a map", {
   expect_invisible(plot(design_simple(n = 5), d, type = "map",
                         coords = c("x", "y"), seed = 1))
 })
+
+test_that("an sf frame spreads across plain numeric columns", {
+  pts <- sf_points()
+  plain <- sf::st_drop_geometry(pts)
+  des <- design_spread(c("x", "yy"), n = 12)
+  s <- draw(pts, des, seed = 1, weights = TRUE)
+  expect_s3_class(s, "sf")
+  expect_identical(s$id, draw(plain, des, seed = 1)$id)
+  expect_equal(inclusion_prob(pts, des), rep(0.2, 60))
+  expect_equal(ht_total(s, "y")$se,
+               ht_total(draw(plain, des, seed = 1, weights = TRUE), "y")$se)
+})

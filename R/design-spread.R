@@ -137,15 +137,18 @@ spread_frame <- function(design, data) {
            class(data[[nm]])[1], ".", call. = FALSE)
     }
   }
-  bad <- Reduce(`|`, lapply(data[cols], is.na))
+  # Columns are read one at a time, so an sf frame's geometry stays out.
+  bad <- Reduce(`|`, lapply(cols, function(col) is.na(data[[col]])))
   check_na_policy(bad, design$na_rm,
                   paste0("a missing value in ",
                          paste0("`", cols, "`", collapse = ", ")))
   keep <- which(!bad)
   if (!length(keep)) stop("Every row has a missing value.", call. = FALSE)
 
-  x <- as.matrix(data[keep, design$across, drop = FALSE])
-  storage.mode(x) <- "double"
+  x <- matrix(vapply(design$across, function(col) {
+    as.numeric(data[[col]][keep])
+  }, numeric(length(keep))), nrow = length(keep),
+  dimnames = list(NULL, design$across))
   if (any(!is.finite(x))) {
     stop("`across` contains non-finite values.", call. = FALSE)
   }

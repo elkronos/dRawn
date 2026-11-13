@@ -46,3 +46,27 @@ test_that("NA sort keys are reported rather than silently sorted last", {
                                     na_rm = TRUE))
   expect_false(anyNA(res$v))
 })
+
+test_that("a text order_by is walked in byte order in every locale", {
+  d <- data.frame(id = 1:12,
+                  key = c("a", "B", "c", "D", "e", "F", "g", "H", "i", "J",
+                          "k", "L"),
+                  y = 1:12)
+  des <- design_systematic(interval = 3, order_by = "key")
+  walk <- order(d$key, method = "radix")
+  pos <- integer(12)
+  pos[walk] <- 1:12
+  expect_identical(drawn:::systematic_positions(des, d), pos)
+  ids <- draw(d, des, seed = 1)$id
+  expect_length(ids, 4L)
+  expect_length(unique((pos[ids] - 1L) %% 3L), 1L)
+  s <- draw(d, des, seed = 1, weights = TRUE)
+  want <- ht_total(s, "y")$se
+  pij <- joint_prob(d, des)
+  with_other_collation({
+    expect_identical(drawn:::systematic_positions(des, d), pos)
+    expect_identical(draw(d, des, seed = 1)$id, ids)
+    expect_equal(ht_total(s, "y")$se, want)
+    expect_equal(joint_prob(d, des), pij)
+  })
+})

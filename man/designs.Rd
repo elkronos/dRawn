@@ -43,6 +43,11 @@ method is used, so a request for 60 rows returns 60 rather than drifting
 with per-group rounding.
 \item \code{na_rm} always decides whether rows with a missing key are dropped or raise
 an error. It is never silently assumed either way.
+\item Groups always come in key order, whether strata, \code{by} domains or the
+rows of \code{\link[=sample_summary]{sample_summary()}}: a factor's levels, or the sorted values of any
+other column, with text sorted byte by byte as in the C locale. A seed
+therefore draws the same rows in every locale, and an \code{order_by} column
+of text is walked in the same order everywhere.
 \item \code{replace} always means sampling with replacement within whatever group the
 design works on, and always rules out \code{draw(weights = TRUE)}: an inclusion
 probability describes distinct units, and a sample holding duplicates

@@ -92,7 +92,9 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
   check_na_policy(!cl$present, design$na_rm, "a missing cluster key")
   labels <- cl$labels
   keep <- cl$present
-  sizes <- table(labels[keep])
+  present <- unique(labels[keep])
+  code <- match(labels, present)
+  sizes <- tabulate(code, length(present))
 
   # A closed form needs every selected cluster to contribute the same number of
   # rows, whichever clusters those turn out to be. Two things break that, and
@@ -117,7 +119,7 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
              design$n_clusters, ").")
     )
   }
-  small <- names(sizes)[sizes < m]
+  small <- which(sizes < m)
   if (length(small)) {
     no_closed_form(
       paste0("`design_multistage()` where ", length(small), " cluster(s) hold ",
@@ -138,6 +140,6 @@ exact_inclusion.drawn_design_multistage <- function(design, data) {
 
   stage1 <- design$n_clusters / cl$total
   out <- numeric(nrow(data))
-  out[keep] <- stage1 * (m / as.numeric(sizes[as.character(labels[keep])]))
+  out[keep] <- stage1 * (m / as.numeric(sizes[code[keep]]))
   out
 }

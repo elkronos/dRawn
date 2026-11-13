@@ -16,7 +16,9 @@ when \code{NULL}.}
 
 \item{order_by}{Optional column to sort by before walking the data. It
 changes which rows can appear together, so \code{\link[=inclusion_prob]{inclusion_prob()}} and
-\code{\link[=joint_prob]{joint_prob()}} compute against the sorted order too.}
+\code{\link[=joint_prob]{joint_prob()}} compute against the sorted order too. Text is sorted byte
+by byte, as in the C locale, so the walk is the same in every session;
+ties keep frame order.}
 
 \item{na_rm}{When \code{order_by} is given, drop rows whose sort key is \code{NA}
 instead of raising an error.}

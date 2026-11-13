@@ -10,7 +10,9 @@
 #'   when `NULL`.
 #' @param order_by Optional column to sort by before walking the data. It
 #'   changes which rows can appear together, so [inclusion_prob()] and
-#'   [joint_prob()] compute against the sorted order too.
+#'   [joint_prob()] compute against the sorted order too. Text is sorted byte
+#'   by byte, as in the C locale, so the walk is the same in every session;
+#'   ties keep frame order.
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`
 #'   instead of raising an error.
 #'
@@ -72,7 +74,8 @@ draw_design.drawn_design_systematic <- function(design, data) {
                            paste0("a missing `", design$order_by, "`"))
       key <- data[[design$order_by]]
     }
-    walk <- order(key)
+    # Byte order for text, so the walk is the same in every locale.
+    walk <- key_order(key)
   }
 
   start <- design$start %||% sample.int(design$interval, 1L)
@@ -107,7 +110,7 @@ systematic_positions <- function(design, data) {
   out <- rep(NA_integer_, n)
   kept <- which(!bad)
   if (!length(kept)) return(out)
-  out[kept[order(key[kept])]] <- seq_along(kept)
+  out[kept[key_order(key[kept])]] <- seq_along(kept)
   out
 }
 

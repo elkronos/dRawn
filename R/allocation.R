@@ -9,12 +9,14 @@
 #' leaves the rare-group floor optional.
 #'
 #' @param n Total to allocate.
-#' @param sizes Group sizes, named.
+#' @param sizes Group sizes. Everything else is matched to them by position;
+#'   names, when present, are carried to the result.
 #' @param allocation `"proportional"`, `"equal"` or `"neyman"`.
 #' @param min_per_stratum Floor per group.
 #' @param cap When `TRUE`, no group may be allocated more rows than it holds.
 #'   `FALSE` when sampling with replacement, where over-allocation is legal.
-#' @param spread Per-group standard deviation, for Neyman allocation. Groups
+#' @param spread Per-group standard deviation, in the order of `sizes`, for
+#'   Neyman allocation. Groups
 #'   get shares proportional to `size * spread`, which minimises the variance
 #'   of a total for a fixed `n`: a group whose values barely vary needs fewer
 #'   rows to pin down than an equally sized group that varies a lot.
@@ -41,7 +43,7 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
       if (is.null(spread)) {
         stop("Neyman allocation needs `allocation_by`.", call. = FALSE)
       }
-      sp <- spread[names(sizes)]
+      sp <- as.numeric(spread)
       sp[!is.finite(sp)] <- 0
       # A constant auxiliary variable has no spread to allocate by; fall back
       # to proportional rather than dividing by zero.
@@ -140,11 +142,11 @@ capped_shares <- function(n, share, sizes, cap) {
 #' times -- the Monte Carlo probabilities -- can silence the repeats.
 #'
 #' @noRd
-warn_empty_groups <- function(n_alloc, sizes, noun = "stratum",
+warn_empty_groups <- function(n_alloc, sizes, labels, noun = "stratum",
                               arg = "min_per_stratum") {
-  empty <- names(n_alloc)[n_alloc == 0L & sizes > 0]
+  empty <- which(n_alloc == 0L & sizes > 0)
   if (!length(empty)) return(invisible(NULL))
-  shown <- group_label(utils::head(empty, 5L))
+  shown <- group_label(labels[utils::head(empty, 5L)])
   more <- if (length(empty) > 5L) paste0(" and ", length(empty) - 5L, " more")
           else ""
   plural <- length(empty) > 1L

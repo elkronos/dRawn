@@ -98,6 +98,33 @@
   a frame with four dominant units. They now go to `survey` in a stratum of
   their own, taken whole, and the two standard errors agreed within 0.02%
   there.
+* **A blank stratum or cluster value broke stratified and multistage
+  designs.** An empty string, such as a blank field read from a file, was
+  looked up by name, which never matches it. `inclusion_prob()`,
+  `joint_prob()` and `draw(weights = TRUE)` stopped with "subscript out of
+  bounds" for a stratified design or a certainty design over one. Neyman
+  allocation read the blank stratum's spread as 0 and, with
+  `min_per_stratum` of 1 or more, gave its rows to the other strata without
+  a word. A multistage sample got `NA` probabilities, weights and totals, and
+  `sample_summary()` gave a blank group an `NA` frame count. A blank value is
+  now a key like any other, shown as `(blank)` in messages and summaries.
+* **Two strata could be counted as one.** Several `strata` columns were
+  joined into one key with a carriage return between the values, so
+  `("x\ry", "z")` and `("x", "y\rz")` made one stratum of two, and the
+  allocation, the probabilities and the variance were all worked out over
+  the merged stratum. Two numbers that print alike, such as `0.3` and
+  `0.1 + 0.2`, were one stratum too. Keys are now built from each column's
+  integer codes, which cannot collide.
+* **A sample estimated under another collation could get the wrong standard
+  error.** Text strata and a text `order_by` were sorted by the session's
+  collation, which differs between the C locale of a server and the en_US
+  locale of a desktop. Where two strata tied in the largest-remainder split,
+  the extra row went to a different stratum in each, and a stratified
+  sample drawn in one and estimated in the other got a standard error 5
+  times too large in one example. A systematic sample walked on text got
+  the wrong neighbours for the successive-difference variance, and
+  `joint_prob()` gave 0 for pairs drawn together. Text is now sorted byte by
+  byte, as in the C locale, in every session.
 
 ## Refusals and clearer errors
 
@@ -155,6 +182,33 @@
   sample, which is 0 / 0, and gives 0 for `estimator = "ht"`. An empty sample
   from a design that reaches no row, such as one with `n = 0`, is still
   refused, and the message says so. `?ht_total` describes this.
+* Text keys are sorted byte by byte, as in the C locale, whatever the
+  session's locale: the order in which strata are drawn and in which they
+  break allocation ties, the rows of `by` estimates and of
+  `sample_summary()`, and the walk of a text `order_by`. Factor columns keep
+  their level order. In a locale whose collation differs from C, a seed can
+  therefore select different rows than it did in drawn 0.2.0, and a tie can
+  go to another stratum. `?design_stratified` gives the tie rule.
+* `by` estimates come out in key order: numbers in sequence (1, 2, 10, not
+  1, 10, 2) and factors in level order, where they were sorted as text.
+  Domains with no sampled row are still left out, as `survey::svyby()`
+  leaves them out.
+* An sf data frame can be passed as `data` to `design_stratified()` and
+  `design_spread()`, and an sf sample to `by` in `ht_total()` and `ht_mean()`
+  and to `sample_summary()` of a stratified or cluster sample. All of these
+  stopped inside base R on the geometry column. A `by` estimate of an sf
+  sample is a plain data frame without the geometry.
+
+## Speed and memory
+
+* Stratum and `by` keys are built from each column's integer codes, so
+  their cost grows with the number of rows, however many combinations the
+  columns' levels could form. On 200,000 rows keyed by two columns of 3,000
+  values each, the key took 8 seconds where it now takes 0.2, and at 6,000
+  values each it ran out of memory.
+* `inclusion_prob()`, `draw(weights = TRUE)` and the estimators of a
+  stratified design take time linear in the number of strata: 0.02 seconds
+  at 40,000 strata, where they took 9.
 
 ## Handing off to survey
 
@@ -179,6 +233,10 @@
   say that `survey` agrees with systematic PPS within 0.2%. Standard errors
   of totals usually agree within 0.3% and within about 1%; those of means
   differ by up to 7% at a sampling fraction of one half.
+* `as_svydesign()` labels strata built from several columns as `a . b`.
+  The labels held a carriage return, which broke a CSV export of the design
+  variables. Where two labels would read alike, the strata are numbered
+  instead, so `survey` cannot merge them.
 
 # drawn 0.2.0
 

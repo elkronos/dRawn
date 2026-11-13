@@ -247,16 +247,19 @@ sample_summary <- function(sample) {
   )
   by_group <- NULL
   if (!is.null(grp_col)) {
-    # The frame's copy of the sampled rows, so a stratum or cluster column
-    # renamed or recoded in the sample after the draw still counts the
-    # groups that were drawn.
-    got <- table(group_key(state$units, grp_col))
-    have <- table(group_key(pop, grp_col))
+    # Keyed on the frame and counted at the sampled frame rows, so a stratum
+    # or cluster column renamed or recoded in the sample after the draw still
+    # counts the groups that were drawn.
+    key <- group_key(pop, grp_col)
+    code <- as.integer(key)
+    got <- tabulate(code[state$rows], nlevels(key))
+    have <- tabulate(code, nlevels(key))
+    drawn <- which(got > 0L)
     by_group <- data.frame(
-      group = group_label(names(got)),
-      drawn = as.integer(got),
-      in_frame = as.integer(have[names(got)]),
-      rate = round(as.integer(got) / as.integer(have[names(got)]), 4),
+      group = group_label(levels(key)[drawn]),
+      drawn = got[drawn],
+      in_frame = have[drawn],
+      rate = round(got[drawn] / have[drawn], 4),
       row.names = NULL
     )
   }

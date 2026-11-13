@@ -160,16 +160,24 @@ estimate_by <- function(parts, by, variance, level, df, what,
          "`sample` does not have.", call. = FALSE)
   }
   check_key_columns(parts$sample, by, "by")
-  if (any(vapply(parts$sample[by], anyNA, logical(1)))) {
+  # Columns are read one at a time, so an sf sample's geometry stays out.
+  if (any(vapply(by, function(b) anyNA(parts$sample[[b]]), logical(1)))) {
     stop("`by` columns must not contain missing values.", call. = FALSE)
   }
-  key <- as.character(group_key(parts$sample, by))
-  pop_key <- if (all(by %in% names(parts$pop))) {
-    as.character(group_key(parts$pop, by))
+  # Domains come out in key order: factor levels, else sorted values, with
+  # text in byte order whatever the locale.
+  if (all(by %in% names(parts$pop))) {
+    keys <- group_key2(parts$sample, parts$pop, by)
+    key <- as.integer(keys$x)
+    pop_key <- as.integer(keys$table)
+    n_lev <- nlevels(keys$x)
   } else {
-    NULL
+    k <- group_key(parts$sample, by)
+    key <- as.integer(k)
+    pop_key <- NULL
+    n_lev <- nlevels(k)
   }
-  levels_in <- sort(unique(key))
+  levels_in <- which(tabulate(key, n_lev) > 0L)
   pi_i <- parts$pi
   yv <- parts$y
   df_use <- df %||% design_df(parts$design, parts$units, parts$pop,
@@ -205,9 +213,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
   })
 
   first <- match(levels_in, key)
-  out <- parts$sample[first, by, drop = FALSE]
-  out <- as.data.frame(out)
-  rownames(out) <- NULL
+  out <- data.frame(stats::setNames(lapply(by, function(b) {
+    parts$sample[[b]][first]
+  }), by), check.names = FALSE)
   out$n <- vapply(rows, `[[`, numeric(1), "n")
   out[[what]] <- vapply(rows, `[[`, numeric(1), "est")
   out$se <- vapply(rows, `[[`, numeric(1), "se")

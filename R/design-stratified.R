@@ -30,6 +30,25 @@
 #' @param replace Sample with replacement within each stratum?
 #' @param na_rm Drop rows whose stratum key is `NA` instead of raising an error.
 #'
+#' @section Rounding, ties and the order of strata:
+#' Each stratum first gets the whole part of its share of `n`. The rows left
+#' over go one at a time to the strata with the largest fractional parts. When
+#' two strata tie, the one with more rows not yet allocated goes first, and
+#' after that the one that comes first in key order. When `min_per_stratum`
+#' pushes the total past `n`, rows are taken back from the strata with the
+#' smallest fractional parts first, ties again going by key order.
+#'
+#' Key order is the order of the levels for a factor column and the sorted
+#' values for any other column, with text sorted byte by byte as in the C
+#' locale (`"B"` before `"a"`). With several `strata` columns the first varies
+#' slowest. Strata are also drawn from in this order, so a seed selects the
+#' same rows in every locale. Renaming a stratum, or reordering a factor's
+#' levels, can move a tied row from one stratum to another; the inclusion
+#' probabilities always follow the allocation used.
+#'
+#' An empty string is a stratum like any other, shown as `(blank)` in
+#' messages.
+#'
 #' @return A design object, for use with [draw()].
 #'
 #' @references
@@ -74,6 +93,9 @@ design_stratified <- function(strata, n,
 
 
 #' Within-stratum spread for Neyman allocation
+#'
+#' One standard deviation per stratum, in the order of `idx_by_stratum`.
+#'
 #' @noRd
 stratum_spread <- function(design, data, idx_by_stratum) {
   if (design$allocation != "neyman") return(NULL)
@@ -93,37 +115,50 @@ stratum_spread <- function(design, data, idx_by_stratum) {
   }
   vapply(idx_by_stratum, function(i) {
     if (length(i) < 2L) 0 else stats::sd(v[i])
-  }, numeric(1))
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
+#' Strata, their sizes and their allocation
+#'
+#' The one place a stratified design's strata and per-stratum sample sizes are
+#' worked out, so the draw, the inclusion probabilities and the joint
+#' probabilities cannot disagree. Everything is by position: `code` is each
+#' row's stratum as a position in `sizes`, `n_alloc` and `idx`, and `NA` for a
+#' row with a missing key. `draw = TRUE` adds the checks only a draw needs.
+#'
+#' @noRd
+stratum_allocation <- function(design, data, draw = FALSE) {
+  validate_data(data, required_columns = design$strata)
+  check_key_columns(data, design$strata, "strata")
+  key <- group_key(data, design$strata)
+  bad <- check_na_policy(is.na(key), design$na_rm, "a missing stratum key")
+  if (draw) {
+    if (all(bad)) stop("Every row has a missing stratum key.", call. = FALSE)
+    check_draw_size(design$n, sum(!bad), design$replace)
+  }
+  code <- as.integer(key)
+  idx <- split(seq_len(nrow(data))[!bad], key[!bad])
+  sizes <- lengths(idx, use.names = FALSE)
+  n_alloc <- allocate(design$n, sizes, design$allocation,
+                      design$min_per_stratum, cap = !design$replace,
+                      spread = stratum_spread(design, data, idx))
+  list(code = code, labels = levels(key), idx = unname(idx), sizes = sizes,
+       n_alloc = unname(n_alloc))
 }
 
 #' @export
 draw_design.drawn_design_stratified <- function(design, data) {
-  validate_data(data, required_columns = design$strata)
-  check_key_columns(data, design$strata, "strata")
-
-  keys <- data[design$strata]
-  bad <- Reduce(`|`, lapply(keys, is.na))
-  if (any(bad)) {
-    data <- drop_na_rows(data, bad, design$na_rm, "a missing stratum key")
-    keys <- data[design$strata]
-  }
-
-  idx_by_stratum <- split(seq_len(nrow(data)),
-                          group_key(data, design$strata))
-  sizes <- lengths(idx_by_stratum)
-
-  check_draw_size(design$n, nrow(data), design$replace)
-
-  n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = !design$replace,
-                      spread = stratum_spread(design, data, idx_by_stratum))
-  warn_empty_groups(n_alloc, sizes)
+  al <- stratum_allocation(design, data, draw = TRUE)
+  sizes <- al$sizes
+  n_alloc <- al$n_alloc
+  warn_empty_groups(n_alloc, sizes, al$labels)
 
   if (!design$replace) {
-    over <- n_alloc > sizes
-    if (any(over)) {
-      stop("Stratum `", names(sizes)[over][1], "` has ", sizes[over][1],
-           " row(s) but ", n_alloc[over][1], " were requested. ",
+    over <- which(n_alloc > sizes)
+    if (length(over)) {
+      h <- over[1]
+      stop("Stratum `", group_label(al$labels[h]), "` has ", sizes[h],
+           " row(s) but ", n_alloc[h], " were requested. ",
            "Use replace = TRUE or lower `n`.", call. = FALSE)
     }
     if (sum(n_alloc) != design$n) {
@@ -134,34 +169,30 @@ draw_design.drawn_design_stratified <- function(design, data) {
     }
   }
 
-  reindex(data, take_within(idx_by_stratum, n_alloc, design$replace), sort = TRUE)
+  reindex(data, take_within(al$idx, n_alloc, design$replace), sort = TRUE)
 }
 
 # ---- inclusion probability ------------------------------------------------
 
 #' @noRd
 exact_inclusion.drawn_design_stratified <- function(design, data) {
-  validate_data(data, required_columns = design$strata)
-  check_key_columns(data, design$strata, "strata")
-  keys <- data[design$strata]
-  bad <- check_na_policy(Reduce(`|`, lapply(keys, is.na)), design$na_rm,
-                         "a missing stratum key")
-  group <- group_key(data, design$strata)
+  stratum_pi(design, stratum_allocation(design, data))
+}
 
-  idx_by_stratum <- split(seq_len(nrow(data))[!bad], group[!bad])
-  sizes <- lengths(idx_by_stratum)
-  n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = !design$replace,
-                      spread = stratum_spread(design, data, idx_by_stratum))
-
-  out <- numeric(nrow(data))
-  for (h in names(idx_by_stratum)) {
-    idx <- idx_by_stratum[[h]]
-    out[idx] <- if (design$replace) {
-      1 - (1 - 1 / length(idx))^n_alloc[[h]]
-    } else {
-      n_alloc[[h]] / length(idx)
-    }
+#' Each row's inclusion probability, from `stratum_allocation()`
+#'
+#' Linear in the rows, whatever the number of strata. A row with no stratum
+#' gets 0.
+#'
+#' @noRd
+stratum_pi <- function(design, al) {
+  p <- if (design$replace) {
+    1 - (1 - 1 / al$sizes)^al$n_alloc
+  } else {
+    al$n_alloc / al$sizes
   }
+  out <- numeric(length(al$code))
+  keep <- !is.na(al$code)
+  out[keep] <- p[al$code[keep]]
   out
 }

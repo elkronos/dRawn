@@ -55,6 +55,27 @@ Draws a sample from each stratum. Allocation uses the largest-remainder
 method, so the returned row count matches \code{n} exactly rather than drifting
 with per-stratum rounding.
 }
+\section{Rounding, ties and the order of strata}{
+
+Each stratum first gets the whole part of its share of \code{n}. The rows left
+over go one at a time to the strata with the largest fractional parts. When
+two strata tie, the one with more rows not yet allocated goes first, and
+after that the one that comes first in key order. When \code{min_per_stratum}
+pushes the total past \code{n}, rows are taken back from the strata with the
+smallest fractional parts first, ties again going by key order.
+
+Key order is the order of the levels for a factor column and the sorted
+values for any other column, with text sorted byte by byte as in the C
+locale (\code{"B"} before \code{"a"}). With several \code{strata} columns the first varies
+slowest. Strata are also drawn from in this order, so a seed selects the
+same rows in every locale. Renaming a stratum, or reordering a factor's
+levels, can move a tied row from one stratum to another; the inclusion
+probabilities always follow the allocation used.
+
+An empty string is a stratum like any other, shown as \code{(blank)} in
+messages.
+}
+
 \examples{
 df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))
 table(draw(df, design_stratified("site", n = 20), seed = 1)$site)

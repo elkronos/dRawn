@@ -164,18 +164,145 @@ check_na_policy <- function(bad, na_rm, what) {
   invisible(bad)
 }
 
-#' A grouping key that cannot collide
+#' A grouping key built from integer codes
 #'
-#' `interaction()` joins levels with `.`, so `("a.b", "c")` and `("a", "b.c")`
-#' land in the same level and two distinct strata are silently merged --
-#' allocation, inclusion probabilities and the `min_per_stratum` guarantee all
-#' computed over the wrong groups. A separator that cannot appear in a printed
-#' value avoids it; `group_label()` puts a readable one back for display.
+#' Each column is coded on its own: a factor by its levels, anything else by
+#' its distinct values in byte order (`method = "radix"`), which is the same
+#' in every locale. The tuples of codes that occur are numbered in
+#' lexicographic order, first column slowest. The work grows with the number
+#' of rows, however many combinations the columns' levels could form, and no
+#' value can make two tuples share a key. A row with a missing value in any
+#' column gets `NA`.
+#'
+#' The levels are the values joined by a carriage return, which
+#' `group_label()` shows as ` . `. When that would give two tuples the same
+#' level, as a value holding a carriage return can, the levels are the code
+#' tuples instead. The codes depend on the data keyed, so keys that are
+#' compared across two frames come from `group_key2()`.
 #'
 #' @noRd
 group_key <- function(data, cols) {
-  interaction(data[cols], drop = TRUE, lex.order = TRUE, sep = "\r")
+  key_from_columns(lapply(cols, function(col) data[[col]]))
+}
+
+#' Keys for two frames on one set of codes
+#'
+#' A group has the same code in `x` and in `table`, whatever else either
+#' holds, so the two can be compared by position.
+#'
+#' @noRd
+group_key2 <- function(x, table, cols) {
+  n_x <- nrow(x)
+  key <- key_from_columns(lapply(cols, function(col) {
+    stack_values(x[[col]], table[[col]])
+  }))
+  list(x = key[seq_len(n_x)], table = key[n_x + seq_len(nrow(table))])
 }
 
 #' @noRd
-group_label <- function(x) gsub("\r", " . ", as.character(x), fixed = TRUE)
+key_from_columns <- function(columns) {
+  coded <- lapply(columns, column_codes)
+  codes <- lapply(coded, `[[`, "code")
+  n <- length(codes[[1L]])
+  ok <- which(!Reduce(`|`, lapply(codes, is.na)))
+  id <- rep(NA_integer_, n)
+  sub <- lapply(codes, `[`, ok)
+  o <- do.call(order, c(unname(sub), list(method = "radix")))
+  sorted <- lapply(sub, `[`, o)
+  m <- length(o)
+  starts <- if (m) {
+    c(TRUE, Reduce(`|`, lapply(sorted, function(s) s[-1L] != s[-m])))
+  } else {
+    logical(0)
+  }
+  id[ok[o]] <- cumsum(starts)
+  tuples <- lapply(sorted, `[`, which(starts))
+  lev <- do.call(paste, c(Map(function(cc, tt) cc$labels[tt], coded, tuples),
+                          sep = "\r"))
+  if (anyDuplicated(lev)) {
+    lev <- do.call(paste, c(unname(tuples), sep = "\r"))
+  }
+  structure(id, levels = as.character(lev), class = "factor")
+}
+
+#' Integer codes and labels for one key column
+#'
+#' Classed vectors such as dates are coded on their underlying values, since
+#' `match()` would compare them as text. A double whose text repeats another's
+#' (`0.3` and `0.1 + 0.2`) is labelled with all its digits.
+#'
+#' @noRd
+column_codes <- function(x) {
+  if (is.factor(x)) {
+    return(list(code = as.integer(x), labels = levels(x)))
+  }
+  v <- if (is.object(x) && is.atomic(x)) unclass(x) else x
+  u <- sort(unique(v), method = sort_method(v))
+  code <- match(v, u)
+  labels <- as.character(x[match(u, v)])
+  if (is.double(v) && anyDuplicated(labels)) labels <- sprintf("%.17g", u)
+  list(code = code, labels = labels)
+}
+
+#' Order a key column the same way in every locale
+#'
+#' `method = "radix"` sorts text by byte, as the C locale does, where the
+#' default method follows the session's collation. It does not take complex or
+#' raw vectors, which have no collation to follow.
+#'
+#' @noRd
+key_order <- function(x) order(x, method = sort_method(x))
+
+#' @noRd
+sort_method <- function(x) {
+  if (is.factor(x) ||
+      typeof(x) %in% c("logical", "integer", "double", "character")) {
+    "radix"
+  } else {
+    "auto"
+  }
+}
+
+#' One vector holding the values of two key columns
+#'
+#' Factors keep their level order. Plain vectors combine as `c()` combines
+#' them, so an integer column matches a double one. Other columns of different
+#' kinds are compared as text.
+#'
+#' @noRd
+stack_values <- function(a, b) {
+  if (is.factor(a) && is.factor(b)) {
+    return(factor(c(as.character(a), as.character(b)),
+                  levels = union(levels(a), levels(b))))
+  }
+  plain <- !is.object(a) && !is.object(b)
+  if (!is.factor(a) && !is.factor(b) &&
+      (plain || identical(class(a), class(b)))) {
+    return(c(a, b))
+  }
+  c(as.character(a), as.character(b))
+}
+
+#' A key's levels for display
+#'
+#' Columns are separated by ` . ` and an empty value is shown as `(blank)`.
+#' Two groups can share a display label; `unique_labels()` gives labels that
+#' cannot.
+#'
+#' @noRd
+group_label <- function(x) {
+  x <- gsub("(?<![^\r])(?![^\r])", "(blank)", as.character(x), perl = TRUE)
+  gsub("\r", " . ", x, fixed = TRUE)
+}
+
+#' Display labels for a key's levels, or their codes where two would match
+#'
+#' For output read as identifiers, such as the strata handed to `survey`,
+#' which would merge two strata given one label.
+#'
+#' @noRd
+unique_labels <- function(key) {
+  lab <- group_label(levels(key))
+  if (anyDuplicated(lab)) lab <- as.character(seq_along(lab))
+  lab
+}

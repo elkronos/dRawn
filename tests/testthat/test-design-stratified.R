@@ -154,3 +154,48 @@ test_that("Neyman inclusion probabilities are consistent with the draw", {
   }
   expect_equal(hits / 1500, p, tolerance = 0.05)
 })
+
+test_that("a tie goes to the stratum with more room, then first in byte order", {
+  # Equal allocation of 8 over three strata leaves 2 rows after the whole
+  # parts, with equal remainders. "b" has the most room; "B" and "a" tie on
+  # room too, and "B" comes first in byte order in every locale.
+  d <- data.frame(id = 1:54, g = rep(c("a", "B", "b"), times = c(12, 12, 30)))
+  des <- design_stratified("g", n = 8, allocation = "equal")
+  want <- ifelse(d$g == "B", 3 / 12, ifelse(d$g == "a", 2 / 12, 3 / 30))
+  expect_equal(inclusion_prob(d, des), want)
+  ids <- draw(d, des, seed = 1)$id
+  with_other_collation({
+    expect_equal(inclusion_prob(d, des), want)
+    expect_identical(draw(d, des, seed = 1)$id, ids)
+  })
+
+  # A factor's level order decides instead.
+  d$g <- factor(d$g, levels = c("a", "B", "b"))
+  expect_equal(inclusion_prob(d, des),
+               ifelse(d$g == "a", 3 / 12, ifelse(d$g == "B", 2 / 12, 3 / 30)))
+})
+
+test_that("a sample drawn in one collation estimates the same in another", {
+  d <- data.frame(id = 1:54, g = rep(c("a", "B", "b"), times = c(12, 12, 30)),
+                  y = 100 + 30 * rep(1:3, times = c(12, 12, 30)) + (1:54 %% 7))
+  s <- draw(d, design_stratified("g", n = 8, allocation = "equal"), seed = 1,
+            weights = TRUE)
+  want <- ht_total(s, "y")
+  with_other_collation({
+    got <- ht_total(s, "y")
+    expect_equal(got$se, want$se)
+    expect_equal(got$df, want$df)
+  })
+})
+
+test_that("an sf frame draws the same strata as the plain frame", {
+  pts <- sf_points()
+  plain <- sf::st_drop_geometry(pts)
+  des <- design_stratified("site", n = 12)
+  s <- draw(pts, des, seed = 1, weights = TRUE)
+  expect_s3_class(s, "sf")
+  expect_identical(s$id, draw(plain, des, seed = 1)$id)
+  expect_equal(inclusion_prob(pts, des), inclusion_prob(plain, des))
+  expect_equal(ht_total(s, "y")$se,
+               ht_total(draw(plain, des, seed = 1, weights = TRUE), "y")$se)
+})

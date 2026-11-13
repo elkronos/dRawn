@@ -129,19 +129,22 @@ joint_inclusion.default <- function(design, data, rows) {
   )
 }
 
-#' Pairwise matrix from a group id and a per-group (n, N)
+#' Pairwise matrix from a group code and a per-group (n, N)
 #'
 #' Rows in the same group are a simple random sample of `n_g` from `N_g`; rows
-#' in different groups are selected independently.
+#' in different groups are selected independently. `group` is each row's
+#' position in `n_g` and `size_g`, or `NA` for a row in no group, which
+#' co-occurs with nothing.
 #'
 #' @noRd
 joint_from_groups <- function(group, n_g, size_g, pi_i) {
   k <- length(group)
   out <- outer(pi_i, pi_i)                     # independent case
   same <- outer(group, group, "==")
+  same[is.na(same)] <- FALSE
   if (any(same)) {
-    n <- n_g[as.character(group)]
-    N <- size_g[as.character(group)]
+    n <- as.numeric(n_g)[group]
+    N <- as.numeric(size_g)[group]
     within <- outer(seq_len(k), seq_len(k), function(a, b) {
       nn <- n[a]; NN <- N[a]
       ifelse(NN > 1, nn * (nn - 1) / (NN * (NN - 1)), 0)
@@ -188,24 +191,10 @@ joint_inclusion.drawn_design_stratified <- function(design, data, rows) {
   if (design$replace) {
     no_joint_form("`design_stratified(replace = TRUE)`", "Use replace = FALSE.")
   }
-  validate_data(data, required_columns = design$strata)
-  check_key_columns(data, design$strata, "strata")
-
-  keys <- data[design$strata]
-  bad <- Reduce(`|`, lapply(keys, is.na))
-  group <- group_key(data, design$strata)
-  idx <- split(seq_len(nrow(data))[!bad], group[!bad])
-  sizes <- lengths(idx)
-  n_alloc <- allocate(design$n, sizes, design$allocation,
-                      design$min_per_stratum, cap = TRUE,
-                      spread = stratum_spread(design, data, idx))
-
-  pi_all <- exact_inclusion(design, data)
-  # A dropped row belongs to no stratum. Give it a label of its own so it
-  # co-occurs with nothing, rather than letting NA reach the subscript.
-  g <- as.character(group[rows])
-  g[bad[rows]] <- paste0("\r__dropped__", seq_len(sum(bad[rows])))
-  joint_from_groups(g, n_alloc, sizes, pi_all[rows])
+  al <- stratum_allocation(design, data)
+  # A dropped row has no stratum code, so it co-occurs with nothing.
+  joint_from_groups(al$code[rows], al$n_alloc, al$sizes,
+                    stratum_pi(design, al)[rows])
 }
 
 #' @noRd
@@ -215,11 +204,9 @@ joint_inclusion.drawn_design_temporal <- function(design, data, rows) {
   sizes <- table(bucket[!is.na(bucket)])
   n_g <- pmin(sizes, design$per_interval)
 
-  g <- bucket[rows]
-  g[is.na(g)] <- paste0("__out__", seq_len(sum(is.na(g))))  # never co-occur
-  joint_from_groups(g, stats::setNames(as.integer(n_g), names(n_g)),
-                    stats::setNames(as.integer(sizes), names(sizes)),
-                    pi_all[rows])
+  # A row outside every interval has no code, so it co-occurs with nothing.
+  joint_from_groups(match(bucket[rows], names(sizes)), as.integer(n_g),
+                    as.integer(sizes), pi_all[rows])
 }
 
 #' @noRd
@@ -288,10 +275,11 @@ joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
   A <- cl$total
   a <- design$n_clusters
   m <- design$n %/% design$n_clusters
-  sizes <- table(cl$labels[cl$present])
+  present <- unique(cl$labels[cl$present])
+  sizes <- tabulate(match(cl$labels, present), length(present))
 
   lab <- as.character(cl$labels[rows])
-  Nh <- as.numeric(sizes[lab])
+  Nh <- as.numeric(sizes[match(cl$labels[rows], present)])
   same <- outer(lab, lab, "==")
   same[is.na(same)] <- FALSE
 

@@ -112,6 +112,11 @@
 #' so the same design and the same variance machinery apply (Särndal, Swensson
 #' and Wretman 1992, section 10.3).
 #'
+#' Domains come out in key order: a factor's levels, numbers and dates in
+#' sequence, and text sorted byte by byte as in the C locale, the same in every
+#' session. A domain with no sampled row is left out, as `survey::svyby()`
+#' leaves it out.
+#'
 #' A sample grouped with `dplyr::group_by()` is estimated as a whole, with a
 #' warning of class `drawn_grouped_df`; the groups play no part. Use `by`.
 #'
@@ -365,7 +370,7 @@ design_df <- function(design, units, pop, rows, pi_i) {
     seq_len(n)
   )
   stratum <- switch(design_type(design),
-    stratified = as.character(group_key(units, design$strata)),
+    stratified = as.integer(group_key(units, design$strata)),
     temporal = temporal_bucket(design, units),
     rep("all", n)
   )
@@ -444,11 +449,16 @@ syg_variance <- function(y, pi_i, pij) {
 #'
 #' @noRd
 lonely_note <- function(group, rows, noun, fix) {
-  # `noun` is c(singular, plural)
-  keep <- !is.na(group)
-  N_h <- table(group[keep])
-  n_h <- table(group[rows][!is.na(group[rows])])
-  lonely <- names(n_h)[n_h == 1L & N_h[names(n_h)] > 1L]
+  # `noun` is c(singular, plural). `group` is each frame row's group, as a
+  # factor or as values, and is counted by position.
+  if (!is.factor(group)) {
+    group <- key_from_columns(list(group))
+  }
+  code <- as.integer(group)
+  k <- nlevels(group)
+  N_h <- tabulate(code, k)
+  n_h <- tabulate(code[rows], k)
+  lonely <- levels(group)[n_h == 1L & N_h > 1L]
   if (!length(lonely)) return(NULL)
   shown <- group_label(utils::head(lonely, 5L))
   many <- length(lonely) > 1L
@@ -464,7 +474,7 @@ lonely_note <- function(group, rows, noun, fix) {
 
 #' @noRd
 ht_variance.drawn_design_stratified <- function(design, data, rows, y, pi_i) {
-  group <- as.character(group_key(data, design$strata))
+  group <- group_key(data, design$strata)
   note <- lonely_note(group, rows, c("stratum", "strata"),
                       "Draw at least two rows per stratum (min_per_stratum = 2).")
   if (!is.null(note)) return(list(variance = NA_real_, note = note))
@@ -771,10 +781,10 @@ jackknife_refusal <- function(design) {
 #' @noRd
 jackknife_strata <- function(design, units, pop, psu, fixed) {
   grp <- switch(design_type(design),
-    stratified = list(
-      sample = as.character(group_key(units, design$strata)),
-      pop = as.character(group_key(pop, design$strata))
-    ),
+    stratified = {
+      key <- group_key2(units, pop, design$strata)
+      list(sample = as.integer(key$x), pop = as.integer(key$table))
+    },
     temporal = list(
       sample = temporal_bucket(design, units),
       pop = temporal_bucket(design, pop)
