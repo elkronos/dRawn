@@ -10,9 +10,10 @@ as_svydesign(sample, ...)
 \item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. See
 "Weights and design columns".}
 
-\item{...}{Passed to \code{\link[survey:svydesign]{survey::svydesign()}}. Anything named here overrides
-what the mapping above would have supplied, so \code{nest = TRUE} or a
-replacement \code{fpc} is yours to set.}
+\item{...}{Passed to \code{\link[survey:svydesign]{survey::svydesign()}} by name, and an unnamed
+argument is refused. Anything named here overrides what the mapping
+above would have supplied, so \code{nest = TRUE} or a replacement \code{fpc} is
+yours to set.}
 }
 \value{
 A \code{survey.design} object.
@@ -37,21 +38,21 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_stratified]{design_stratified()}} \tab \code{strata} from the strata columns, \code{fpc} each stratum's size \tab identical \cr
 \code{\link[=design_temporal]{design_temporal()}} \tab \code{strata} from the sampling intervals, \code{fpc} each interval's size \tab identical \cr
 \code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} a \code{.cluster} column numbering the clusters, \code{fpc} the number of clusters \tab identical \cr
-\code{\link[=design_multistage]{design_multistage()}}, and \code{\link[=design_cluster]{design_cluster()}} with \code{balanced = TRUE} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
+\code{\link[=design_multistage]{design_multistage()}}, and \code{\link[=design_cluster]{design_cluster()}} with \code{balanced = TRUE} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{fpc} the number of clusters and each cluster's size; with one sampled row from a selected cluster of several, one stage, \code{ids} the \code{.cluster} numbers and no \code{fpc} \tab identical \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size; with \code{strata}, the strata too, which change only the degrees of freedom \tab identical \cr
-\code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as \code{rest} \cr
+\code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole, beside \code{rest} as it maps alone; over a Poisson \code{rest}, \code{survey::poisson_sampling()} from the whole sample's \code{.prob} \tab as \code{rest} \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities; with \code{strata}, \code{strata} from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
 \code{\link[=design_multistage]{design_multistage()}} with \code{size} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{pps = "brewer"} with each cluster's stage-one probability and \code{m / N_i} at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units \tab close \cr
-\code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size}; with \code{strata}, \code{strata} from the strata columns and \code{fpc} each stratum's size, or Brewer's within them \tab \strong{\code{survey}'s is larger} \cr
+\code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size}; with \code{strata}, \code{strata} from the strata columns and \code{fpc} each stratum's size, or Brewer's within them \tab \strong{differ} \cr
 \code{\link[=design_systematic]{design_systematic()}} with \code{n_starts} of 2 or more \tab \code{ids} a \code{.cluster} column numbering the replicates, \code{fpc} the \code{n_starts * interval} possible starts \tab identical \cr
 \code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the rows the walk can reach \tab \strong{differ} \cr
 \code{\link[=design_stratified]{design_stratified()}} with \code{within} \tab \code{strata} from the strata columns, \code{fpc} each stratum's rows walked \tab \strong{differ} \cr
 }
 
-"Identical" means to floating point, and is checked by this package's tests
-against \code{survey::svytotal()}, as are domain estimates against
-\code{survey::svyby()} and degrees of freedom against \code{survey::degf()}. The
-exceptions are real and worth knowing:
+"Identical" means to floating point under \code{survey}'s default options, and
+is checked by this package's tests against \code{survey::svytotal()}, as are
+domain estimates against \code{survey::svyby()} and degrees of freedom against
+\code{survey::degf()}. The exceptions are real and worth knowing:
 \itemize{
 \item \strong{Systematic PPS.} Neither package has its joint probabilities. This one
 uses Deville's approximation and \code{survey} uses Brewer's. In simulations
@@ -73,7 +74,16 @@ their probabilities, which that cluster pulls, where Deville's weights
 each by \code{1 - pi}.
 \item \strong{Spread.} \code{survey} has no estimator for a spatially balanced sample, so
 it is told only the first-order design and computes a variance that
-ignores the spreading. That errs conservative, often substantially.
+ignores the spreading. Relative to the true variance that errs
+conservative, often substantially. Relative to \code{\link[=ht_total]{ht_total()}}'s local mean
+approximation it goes either way. In simulations drawing 30 of 300
+points spread over a square, \code{survey}'s standard error was the larger in
+every sample when \code{y} varied smoothly over the square, three times as
+large at the median. When \code{y} had no spatial pattern it was the smaller
+in 67 to 79 percent of samples, by 4 to 6 percent at the median, and
+drawing 150 of the 300 it was the smaller in every sample, by 30 percent
+at the median, because the local mean has no finite population
+correction.
 \item \strong{Systematic.} \code{survey}, told only \code{ids = ~1}, computes the simple-random
 variance; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation, which
 can see a trend along the sort order. Neither is design-unbiased, because
@@ -95,7 +105,10 @@ to \code{survey} as one primary sampling unit in a stratum of its own, with an
 them out of the degrees of freedom, as \code{\link[=ht_total]{ht_total()}} does. For the PPS
 designs this also keeps them out of Brewer's approximation, which left
 among the other units inflated \code{survey}'s standard error, by a factor of 23
-on a frame with four dominant units.
+on a frame with four dominant units. Beside a \code{rest} of clusters, or of
+the replicates of several systematic starts, the certainty rows form one
+more primary sampling unit, and in a two-stage \code{rest} that unit is taken
+whole at the second stage too.
 
 A sample in which every row was taken with certainty, a census, goes to
 \code{survey} as \code{ids = ~1} with \code{fpc} the number of rows. Both packages then
@@ -105,24 +118,35 @@ certainty sample whose \code{rest} drew none of the rows below the threshold,
 whose total \code{survey} would report as exact where \code{\link[=ht_total]{ht_total()}} reports no
 variance.
 
-Two compositions have no single \code{survey} design and are refused rather than
-approximated: \code{\link[=design_certainty]{design_certainty()}} over a cluster, multistage or Poisson
-\code{rest}, or a systematic \code{rest} with several starts, where the certainty rows
-and the rest are different kinds of sampling unit. \code{\link[=design_bootstrap]{design_bootstrap()}} is
-refused outright — it resamples the sample, so there is no finite
-population for \code{svydesign()} to represent.
+\code{\link[=design_certainty]{design_certainty()}} over a Poisson \code{rest} goes to \code{survey} as
+\code{survey::poisson_sampling()} built from the whole sample's \code{.prob}, so the
+certainty rows enter at probability 1 and add no variance.
+\code{\link[=design_bootstrap]{design_bootstrap()}} is refused outright — it resamples the sample, so
+there is no finite population for \code{svydesign()} to represent.
 
 A stratum or interval with a single sampled row makes \code{survey} stop with
 "Stratum has only one PSU" unless \code{options(survey.lonely.psu)} says
 otherwise; \code{\link[=ht_total]{ht_total()}} declines in the same situation. Draw at least two
-per stratum. A cluster with a single sampled row of several does the same
-at the second stage of a two-stage design.
+per stratum. Under \code{\link[=design_multistage]{design_multistage()}} with \code{size}, a cluster with a
+single sampled row of several does the same at the second stage.
+\code{options(survey.ultimate.cluster = TRUE)} makes \code{survey} leave out the
+second stage of every two-stage design, so its standard errors then
+differ from \code{\link[=ht_total]{ht_total()}}'s. The agreement the table states holds under
+the default, \code{FALSE}.
 
 A sample weighted conditional on the clusters selected (see "Design
 weights" in \code{\link[=draw]{draw()}}) goes over in two stages too. \code{survey} works out
 each cluster's second-stage sampling fraction from the rows sampled in
 it, which is the take given that selection, so its estimate and standard
 error are those of \code{\link[=ht_total]{ht_total()}}.
+
+One sampled row from a selected cluster of several leaves the variation
+within clusters unmeasured. \code{\link[=ht_total]{ht_total()}} then falls back to the
+delete-a-cluster jackknife, which is the ultimate-cluster variance with no
+finite population correction, and \code{survey} gets that design: one stage,
+\code{ids} the \code{.cluster} numbers and no \code{fpc}. So does a certainty design's
+\code{rest} of balanced clusters, which \code{\link[=draw]{draw()}} weights without regard to the
+clusters selected, leaving no two-stage estimator.
 }
 
 \section{Weights and design columns}{
@@ -138,7 +162,9 @@ Strata, intervals, cluster labels and population counts come from the copy
 of the frame stored with the sample, not from the sample's own columns, and
 are passed in the columns \code{.stratum}, \code{.cluster}, \code{.psu}, \code{.fpc}, \code{.fpc2}
 and \code{.unit}. Renaming or recoding a design column in the sample after the draw
-does not change the survey design.
+does not change the survey design. Those six names are reserved: a sample
+with a column of one of them is refused rather than overwritten. Rename
+the column in the sample, which leaves the design as drawn.
 }
 
 \examples{

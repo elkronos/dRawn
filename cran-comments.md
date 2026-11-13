@@ -136,7 +136,11 @@ Documented in `?as_svydesign` and asserted in the tests:
 * a census — both packages report a variance of 0, and `survey::degf()`
   gives `n - 1` where `ht_total()` gives `Inf`;
 * `design_spread()` — `survey` has no estimator for a spatially balanced sample
-  and is given the first-order design, so its standard error is larger;
+  and is given the first-order design. Its standard error is larger than
+  `ht_total()`'s when `y` varies smoothly over the coordinates, and smaller in
+  most samples when `y` has no spatial pattern or the sampling fraction is
+  large, because `ht_total()`'s local mean approximation has no finite
+  population correction;
 * systematic sampling — `survey`, told only `ids = ~1`, returns the
   simple-random variance; `ht_total()` uses the successive-difference
   approximation. Neither is design-unbiased, because no such estimator exists.

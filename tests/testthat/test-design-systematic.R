@@ -458,7 +458,7 @@ test_that("several starts go to survey as replicates with the same standard erro
                0)
 })
 
-test_that("a certainty design over several starts estimates, and is not handed to survey", {
+test_that("a certainty design over several starts estimates, and goes to survey", {
   d <- data.frame(y = c(1000, 2000, 1:48))
   des <- design_certainty("y", 500, design_systematic(interval = 4,
                                                       n_starts = 2))
@@ -469,7 +469,11 @@ test_that("a certainty design over several starts estimates, and is not handed t
   expect_equal(r$variance, (1 - 1 / 4) * var(t_r) / 2)
   expect_equal(r$df, 1)
   skip_if_not_installed("survey")
-  expect_error(as_svydesign(s), "replicates are different kinds of sampling")
+  # The certainty rows are one more unit beside the replicates.
+  sv <- as_svydesign(s)
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, sv))), r$se,
+               tolerance = 1e-8)
+  expect_equal(survey::degf(sv), 1)
 })
 
 test_that("order_by takes one column, and a column of ranks walks by several", {

@@ -828,7 +828,39 @@
   instead, so `survey` cannot merge them.
 * `as_svydesign()` numbers the clusters in `.cluster`. `survey` made a
   factor of the labels, which merged two that print alike, such as `0.3` and
-  `0.1 + 0.2`, into one primary sampling unit.
+  `0.1 + 0.2`, into one primary sampling unit. The cluster column's name
+  went into the `ids` formula as it stood, so a name with a space, such as
+  `cluster id`, stopped `svydesign()` with a parse error, and `cl-1` beside a
+  column `cl` was read as `cl - 1`, which clustered on `cl`.
+* `as_svydesign()` hands over `design_certainty()` over a cluster,
+  multistage, Poisson or replicated systematic `rest`, which it refused as
+  having no single `survey` design. The certainty rows go to `survey` as one
+  more primary sampling unit beside the clusters or replicates, taken whole
+  at both stages of a two-stage `rest`, and a Poisson `rest` becomes
+  `survey::poisson_sampling()` built from the whole sample's `.prob`, with
+  the certainty rows at probability 1. Totals, standard errors, domain
+  estimates and degrees of freedom agree with `ht_total()` as they do for
+  `rest` on its own.
+* A sample from `design_multistage()` or `design_cluster(balanced = TRUE)`
+  with one sampled row from a selected cluster of several goes to `survey`
+  as one stage of clusters with no `fpc`. That is the ultimate-cluster
+  design behind the jackknife `ht_total()` falls back to, so the standard
+  errors agree. In two stages, `survey` stopped with "has only one PSU at
+  stage 2".
+* `as_svydesign()` refuses a sample with a column named `.stratum`,
+  `.cluster`, `.psu`, `.fpc`, `.fpc2` or `.unit`. It wrote the design into
+  those columns over the user's, so an analysis of such a column in
+  `survey` read the design's values.
+* `as_svydesign()` refuses unnamed arguments in `...`. It dropped them, so
+  `as_svydesign(s, ~cl)` handed `survey` the mapped design and ignored
+  `~cl`.
+* `?as_svydesign` and `cran-comments.md` said `survey`'s standard error is
+  larger than `ht_total()`'s for `design_spread()`. It is larger when `y`
+  varies smoothly over the coordinates, and smaller in most samples when `y`
+  has no spatial pattern or the sampling fraction is large, because the
+  local mean approximation has no finite population correction.
+  `?as_svydesign` also says that the agreement it states holds under
+  `survey`'s default `options(survey.ultimate.cluster = FALSE)`.
 
 ## Documentation and site
 

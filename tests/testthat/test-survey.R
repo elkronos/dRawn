@@ -139,16 +139,56 @@ test_that("a temporal design maps to strata over its intervals", {
   expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-6)
 })
 
-test_that("compositions with no survey equivalent are refused, not fudged", {
+test_that("certainty over clusters or Poisson sampling agrees with survey", {
   skip_if_not_installed("survey")
+  # These were refused as having no single survey design. The certainty rows
+  # are one more unit beside the clusters, and Poisson sampling covers the
+  # whole sample with the certainty rows at probability 1.
   d <- svy_pop()
-  for (rest in list(design_cluster("cl", n_clusters = 6),
-                    design_multistage("cl", n_clusters = 6, n = 30),
-                    design_weighted("spend", n = 40, method = "poisson"))) {
-    s <- draw(d, design_certainty("spend", 400, rest), seed = 1,
+  d$g <- ifelse(d$id %% 3 == 0, "u", "v")
+  rests <- list(
+    cluster = design_cluster("cl", n_clusters = 6),
+    multistage = design_multistage("cl", n_clusters = 6, n = 30),
+    one_row = design_multistage("cl", n_clusters = 6, n = 6),
+    balanced = design_cluster("cl", n_clusters = 6, balanced = TRUE),
+    poisson = design_weighted("spend", n = 40, method = "poisson"),
+    poisson_strata = design_weighted("size", n = 40, method = "poisson",
+                                     strata = "site")
+  )
+  for (nm in names(rests)) {
+    s <- draw(d, design_certainty("spend", 400, rests[[nm]]), seed = 1,
               weights = TRUE)
-    expect_error(as_svydesign(s), "no single survey equivalent")
+    expect_true(any(s$.prob == 1), label = nm)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "spend")
+    theirs <- survey::svytotal(~spend, sv)
+    expect_equal(as.numeric(theirs), ours$total, tolerance = 1e-8,
+                 label = nm)
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8,
+                 label = nm)
+    expect_equal(survey::degf(sv), ours$df, label = nm)
+    expect_equal(as.numeric(survey::SE(survey::svymean(~spend, sv))),
+                 ht_mean(s, "spend")$se, tolerance = 1e-8, label = nm)
+    by_theirs <- suppressWarnings(
+      survey::svyby(~spend, ~g, sv, survey::svytotal))
+    expect_equal(ht_total(s, "spend", by = "g")$se,
+                 as.numeric(survey::SE(by_theirs)), tolerance = 1e-8,
+                 label = nm)
   }
+})
+
+test_that("a certainty sample whose Poisson `rest` drew nothing is refused", {
+  skip_if_not_installed("survey")
+  d <- data.frame(v = c(100, 200, rep(1, 30)), y = c(10, 20, 1:30))
+  des <- design_certainty("v", 50, design_weighted("v", n = 1,
+                                                   method = "poisson"))
+  for (i in 1:50) {
+    s <- draw(d, des, seed = i, weights = TRUE)
+    if (nrow(s) == 2L) break
+  }
+  expect_equal(nrow(s), 2L)
+  expect_error(as_svydesign(s), paste0("`sample` holds none of the 30 rows ",
+                                       "with `v` below 50"), fixed = TRUE)
 })
 
 test_that("a spatial design's population is the region, not the frame", {
@@ -629,4 +669,144 @@ test_that("clusters selected by size go to survey in two stages", {
     expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 5e-3)
   }
   expect_identical(length(unique(as_svydesign(s)$strata[, 1])), 1L)
+})
+
+# ---- column names --------------------------------------------------------------
+
+test_that("cluster and strata columns of any name reach survey", {
+  skip_if_not_installed("survey")
+  # The cluster column's name went into the `ids` formula as it stood: a
+  # space stopped svydesign(), and `cl-1` beside a column `cl` was read as
+  # `cl - 1`, so survey clustered on `cl`.
+  d <- data.frame(`cl-1` = rep(paste0("B", 1:8), each = 30),
+                  check.names = FALSE)
+  d$cl <- rep(c("north", "south"), each = 120)
+  d$y <- rep(c(140, 60, 95, 130, 70, 110, 85, 120), each = 30) +
+    (1:240 * 7) %% 11
+  s <- draw(d, design_cluster("cl-1", n_clusters = 4), seed = 2,
+            weights = TRUE)
+  sv <- as_svydesign(s)
+  expect_equal(length(unique(sv$cluster[, 1])), 4L)
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~y, sv))),
+               ht_total(s, "y")$se, tolerance = 1e-8)
+  expect_equal(survey::degf(sv), 3)
+
+  names(d)[1] <- "cluster id"
+  d$`site name` <- rep(c("a", "b"), 120)
+  for (des in list(design_cluster("cluster id", n_clusters = 4),
+                   design_multistage("cluster id", n_clusters = 4, n = 20),
+                   design_stratified("site name", n = 20))) {
+    s <- draw(d, des, seed = 2, weights = TRUE)
+    expect_equal(as.numeric(survey::SE(survey::svytotal(~y,
+                                                        as_svydesign(s)))),
+                 ht_total(s, "y")$se, tolerance = 1e-8)
+  }
+})
+
+test_that("a sample with a column as_svydesign() writes is refused", {
+  skip_if_not_installed("survey")
+  # A user column `.stratum` was overwritten with the design's strata, so
+  # survey::svyby(~y, ~.stratum) estimated by site.
+  d <- svy_pop()
+  d$.stratum <- ifelse(d$spend > 250, "hi", "lo")
+  s <- draw(d, design_stratified("site", n = 40), seed = 7, weights = TRUE)
+  expect_error(as_svydesign(s),
+               "`sample` already has `.stratum`; as_svydesign() would overwrite it.",
+               fixed = TRUE)
+  d$.fpc <- 1
+  s <- draw(d, design_simple(n = 40), seed = 7, weights = TRUE)
+  expect_error(as_svydesign(s), "already has `.stratum` and `.fpc`",
+               fixed = TRUE)
+
+  # Renamed in the sample, the design is unchanged.
+  names(s)[names(s) %in% c(".stratum", ".fpc")] <- c("band", "f")
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~spend,
+                                                      as_svydesign(s)))),
+               ht_total(s, "spend")$se, tolerance = 1e-8)
+
+  # A design column of a reserved name is in the sample too.
+  e <- svy_pop()
+  names(e)[names(e) == "cl"] <- ".cluster"
+  s <- draw(e, design_cluster(".cluster", n_clusters = 8), seed = 1,
+            weights = TRUE)
+  expect_error(as_svydesign(s), "already has `.cluster`", fixed = TRUE)
+  names(s)[names(s) == ".cluster"] <- "cl"
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~spend,
+                                                      as_svydesign(s)))),
+               ht_total(s, "spend")$se, tolerance = 1e-8)
+})
+
+test_that("unnamed arguments to as_svydesign() are refused", {
+  skip_if_not_installed("survey")
+  # modifyList() dropped them, so as_svydesign(s, ~cl) ignored the ~cl.
+  d <- svy_pop()
+  s <- draw(d, design_simple(n = 40), seed = 1, weights = TRUE)
+  expect_error(as_svydesign(s, ~cl),
+               "Argument 1 of `...` has no name", fixed = TRUE)
+  expect_error(as_svydesign(s, nest = TRUE, ~cl, TRUE),
+               "Arguments 2 and 3 of `...` have no name", fixed = TRUE)
+  expect_s3_class(as_svydesign(s, ids = ~cl), "survey.design")
+})
+
+test_that("one row from a cluster of several goes to survey as ultimate clusters", {
+  skip_if_not_installed("survey")
+  # Two stages made survey stop with "has only one PSU at stage 2", where
+  # ht_total() falls back to the delete-a-cluster jackknife.
+  sizes <- rep(c(5, 9, 14, 7, 11), 4)
+  d <- data.frame(id = seq_len(sum(sizes)),
+                  cl = rep(sprintf("k%02d", 1:20), times = sizes))
+  d$y <- rep((1:20 * 17) %% 23 * 3, times = sizes) + d$id %% 9
+  d$g <- ifelse(d$id %% 3 == 0, "u", "v")
+  designs <- list(
+    design_multistage("cl", n_clusters = 5, n = 5),
+    design_multistage("cl", n_clusters = 6, n = 9,
+                      allocation = "proportional", min_per_cluster = 1)
+  )
+  for (des in designs) {
+    s <- draw(d, des, seed = 4, weights = TRUE)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "y")
+    expect_equal(ours$method, "jackknife")
+    expect_null(sv$fpc$popsize)
+    theirs <- survey::svytotal(~y, sv)
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8)
+    expect_equal(survey::degf(sv), ours$df)
+    expect_equal(as.numeric(survey::SE(survey::svymean(~y, sv))),
+                 ht_mean(s, "y")$se, tolerance = 1e-8)
+    by_theirs <- survey::svyby(~y, ~g, sv, survey::svytotal)
+    expect_equal(ht_total(s, "y", by = "g")$se,
+                 as.numeric(survey::SE(by_theirs)), tolerance = 1e-8)
+  }
+})
+
+test_that("spread and systematic samples go to survey as their simple designs", {
+  skip_if_not_installed("survey")
+  # survey's standard error is that of the first-order design. For spread it
+  # is the larger when y varies smoothly over the coordinates, and the
+  # smaller here, where y has no spatial pattern and half the frame is drawn.
+  i <- 1:200
+  d <- data.frame(x = (i * 0.618034) %% 1, yy = (i * 0.414214) %% 1)
+  d$smooth <- 100 + 80 * d$x + 60 * d$yy
+  d$flat <- 50 + (i * 37) %% 23
+  srs_se <- function(s, y) {
+    plain <- survey::svydesign(ids = ~1, fpc = rep(nrow(d), nrow(s)),
+                               weights = ~.weight, data = as.data.frame(s))
+    as.numeric(survey::SE(survey::svytotal(stats::as.formula(y), plain)))
+  }
+  s <- draw(d, design_spread(c("x", "yy"), n = 20), seed = 1, weights = TRUE)
+  se <- as.numeric(survey::SE(survey::svytotal(~smooth, as_svydesign(s))))
+  expect_equal(se, srs_se(s, "~smooth"))
+  expect_gt(se, ht_total(s, "smooth")$se)
+  s <- draw(d, design_spread(c("x", "yy"), n = 100), seed = 1,
+            weights = TRUE)
+  se <- as.numeric(survey::SE(survey::svytotal(~flat, as_svydesign(s))))
+  expect_equal(se, srs_se(s, "~flat"))
+  expect_lt(se, ht_total(s, "flat")$se)
+
+  # Systematic: the simple-random variance against successive differences
+  d$trend <- i + 10 * sin(i)
+  s <- draw(d, design_systematic(interval = 10), seed = 3, weights = TRUE)
+  se <- as.numeric(survey::SE(survey::svytotal(~trend, as_svydesign(s))))
+  expect_equal(se, srs_se(s, "~trend"))
+  expect_gt(se, 2 * ht_total(s, "trend")$se)
 })

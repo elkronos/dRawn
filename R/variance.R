@@ -884,9 +884,7 @@ conditional_variance <- function(design, cl, rows, y, pi_i) {
     return(list(variance = NA_real_,
                 note = "Some sampled rows have no cluster label."))
   }
-  live <- unique(code)
-  g <- match(code, live)
-  k <- length(live)
+  k <- length(unique(code))
   if (k < 2L && !all(is_certain(pi_i))) {
     return(list(variance = NA_real_, note = paste0(
       "A variance needs at least two clusters; this sample has ", k, ".")))
@@ -894,9 +892,7 @@ conditional_variance <- function(design, cl, rows, y, pi_i) {
   a <- design$n_clusters
   A <- cl$total
   sizes <- tabulate(cl$code, A)
-  m <- tabulate(g, k)
-  N <- sizes[live]
-  if (!all(same_prob(pi_i, (a / A * m / N)[g]))) {
+  if (!weighted_on_selection(design, code, sizes, pi_i)) {
     no_joint_form(
       paste0("`", design_label(design), "`"),
       paste0("Its sample is weighted with unconditional probabilities, ",
@@ -905,13 +901,49 @@ conditional_variance <- function(design, cl, rows, y, pi_i) {
              "clusters selected."))
   }
   if (all(is_certain(pi_i))) return(all_certain())
-  if (any(m < 2L & m < N)) {
+  if (one_row_clusters(design, code, sizes, fixed = FALSE)) {
     return(list(variance = NA_real_, note = paste0(
       "With one row from a selected cluster of several, the variation ",
       "within clusters cannot be measured, and the two-stage estimator would ",
       "understate the variance.", fallback_note(a, A))))
   }
   list(variance = two_stage_variance(y, code, a, A, sizes), note = NULL)
+}
+
+#' Whether a sample is weighted conditional on the clusters selected
+#'
+#' Each sampled row's probability is then `a / A * m_i / N_i`, with `m_i`
+#' the rows sampled from its cluster of `N_i`. draw() weights a design whose
+#' take depends on the selection this way, but not when the design is a
+#' certainty design's `rest`, which has unconditional probabilities.
+#' `code` holds the sampled rows' cluster codes and `sizes` the rows of each
+#' cluster.
+#'
+#' @noRd
+weighted_on_selection <- function(design, code, sizes, pi_i) {
+  live <- unique(code)
+  g <- match(code, live)
+  m <- tabulate(g, length(live))
+  share <- design$n_clusters / length(sizes) * m / sizes[live]
+  all(same_prob(pi_i, share[g]))
+}
+
+#' Whether a two-stage sample leaves the variation within clusters unmeasured
+#'
+#' A design with a fixed, equal take (`fixed`) leaves it unmeasured when the
+#' take is one row. A take conditional on the clusters selected leaves it
+#' unmeasured when any selected cluster of several rows has one sampled row.
+#' The two-stage estimators then decline, `variance = "auto"` falls back to
+#' the delete-a-cluster jackknife, and `as_svydesign()` hands `survey` the
+#' ultimate-cluster design that gives the same variance. `code` holds the
+#' sampled rows' cluster codes and `sizes` the rows of each cluster.
+#'
+#' @noRd
+one_row_clusters <- function(design, code, sizes, fixed) {
+  if (fixed) return(design$n %/% design$n_clusters == 1L)
+  live <- unique(code)
+  m <- tabulate(match(code, live), length(live))
+  any(m < 2L & m < sizes[live])
 }
 
 #' The variance of a simple random sample from one group of `N` rows
@@ -1351,7 +1383,7 @@ ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
   if (!multistage_fixed(design, sizes)) {
     return(conditional_variance(design, cl, rows, y, pi_i))
   }
-  if (design$n %/% design$n_clusters == 1L) {
+  if (one_row_clusters(design, cl$code[rows], sizes, fixed = TRUE)) {
     return(list(variance = NA_real_, note = paste0(
       "With one row per selected cluster the variation within clusters ",
       "cannot be measured, and the exact two-stage estimator would understate ",

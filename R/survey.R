@@ -17,21 +17,21 @@
 #'   [design_stratified()] \tab `strata` from the strata columns, `fpc` each stratum's size \tab identical \cr
 #'   [design_temporal()] \tab `strata` from the sampling intervals, `fpc` each interval's size \tab identical \cr
 #'   [design_cluster()] \tab `ids` a `.cluster` column numbering the clusters, `fpc` the number of clusters \tab identical \cr
-#'   [design_multistage()], and [design_cluster()] with `balanced = TRUE` \tab two stages, `ids` the `.cluster` numbers then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
+#'   [design_multistage()], and [design_cluster()] with `balanced = TRUE` \tab two stages, `ids` the `.cluster` numbers then the rows, `fpc` the number of clusters and each cluster's size; with one sampled row from a selected cluster of several, one stage, `ids` the `.cluster` numbers and no `fpc` \tab identical \cr
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size; with `strata`, the strata too, which change only the degrees of freedom \tab identical \cr
-#'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
+#'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole, beside `rest` as it maps alone; over a Poisson `rest`, `survey::poisson_sampling()` from the whole sample's `.prob` \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities; with `strata`, `strata` from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
 #'   [design_multistage()] with `size` \tab two stages, `ids` the `.cluster` numbers then the rows, `pps = "brewer"` with each cluster's stage-one probability and `m / N_i` at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units \tab close \cr
-#'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size`; with `strata`, `strata` from the strata columns and `fpc` each stratum's size, or Brewer's within them \tab **`survey`'s is larger** \cr
+#'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size`; with `strata`, `strata` from the strata columns and `fpc` each stratum's size, or Brewer's within them \tab **differ** \cr
 #'   [design_systematic()] with `n_starts` of 2 or more \tab `ids` a `.cluster` column numbering the replicates, `fpc` the `n_starts * interval` possible starts \tab identical \cr
 #'   [design_systematic()] \tab `ids = ~1` with `fpc` the rows the walk can reach \tab **differ** \cr
 #'   [design_stratified()] with `within` \tab `strata` from the strata columns, `fpc` each stratum's rows walked \tab **differ** \cr
 #' }
 #'
-#' "Identical" means to floating point, and is checked by this package's tests
-#' against `survey::svytotal()`, as are domain estimates against
-#' `survey::svyby()` and degrees of freedom against `survey::degf()`. The
-#' exceptions are real and worth knowing:
+#' "Identical" means to floating point under `survey`'s default options, and
+#' is checked by this package's tests against `survey::svytotal()`, as are
+#' domain estimates against `survey::svyby()` and degrees of freedom against
+#' `survey::degf()`. The exceptions are real and worth knowing:
 #'
 #' * **Systematic PPS.** Neither package has its joint probabilities. This one
 #'   uses Deville's approximation and `survey` uses Brewer's. In simulations
@@ -53,7 +53,16 @@
 #'   each by `1 - pi`.
 #' * **Spread.** `survey` has no estimator for a spatially balanced sample, so
 #'   it is told only the first-order design and computes a variance that
-#'   ignores the spreading. That errs conservative, often substantially.
+#'   ignores the spreading. Relative to the true variance that errs
+#'   conservative, often substantially. Relative to [ht_total()]'s local mean
+#'   approximation it goes either way. In simulations drawing 30 of 300
+#'   points spread over a square, `survey`'s standard error was the larger in
+#'   every sample when `y` varied smoothly over the square, three times as
+#'   large at the median. When `y` had no spatial pattern it was the smaller
+#'   in 67 to 79 percent of samples, by 4 to 6 percent at the median, and
+#'   drawing 150 of the 300 it was the smaller in every sample, by 30 percent
+#'   at the median, because the local mean has no finite population
+#'   correction.
 #' * **Systematic.** `survey`, told only `ids = ~1`, computes the simple-random
 #'   variance; [ht_total()] uses the successive-difference approximation, which
 #'   can see a trend along the sort order. Neither is design-unbiased, because
@@ -74,7 +83,10 @@
 #' them out of the degrees of freedom, as [ht_total()] does. For the PPS
 #' designs this also keeps them out of Brewer's approximation, which left
 #' among the other units inflated `survey`'s standard error, by a factor of 23
-#' on a frame with four dominant units.
+#' on a frame with four dominant units. Beside a `rest` of clusters, or of
+#' the replicates of several systematic starts, the certainty rows form one
+#' more primary sampling unit, and in a two-stage `rest` that unit is taken
+#' whole at the second stage too.
 #'
 #' A sample in which every row was taken with certainty, a census, goes to
 #' `survey` as `ids = ~1` with `fpc` the number of rows. Both packages then
@@ -84,24 +96,35 @@
 #' whose total `survey` would report as exact where [ht_total()] reports no
 #' variance.
 #'
-#' Two compositions have no single `survey` design and are refused rather than
-#' approximated: [design_certainty()] over a cluster, multistage or Poisson
-#' `rest`, or a systematic `rest` with several starts, where the certainty rows
-#' and the rest are different kinds of sampling unit. [design_bootstrap()] is
-#' refused outright — it resamples the sample, so there is no finite
-#' population for `svydesign()` to represent.
+#' [design_certainty()] over a Poisson `rest` goes to `survey` as
+#' `survey::poisson_sampling()` built from the whole sample's `.prob`, so the
+#' certainty rows enter at probability 1 and add no variance.
+#' [design_bootstrap()] is refused outright — it resamples the sample, so
+#' there is no finite population for `svydesign()` to represent.
 #'
 #' A stratum or interval with a single sampled row makes `survey` stop with
 #' "Stratum has only one PSU" unless `options(survey.lonely.psu)` says
 #' otherwise; [ht_total()] declines in the same situation. Draw at least two
-#' per stratum. A cluster with a single sampled row of several does the same
-#' at the second stage of a two-stage design.
+#' per stratum. Under [design_multistage()] with `size`, a cluster with a
+#' single sampled row of several does the same at the second stage.
+#' `options(survey.ultimate.cluster = TRUE)` makes `survey` leave out the
+#' second stage of every two-stage design, so its standard errors then
+#' differ from [ht_total()]'s. The agreement the table states holds under
+#' the default, `FALSE`.
 #'
 #' A sample weighted conditional on the clusters selected (see "Design
 #' weights" in [draw()]) goes over in two stages too. `survey` works out
 #' each cluster's second-stage sampling fraction from the rows sampled in
 #' it, which is the take given that selection, so its estimate and standard
 #' error are those of [ht_total()].
+#'
+#' One sampled row from a selected cluster of several leaves the variation
+#' within clusters unmeasured. [ht_total()] then falls back to the
+#' delete-a-cluster jackknife, which is the ultimate-cluster variance with no
+#' finite population correction, and `survey` gets that design: one stage,
+#' `ids` the `.cluster` numbers and no `fpc`. So does a certainty design's
+#' `rest` of balanced clusters, which [draw()] weights without regard to the
+#' clusters selected, leaving no two-stage estimator.
 #'
 #' @section Weights and design columns:
 #' `survey` gets the sample's `.weight` column as its weights. Weights adjusted
@@ -115,13 +138,16 @@
 #' of the frame stored with the sample, not from the sample's own columns, and
 #' are passed in the columns `.stratum`, `.cluster`, `.psu`, `.fpc`, `.fpc2`
 #' and `.unit`. Renaming or recoding a design column in the sample after the draw
-#' does not change the survey design.
+#' does not change the survey design. Those six names are reserved: a sample
+#' with a column of one of them is refused rather than overwritten. Rename
+#' the column in the sample, which leaves the design as drawn.
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
 #'   "Weights and design columns".
-#' @param ... Passed to [survey::svydesign()]. Anything named here overrides
-#'   what the mapping above would have supplied, so `nest = TRUE` or a
-#'   replacement `fpc` is yours to set.
+#' @param ... Passed to [survey::svydesign()] by name, and an unnamed
+#'   argument is refused. Anything named here overrides what the mapping
+#'   above would have supplied, so `nest = TRUE` or a replacement `fpc` is
+#'   yours to set.
 #'
 #' @return A `survey.design` object.
 #'
@@ -147,6 +173,8 @@
 #' @export
 as_svydesign <- function(sample, ...) {
   require_suggested("survey", "handing a sample to the survey package")
+  overrides <- list(...)
+  check_named_dots(overrides)
   state <- drawn_state(sample)
   design <- state$design
   pop <- state$pop
@@ -162,18 +190,22 @@ as_svydesign <- function(sample, ...) {
       "draw from a design of random size, ht_total() gives the total, 0, ",
       "without a variance."))
   }
+  check_survey_columns(sample)
 
   # `survey` keeps the data it is given by reference, so it gets its own copy.
   # An in-place reorder of the sample afterwards would otherwise reach it.
   dat <- snapshot_frame(as.data.frame(sample))
   parts <- survey_parts(design, dat, state$units, pop, rows = state$rows)
   if (all(is_certain(dat$.prob))) parts <- census_parts(dat)
-  dat$.fpc <- parts$fpc
   # Clusters come from the frame, so a cluster column renamed or recoded in
   # the sample after the draw still gives `survey` the clusters that were
   # drawn.
   if (!is.null(parts$cluster)) dat$.cluster <- parts$cluster
-  fpc <- stats::as.formula("~.fpc")
+  fpc <- NULL
+  if (!is.null(parts$fpc)) {
+    dat$.fpc <- parts$fpc
+    fpc <- stats::as.formula("~.fpc")
+  }
   if (!is.null(parts$fpc2)) {
     # Two stages: clusters, then rows within them, each with its own
     # population count, so `survey` computes the full two-stage variance.
@@ -186,8 +218,19 @@ as_svydesign <- function(sample, ...) {
   if (any(parts$whole)) {
     # Units taken with certainty share one primary sampling unit per stratum,
     # with an `fpc` of one unit, so `survey` treats each group as taken whole.
-    dat$.psu <- shared_psu(parts$stratum, parts$whole)
-    ids <- stats::as.formula("~.psu")
+    # The other units keep their own ids, which are rows, or the clusters or
+    # replicates numbered in `.cluster`.
+    dat$.psu <- shared_psu(parts$stratum, parts$whole, parts$cluster)
+    ids <- if (is.null(parts$fpc2)) {
+      stats::as.formula("~.psu")
+    } else {
+      stats::as.formula("~.psu + .unit")
+    }
+  }
+  if (identical(parts$extra$pps, "poisson")) {
+    # Built from the whole sample, so rows a certainty design took above its
+    # threshold enter at probability 1 beside its Poisson `rest`.
+    parts$extra$pps <- survey::poisson_sampling(dat$.prob)
   }
   args <- c(list(data = dat, weights = stats::as.formula("~.weight"),
                  ids = ids, fpc = fpc),
@@ -195,18 +238,63 @@ as_svydesign <- function(sample, ...) {
   if (!is.null(parts$stratum)) {
     args$strata <- stats::as.formula("~.stratum")
   }
-  do.call(survey::svydesign, utils::modifyList(args, list(...)))
+  do.call(survey::svydesign, utils::modifyList(args, overrides))
 }
 
-#' Refuse a certainty design whose `rest` has no place in one survey design
+#' Columns `as_svydesign()` writes the design into
+#'
+#' Each holds what the mapping needs: strata, cluster numbers, primary
+#' sampling units, the two stages' population counts and the row ids of the
+#' second stage. They are reserved in the sample handed over.
+#'
 #' @noRd
-refuse_nested <- function(prefix, what, why) {
-  if (nzchar(prefix)) {
-    stop("A certainty design over ", what, " has no single survey equivalent: ",
-         why, ". Estimate it with ht_total() or ht_mean() instead.",
-         call. = FALSE)
+survey_columns <- function() {
+  c(".stratum", ".cluster", ".psu", ".fpc", ".fpc2", ".unit")
+}
+
+#' Refuse a sample with a column `as_svydesign()` would overwrite
+#'
+#' Writing over a user column of one of these names would hand `survey` the
+#' design's values in its place. A design column of such a name is in the
+#' sample too, unless dropped, and is read from the frame stored with the
+#' sample, so renaming it in the sample leaves the design unchanged.
+#'
+#' @noRd
+check_survey_columns <- function(sample) {
+  clash <- intersect(survey_columns(), names(sample))
+  if (!length(clash)) return(invisible(NULL))
+  shown <- paste0("`", clash, "`")
+  if (length(shown) > 1L) {
+    shown <- paste(paste(shown[-length(shown)], collapse = ", "), "and",
+                   shown[length(shown)])
   }
-  invisible(NULL)
+  it <- if (length(clash) == 1L) "it" else "them"
+  stop_not_drawn(paste0(
+    "already has ", shown, "; as_svydesign() would overwrite ", it,
+    ". Rename ", it, " in the sample; the design keeps its strata and ",
+    "clusters, which come from the copy of the frame stored with the ",
+    "sample."))
+}
+
+#' Refuse unnamed arguments to `as_svydesign()`
+#'
+#' `utils::modifyList()` drops unnamed elements, so `as_svydesign(s, ~cl)`
+#' would hand `survey` the mapped design and ignore `~cl`.
+#'
+#' @noRd
+check_named_dots <- function(dots) {
+  nm <- names(dots) %||% character(length(dots))
+  bad <- which(is.na(nm) | !nzchar(nm))
+  if (!length(bad)) return(invisible(NULL))
+  where <- if (length(bad) > 1L) {
+    paste("Arguments", paste(bad[-length(bad)], collapse = ", "), "and",
+          bad[length(bad)], "of `...` have no name")
+  } else {
+    paste("Argument", bad, "of `...` has no name")
+  }
+  stop(where, ", and as_svydesign() passes `...` to survey::svydesign() by ",
+       "name. Name ", if (length(bad) > 1L) "them" else "it", ", as in ",
+       "`nest = TRUE` or `ids = ~cl`.", call. = FALSE)
 }
 
 #' Strata, population counts and cluster ids for one design
@@ -270,33 +358,45 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
         return(pps_parts(dat, prefix, "brewer"))
       }
       # Poisson sampling has a random size, so no finite population correction
-      # over a fixed n describes it. `survey` models it directly.
-      refuse_nested(prefix, "a Poisson `rest`",
-                    "its sample size is random, which no stratum can express")
-      pps_parts(dat, prefix, survey::poisson_sampling(dat$.prob))
+      # over a fixed n describes it. `survey` models it directly, with
+      # `survey::poisson_sampling()` over the whole sample's probabilities,
+      # which as_svydesign() builds.
+      pps_parts(dat, prefix, "poisson")
     },
     cluster = ,
     multistage = {
-      refuse_nested(prefix, "a cluster or multistage `rest`",
-                    paste0("the certainty rows and the clusters are different ",
-                           "kinds of sampling unit"))
       # Integer codes, not labels: `survey` makes a factor of the ids, which
       # compares them as text and merges two numbers that print alike.
       if (!is.null(design$size)) {
-        return(pps_stage_parts(design, units, pop))
+        return(pps_stage_parts(design, units, pop, prefix))
       }
       cl <- count_clusters(design, pop)
       n_clusters <- cl$total
       cluster <- cl$code[rows]
+      ids <- stats::as.formula("~.cluster")
       if (design_type(design) == "cluster" && !design$balanced) {
         return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
-                    ids = stats::as.formula("~.cluster"), cluster = cluster))
+                    ids = ids, cluster = cluster))
+      }
+      sizes <- tabulate(cl$code, n_clusters)
+      fixed <- design_type(design) == "multistage" &&
+        multistage_fixed(design, sizes)
+      two_stage <- fixed ||
+        weighted_on_selection(design, cluster, sizes, dat$.prob)
+      if (!two_stage || one_row_clusters(design, cluster, sizes, fixed)) {
+        # The two-stage estimator does not apply. One row of a cluster
+        # leaves the variation within it unmeasured, or a take that depends
+        # on the clusters selected is weighted without regard to them, as in
+        # a certainty design's `rest`. ht_total() falls back to the
+        # delete-a-cluster jackknife, which is the ultimate-cluster variance
+        # with no finite population correction, and `survey` computes it
+        # from the clusters alone.
+        return(list(stratum = NULL, fpc = NULL, ids = ids, cluster = cluster))
       }
       # Two stages, also for balanced clusters, which subsample. `survey`
       # takes each cluster's sampling fraction from the rows sampled in it,
       # which is the take given the clusters selected, so its estimate is the
       # one weighted conditional on them.
-      sizes <- tabulate(cl$code, n_clusters)
       list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
            fpc2 = sizes[cluster],
            ids = stats::as.formula("~.cluster + .unit"), cluster = cluster)
@@ -309,9 +409,6 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
     },
     systematic = {
       if (replicated(design)) {
-        refuse_nested(prefix, "a systematic `rest` with several starts",
-                      paste0("the certainty rows and the replicates are ",
-                             "different kinds of sampling unit"))
         return(replicate_parts(design, dat, pop, rows))
       }
       # Rows `na_rm` drops from the walk can never be drawn, so the
@@ -367,9 +464,28 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
                              rows = match(rows[!above], sp$keep[sp$rest]),
                              prefix = paste0(prefix, "(rest) "))
         out$stratum[!above] <- rest$stratum %||% paste0(prefix, "(rest)")
-        out$fpc[!above] <- rest$fpc
+        # A `rest` of clusters with no finite population correction gets an
+        # infinite population, which `survey` reads as none.
+        out$fpc[!above] <- rest$fpc %||% Inf
         out$whole[!above] <- rest$whole %||% FALSE
+        out$ids <- rest$ids
         out$extra <- rest$extra
+        if (!is.null(rest$cluster)) {
+          # The clusters, or the replicates of several starts, are `rest`'s
+          # primary sampling units, and the certainty rows one more beside
+          # them.
+          out$cluster <- rep(NA_integer_, nrow(dat))
+          out$cluster[!above] <- rest$cluster
+        }
+        if (!is.null(rest$fpc2)) {
+          # The certainty rows are one unit taken whole at both stages: all
+          # its rows, whether `survey` reads the second stage as counts or
+          # as probabilities.
+          counts <- any(c(rest$fpc, rest$fpc2) > 1)
+          out$fpc2 <- numeric(nrow(dat))
+          out$fpc2[above] <- if (counts) sum(above) else 1
+          out$fpc2[!above] <- rest$fpc2
+        }
       }
       out
     },
@@ -390,13 +506,14 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
 #' `design_df()` counts.
 #'
 #' @noRd
-pps_stage_parts <- function(design, units, pop) {
+pps_stage_parts <- function(design, units, pop, prefix = "") {
   cu <- cluster_units(design, units, pop)
   st <- cluster_stage(design, pop)
   p1 <- st$pi1[cu$code]
   share <- st$m / st$sizes[cu$code]
   certain <- is_certain(p1)
-  list(stratum = ifelse(certain, paste0("(certain) ", cu$code), "(pps)"),
+  list(stratum = paste0(prefix, ifelse(certain, paste0("(certain) ", cu$code),
+                                       "(pps)")),
        fpc = ifelse(certain, pmin(share, 1), p1),
        fpc2 = ifelse(certain, 1, share),
        ids = stats::as.formula("~.cluster + .unit"), cluster = cu$psu,
@@ -461,13 +578,7 @@ spread_strata_parts <- function(design, dat, n_pop, fr, prefix, by_group) {
 #'
 #' @noRd
 weighted_strata_parts <- function(design, dat, pop, prefix, by_group) {
-  pps <- if (design$method == "poisson") {
-    refuse_nested(prefix, "a Poisson `rest`",
-                  "its sample size is random, which no stratum can express")
-    survey::poisson_sampling(dat$.prob)
-  } else {
-    "brewer"
-  }
+  pps <- if (design$method == "poisson") "poisson" else "brewer"
   st <- weighted_setup(design, pop)
   # Each frame row's stratum; rows the design drops count in none.
   code <- rep(NA_integer_, nrow(pop))
@@ -531,13 +642,16 @@ pps_parts <- function(dat, prefix, pps) {
 
 #' One primary sampling unit for each stratum of units taken with certainty
 #'
-#' Every other row is its own unit. The ids are unique across strata, so the
-#' units nest in their strata without `nest = TRUE`.
+#' Every other row keeps its unit in `unit`: its cluster's number, or the row
+#' itself when `unit` is `NULL`. The shared units are numbered past the
+#' others, so the ids are unique across strata and the units nest in their
+#' strata without `nest = TRUE`.
 #'
 #' @noRd
-shared_psu <- function(stratum, whole) {
-  psu <- seq_along(whole)
-  psu[whole] <- length(whole) + match(stratum[whole], unique(stratum[whole]))
+shared_psu <- function(stratum, whole, unit = NULL) {
+  psu <- unit %||% seq_along(whole)
+  last <- max(0L, psu[!whole])
+  psu[whole] <- last + match(stratum[whole], unique(stratum[whole]))
   psu
 }
 
