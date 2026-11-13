@@ -234,12 +234,9 @@ print.drawn_plan <- function(x, ...) {
 #' @seealso [draw()], [deff()]
 #' @export
 sample_summary <- function(sample) {
-  if (!is.data.frame(sample) || is.null(attr(sample, "drawn_design"))) {
-    stop("`sample` must be a data frame from draw(..., weights = TRUE).",
-         call. = FALSE)
-  }
-  design <- attr(sample, "drawn_design")
-  pop <- attr(sample, "drawn_population")
+  state <- drawn_state(sample)
+  design <- state$design
+  pop <- state$pop
   w <- sample$.weight
 
   grp_col <- switch(design_type(design),
@@ -261,7 +258,8 @@ sample_summary <- function(sample) {
     )
   }
 
-  pi_all <- tryCatch(exact_inclusion(design, pop), error = function(e) NULL)
+  pi_all <- state$pi_all %||%
+    tryCatch(exact_inclusion(design, pop), error = function(e) NULL)
 
   structure(list(
     design = design_type(design),

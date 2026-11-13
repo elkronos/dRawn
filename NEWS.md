@@ -1,3 +1,59 @@
+# drawn (development version)
+
+## Wrong answers, fixed
+
+* **Reordering, subsetting or binding a weighted sample gave wrong standard
+  errors.** The sample matched its rows to the frame by position, so a sort
+  moved each row onto another row's stratum, cluster or systematic position.
+  Sorting one stratified sample by `y` cut its standard error from 3,015 to
+  1,332, and `head()`, `s[cond, ]` and `rbind()` were estimated as if drawn.
+  Each row now finds its frame row through the new `.row` column, so
+  reordering by `[`, `dplyr::arrange()` or `data.table::setorder()` changes
+  nothing, and `ht_total()`, `ht_mean()`, `as_svydesign()` and
+  `sample_summary()` refuse a subset, a sample bound to another, or a join
+  that repeats rows.
+* **Editing the frame in place after drawing changed the sample's
+  estimates.** The sample kept a reference to the frame, so a data.table
+  `setkey()`, `setorder()` or `:=` on it afterwards changed the standard
+  error, interval, degrees of freedom and design effect of a sample already
+  drawn. In one example `setkey()` halved a cluster sample's standard error;
+  in another `setorder()` took a certainty sample's design effect from 1.04
+  to 171. `draw()` now stores a copy of the frame.
+* **A certainty design over a with-replacement `rest` was weighted anyway.**
+  `draw(weights = TRUE)` checked `replace` only on the outer design, so
+  `design_certainty()` over `design_simple(replace = TRUE)` or
+  `design_stratified(replace = TRUE)` returned duplicates weighted as distinct
+  units, and in one example a total a third too high. It is now refused like
+  any other with-replacement design. Drawing it without weights is still
+  allowed.
+
+## Refusals and clearer errors
+
+* `as_svydesign()` and `sample_summary()` give the same reason as
+  `ht_total()` when a sample has lost its design, and all three name the
+  steps that drop it (`merge()`, column selection, `subset()`, `transform()`,
+  `cbind()`) and how to add fieldwork columns instead.
+* The refusal of `weights = TRUE` for a with-replacement design, and
+  `?draw`, gave the bias as "about 15%". It is a factor of
+  `(n / N) / (1 - (1 - 1 / N)^n)`, about 5% at `n = N / 10`, 58% at `n = N`
+  and more beyond, applied within each stratum, and both now say so and give
+  the per-stratum Hansen-Hurwitz form.
+
+## Behaviour changes
+
+* `draw(weights = TRUE)` adds a third column, `.row`, after `.prob` and
+  `.weight`. It holds the row of `data` each sampled row came from. A frame
+  that already has a `.row` column is refused, as one with `.prob` or
+  `.weight` is.
+* A sample drawn from a data.table takes `:=` without the "Invalid
+  .internal.selfref" warning. data.table joins `Suggests`.
+
+## Handing off to survey
+
+* `as_svydesign()` hands `survey` a copy of the sample, so an in-place sort
+  of the sample afterwards no longer changes the survey design's standard
+  errors.
+
 # drawn 0.2.0
 
 An adversarial review of 0.1.0 found estimates that were wrong without saying

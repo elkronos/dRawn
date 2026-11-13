@@ -86,6 +86,7 @@ test_that("a bootstrap design is refused", {
   fake <- d[1:10, ]
   fake$.weight <- 1
   attr(fake, "drawn_design") <- design_bootstrap(n_replicates = 3)
+  attr(fake, "drawn_rows") <- 1:10
   attr(fake, "drawn_population") <- d
   expect_error(as_svydesign(fake), "no survey equivalent")
 })
@@ -239,4 +240,36 @@ test_that("deff() works whether or not survey's has masked it", {
   m <- ht_mean(draw(d, design_simple(n = 60), seed = 1, weights = TRUE),
                "spend")
   expect_equal(survey::deff(m), drawn::deff(m))
+})
+
+test_that("a reordered certainty sample hands survey the right strata", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_certainty("size", 900, design_simple(n = 40)), seed = 1,
+            weights = TRUE)
+  want <- ht_total(s, "spend")$se
+  r <- s[order(s$spend), ]
+  se <- as.numeric(survey::SE(survey::svytotal(~spend, as_svydesign(r))))
+  expect_equal(se, want)
+})
+
+test_that("survey gets its own copy of the sample", {
+  skip_if_not_installed("survey")
+  skip_if_not_installed("data.table")
+  d <- svy_pop()
+  s <- draw(d, design_stratified("site", n = 60), seed = 1, weights = TRUE)
+  des <- as_svydesign(s)
+  before <- as.numeric(survey::SE(survey::svytotal(~spend, des)))
+  data.table::setorderv(s, "spend")
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~spend, des))), before)
+})
+
+test_that("as_svydesign says what dropped a sample's design", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_stratified("site", n = 60), seed = 1, weights = TRUE)
+  merged <- merge(s, data.frame(id = s$id, resp = 1), by = "id")
+  expect_error(as_svydesign(merged), "does not carry its design")
+  expect_error(as_svydesign(merged), "merge()", fixed = TRUE)
+  expect_error(as_svydesign(s[s$site == "a", ]), "rows that were drawn")
 })

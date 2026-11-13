@@ -85,3 +85,57 @@ test_that("an empty or non-data-frame input is reported clearly", {
                "has no rows")
   expect_error(draw(1:10, design_simple(n = 1)), "must be a data frame")
 })
+
+test_that("weights = TRUE stores a copy of the frame and its probabilities", {
+  df <- make_df()
+  des <- design_stratified("site", n = 8)
+  s <- draw(df, des, seed = 1, weights = TRUE)
+  expect_identical(attr(s, "drawn_population"), df)
+  expect_equal(attr(s, "drawn_pi"), inclusion_prob(df, des))
+  expect_identical(attr(s, "drawn_rows"), s$.row)
+  expect_type(s$.row, "integer")
+  expect_equal(s$.prob, attr(s, "drawn_pi")[s$.row])
+})
+
+test_that("the frame copy keeps a tibble's and an sf frame's class", {
+  skip_if_not_installed("tibble")
+  tb <- tibble::as_tibble(make_df())
+  s <- draw(tb, design_simple(n = 5), seed = 1, weights = TRUE)
+  expect_identical(attr(s, "drawn_population"), tb)
+
+  skip_if_not_installed("sf")
+  pts <- sf::st_as_sf(make_df(), coords = c("lon", "lat"), crs = 4326,
+                      remove = FALSE)
+  s <- draw(pts, design_simple(n = 5), seed = 1, weights = TRUE)
+  expect_s3_class(s, "sf")
+  expect_identical(attr(s, "drawn_population"), pts)
+})
+
+test_that("an in-place edit of a data.table frame does not reach the sample", {
+  skip_if_not_installed("data.table")
+  dt <- data.table::as.data.table(make_df())
+  data.table::setkeyv(dt, "site")
+  s <- draw(dt, design_simple(n = 5), seed = 1, weights = TRUE)
+  pop <- attr(s, "drawn_population")
+  expect_s3_class(pop, "data.table")
+  expect_identical(data.table::key(pop), "site")
+  before <- pop$value
+  data.table::set(dt, j = "value", value = 0)
+  data.table::setorderv(dt, "id", order = -1L)
+  expect_identical(attr(s, "drawn_population")$value, before)
+})
+
+test_that("a sample drawn from a data.table takes := without a warning", {
+  skip_if_not_installed("data.table")
+  dt <- data.table::as.data.table(make_df())
+  for (w in c(FALSE, TRUE)) {
+    # `:=` works only where data.table is attached or imported, which the
+    # global environment counts as.
+    env <- new.env(parent = globalenv())
+    env$s <- draw(dt, design_stratified("site", n = 8), seed = 1, weights = w)
+    expect_s3_class(env$s, "data.table")
+    expect_no_warning(evalq(s[, obs := value * 2], env))
+    expect_equal(env$s$obs, env$s$value * 2)
+    if (w) expect_false(is.null(attr(env$s, "drawn_design")))
+  }
+})

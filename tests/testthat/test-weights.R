@@ -1,7 +1,8 @@
-test_that("weights = TRUE prepends .prob and .weight", {
+test_that("weights = TRUE prepends .prob, .weight and .row", {
   df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))
   s <- draw(df, design_stratified("site", n = 12), seed = 1, weights = TRUE)
-  expect_identical(names(s), c(".prob", ".weight", names(df)))
+  expect_identical(names(s), c(".prob", ".weight", ".row", names(df)))
+  expect_identical(s$.row, s$id)
   expect_equal(s$.weight, 1 / s$.prob)
   expect_true(all(s$.prob > 0 & s$.prob <= 1))
 })
@@ -26,8 +27,9 @@ test_that("weights are attached correctly even with duplicate rows", {
 test_that("with-replacement designs refuse weights rather than mislead", {
   # `.prob` for a with-replacement design is the chance of appearing at least
   # once, but the sample holds duplicates. Summing y * .weight over it counts
-  # every duplicate at the distinct-unit weight, which came out about 15% high
-  # -- and ht_total() inherited the same bias.
+  # every duplicate at the distinct-unit weight, high by a factor of
+  # (n / N) / (1 - (1 - 1 / N)^n) -- 169% at n = 25, N = 10 -- and ht_total()
+  # inherited the same bias.
   df <- data.frame(id = 1:10, y = 1:10)
   for (des in list(design_simple(n = 25, replace = TRUE),
                    design_stratified("g", n = 6, replace = TRUE))) {
@@ -59,6 +61,11 @@ test_that("weights = TRUE refuses to clobber existing columns", {
   df2 <- data.frame(id = 1:10, .drawn_row_id = 1)
   expect_error(draw(df2, design_simple(n = 3), seed = 1, weights = TRUE),
                "already has a column called")
+
+  df3 <- data.frame(id = 1:10, .row = 1, .weight = 2)
+  expect_error(draw(df3, design_simple(n = 3), seed = 1, weights = TRUE),
+               "already has `.weight` and `.row`; weights = TRUE would overwrite them",
+               fixed = TRUE)
 })
 
 test_that("weights = TRUE needs a data frame", {
@@ -102,5 +109,39 @@ test_that("Horvitz-Thompson totals are unbiased across designs", {
     }, numeric(1))
     se <- stats::sd(est) / sqrt(length(est))
     expect_lt(abs(mean(est) - true) / se, 4)
+  }
+})
+
+test_that("a certainty design over a with-replacement rest refuses to weight", {
+  # A certainty design has no `replace` of its own, so checking only the
+  # outer design let duplicates through: the total came out about a third
+  # high on a 240-row frame.
+  df <- data.frame(id = 1:40, g = rep(c("a", "b"), each = 20),
+                   w = c(rep(1, 36), rep(500, 4)), y = 1:40)
+  for (rest in list(design_simple(n = 30, replace = TRUE),
+                    design_stratified("g", n = 30, replace = TRUE),
+                    design_multistage("g", n_clusters = 2, n = 30,
+                                      replace = TRUE))) {
+    d <- design_certainty("w", 100, rest)
+    expect_error(draw(df, d, seed = 1, weights = TRUE),
+                 "certainty design over a with-replacement `rest`",
+                 fixed = TRUE)
+    # Without weights the draw is legitimate and still allowed.
+    expect_equal(nrow(draw(df, d, seed = 1)), 34)
+  }
+  s <- draw(df, design_certainty("w", 100, design_simple(n = 10)), seed = 1,
+            weights = TRUE)
+  expect_equal(nrow(s), 14)
+})
+
+test_that("the with-replacement refusal gives the bias factor, not one figure", {
+  df <- data.frame(id = 1:10, g = rep(c("a", "b"), each = 5))
+  for (des in list(design_simple(n = 25, replace = TRUE),
+                   design_stratified("g", n = 6, replace = TRUE))) {
+    msg <- tryCatch(draw(df, des, seed = 1, weights = TRUE),
+                    error = conditionMessage)
+    expect_match(msg, "(n / N) / (1 - (1 - 1 / N)^n)", fixed = TRUE)
+    expect_match(msg, "N_h / n_h * sum(y_h)", fixed = TRUE)
+    expect_no_match(msg, "15%\\s*high")
   }
 })

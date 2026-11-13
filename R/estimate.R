@@ -294,18 +294,7 @@ deff.drawn_mean <- function(object, quietly = FALSE, ...) object$deff
 #' Shared argument handling for the estimators
 #' @noRd
 ht_prepare <- function(sample, y, level, df = NULL) {
-  if (!is.data.frame(sample)) {
-    stop("`sample` must be a data frame returned by draw().", call. = FALSE)
-  }
-  design <- attr(sample, "drawn_design")
-  rows <- attr(sample, "drawn_rows")
-  pop <- attr(sample, "drawn_population")
-  if (is.null(design) || is.null(rows) || is.null(pop)) {
-    stop("`sample` does not carry its design. Draw it with ",
-         "draw(..., weights = TRUE), and estimate from that result before ",
-         "subsetting it -- use `by` for estimates within groups.",
-         call. = FALSE)
-  }
+  state <- drawn_state(sample)
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
       level <= 0 || level >= 1) {
     stop("`level` must be a single number strictly between 0 and 1.",
@@ -337,8 +326,8 @@ ht_prepare <- function(sample, y, level, df = NULL) {
   if (anyNA(yv)) {
     stop(sum(is.na(yv)), " value(s) of `y` are missing.", call. = FALSE)
   }
-  list(design = design, rows = rows, pop = pop, y = yv, pi = sample$.prob,
-       sample = sample, binary = all(yv == 0 | yv == 1))
+  list(design = state$design, rows = state$rows, pop = state$pop, y = yv,
+       pi = sample$.prob, sample = sample, binary = all(yv == 0 | yv == 1))
 }
 
 #' A confidence interval from an estimate, a variance and degrees of freedom

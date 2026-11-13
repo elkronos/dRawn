@@ -1,6 +1,6 @@
 Package: drawn
 Title: Design-Based Sampling with Known Inclusion Probabilities
-Version: 0.2.0
+Version: 0.2.0.9000
 Authors@R:
     person("Justin", "Chase", email = "jchase.msu@gmail.com",
            role = c("aut", "cre"))
@@ -35,6 +35,7 @@ Imports:
     stats,
     utils
 Suggests:
+    data.table,
     sampling,
     sf (>= 1.0.0),
     survey,

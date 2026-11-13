@@ -300,7 +300,7 @@ test_that("weights = TRUE keeps the input's class, not just its columns", {
     expect_s3_class(out, "tbl_df")
   }
   wt <- draw(tb, design_simple(n = 10), seed = 1, weights = TRUE)
-  expect_identical(names(wt), c(".prob", ".weight", "id", "site"))
+  expect_identical(names(wt), c(".prob", ".weight", ".row", "id", "site"))
 })
 
 test_that("simulation refuses the bootstrap instead of returning all ones", {

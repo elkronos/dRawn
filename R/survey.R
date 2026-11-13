@@ -84,20 +84,19 @@
 #' @export
 as_svydesign <- function(sample, ...) {
   require_suggested("survey", "handing a sample to the survey package")
-  if (!is.data.frame(sample) || is.null(attr(sample, "drawn_design"))) {
-    stop("`sample` must be a data frame from draw(..., weights = TRUE).",
-         call. = FALSE)
-  }
-  design <- attr(sample, "drawn_design")
-  pop <- attr(sample, "drawn_population")
+  state <- drawn_state(sample)
+  design <- state$design
+  pop <- state$pop
   if (design_type(design) == "bootstrap") {
     stop("A bootstrap design has no survey equivalent: it resamples the ",
          "sample rather than drawing a probability sample of a finite ",
          "population.", call. = FALSE)
   }
 
-  dat <- as.data.frame(sample)
-  parts <- survey_parts(design, dat, pop, rows = attr(sample, "drawn_rows"))
+  # `survey` keeps the data it is given by reference, so it gets its own copy.
+  # An in-place reorder of the sample afterwards would otherwise reach it.
+  dat <- snapshot_frame(as.data.frame(sample))
+  parts <- survey_parts(design, dat, pop, rows = state$rows)
   dat$.fpc <- parts$fpc
   fpc <- stats::as.formula("~.fpc")
   if (!is.null(parts$fpc2)) {

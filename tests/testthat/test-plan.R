@@ -210,3 +210,14 @@ test_that("the frame caps the analysable size, not just the draw", {
   expect_false(q$capped)
   expect_equal(q$n, ceiling(q$n_effective / 0.5))
 })
+
+test_that("sample_summary refuses a subset and explains a lost design", {
+  pop <- data.frame(id = 1:400,
+                    site = rep(c("a", "b", "c", "d"), times = c(200, 100, 60, 40)))
+  s <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  expect_equal(sample_summary(s[order(-s$id), ]), sample_summary(s))
+  expect_error(sample_summary(s[s$site == "a", ]), "rows that were drawn")
+  merged <- merge(s, data.frame(id = s$id, resp = 1), by = "id")
+  expect_error(sample_summary(merged), "does not carry its design")
+  expect_error(sample_summary(merged), "transform()", fixed = TRUE)
+})

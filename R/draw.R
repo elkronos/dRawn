@@ -4,7 +4,8 @@
 #'
 #' @section What you get back:
 #' A data frame with the same class and the same columns, in the same order, as
-#' `data`. Two designs qualify that:
+#' `data`. `weights = TRUE` prepends three columns (see "Design weights"), and
+#' two designs qualify it further:
 #'
 #' * [design_bootstrap()] prepends a `.replicate` column identifying which
 #'   replicate each row belongs to, so all replicates come back in one frame.
@@ -13,27 +14,44 @@
 #'   data frame, because there is nothing to make a data frame out of.
 #'
 #' @section Design weights:
-#' `weights = TRUE` prepends two columns: `.prob`, the probability that the row
-#' was included in the sample, and `.weight`, its reciprocal — the number of
-#' population units the row stands for. Those are what an unbiased estimate
-#' needs: a Horvitz-Thompson total is `sum(y * .weight)`.
+#' `weights = TRUE` prepends three columns: `.prob`, the probability that the
+#' row was included in the sample; `.weight`, its reciprocal, the number of
+#' population units the row stands for; and `.row`, the row of `data` it came
+#' from. `.prob` and `.weight` are what an unbiased estimate needs: a
+#' Horvitz-Thompson total is `sum(y * .weight)`.
 #'
 #' They come from the design applied to the population, not from the drawn
 #' sample, and some designs have no closed form for them. [inclusion_prob()]
 #' documents which, why, and what to do instead.
 #'
-#' The sample also carries its design, the frame rows it came from and the
-#' frame itself as attributes, which is what lets [ht_total()], [ht_mean()],
-#' [sample_summary()] and [as_svydesign()] work from the sample alone. Two
-#' consequences: estimate before subsetting (use `by` for groups), since
-#' `[` drops the attributes; and saving the sample with [saveRDS()] saves the
-#' frame with it.
+#' The sample also carries its design, the frame rows it came from and a copy
+#' of the frame as attributes, which is what lets [ht_total()], [ht_mean()],
+#' [sample_summary()] and [as_svydesign()] work from the sample alone.
+#'
+#' * The frame is copied when the sample is drawn. Later edits to `data`,
+#'   including data.table's in-place `:=`, `setorder()` and `setkey()`, do not
+#'   reach the sample, and saving the sample with [saveRDS()] saves the copy
+#'   with it.
+#' * Reordering the sample by `[`, `dplyr::arrange()` or
+#'   `data.table::setorder()` is safe, because each row finds its frame row
+#'   through `.row`.
+#' * Estimate from the whole sample and use `by` for groups. Row subsets
+#'   (`head()`, `s[cond, ]`, `dplyr::filter()`), [rbind()] of samples and joins
+#'   that repeat rows keep the attributes but no longer match the rows that
+#'   were drawn, and the functions above refuse them. [merge()], column
+#'   selection (`s[, cols]`), [subset()] and [transform()] drop the attributes
+#'   altogether. Add fieldwork results with `s$col <- value`.
 #'
 #' `weights = TRUE` is not available for a design that samples **with
-#' replacement**. `.prob` there is the probability of being selected *at least
-#' once*, but the sample holds duplicates, so `sum(y * .weight)` over it counts
-#' each duplicate at the distinct-unit weight and comes out around 15% high.
-#' Use `replace = FALSE`, or the Hansen-Hurwitz form `N / n * sum(y)`.
+#' replacement**, or a [design_certainty()] whose `rest` does. `.prob` there
+#' is the probability of being selected *at least once*, but the sample holds
+#' duplicates, so `sum(y * .weight)` over it counts each duplicate at the
+#' distinct-unit weight. The total comes out high by a factor of
+#' `(n / N) / (1 - (1 - 1 / N)^n)`, which is about 5% at `n = N / 10`, 15% at
+#' `n = 0.3 * N`, 58% at `n = N` and more beyond, applied within each stratum
+#' of a stratified design. Use `replace = FALSE`, or the Hansen-Hurwitz form
+#' `N / n * sum(y)`, summed over strata as `N_h / n_h * sum(y_h)` for a
+#' stratified design.
 #'
 #' @section Seeding:
 #' `seed` is saved, applied, and unwound: `.Random.seed` is restored on exit, so
@@ -44,7 +62,8 @@
 #'   connection, or a zero-argument generator function.
 #' @param design A design built by one of the [design_simple()] family.
 #' @param seed Optional seed, applied only for this draw.
-#' @param weights Attach `.prob` and `.weight` columns. See "Design weights".
+#' @param weights Attach `.prob`, `.weight` and `.row` columns. See "Design
+#'   weights".
 #'
 #' @return The sampled rows. See "What you get back".
 #'
@@ -75,16 +94,22 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   check_flag(weights, "weights")
 
   if (!isTRUE(weights)) {
-    return(with_seed(seed, draw_design(design, data)))
+    return(table_ready(with_seed(seed, draw_design(design, data))))
   }
 
   if (!is.data.frame(data)) {
     stop("`weights = TRUE` needs a data frame, not a ", class(data)[1], ".",
          call. = FALSE)
   }
-  clash <- intersect(c(".prob", ".weight"), names(data))
+  added <- c(".prob", ".weight", ".row")
+  clash <- intersect(added, names(data))
   if (length(clash) > 0L) {
-    stop("`data` already has ", paste0("`", clash, "`", collapse = " and "),
+    shown <- paste0("`", clash, "`")
+    stop("`data` already has ",
+         if (length(shown) > 1L) {
+           paste(paste(shown[-length(shown)], collapse = ", "), "and",
+                 shown[length(shown)])
+         } else shown,
          "; weights = TRUE would overwrite ",
          if (length(clash) == 1L) "it" else "them", ".", call. = FALSE)
   }
@@ -94,12 +119,20 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
          format_bad(dup), ". Rename them before drawing with weights, which ",
          "cannot tell them apart.", call. = FALSE)
   }
-  if (isTRUE(design$replace)) {
-    stop("`weights = TRUE` is not available for a with-replacement design.\n",
+  if (samples_with_replacement(design)) {
+    stop("`weights = TRUE` is not available for ",
+         if (inherits(design, "drawn_design_certainty")) {
+           "a certainty design over a with-replacement `rest`"
+         } else {
+           "a with-replacement design"
+         }, ".\n",
          "`.prob` would be the chance of being selected *at least once*, but ",
          "the sample holds\nduplicates, so summing `y * .weight` over it ",
-         "double-counts and comes out roughly 15%\nhigh. Use replace = FALSE, ",
-         "or estimate with the Hansen-Hurwitz form, N / n * sum(y).",
+         "overstates the total by a factor of\n(n / N) / (1 - (1 - 1 / N)^n), ",
+         "about 5% at n = N / 10, 15% at n = 0.3 * N, 58% at\nn = N and more ",
+         "beyond, within each stratum of a stratified design. Use\n",
+         "replace = FALSE, or estimate with the Hansen-Hurwitz form, ",
+         "N / n * sum(y), summed\nover strata as N_h / n_h * sum(y_h).",
          call. = FALSE)
   }
 
@@ -119,7 +152,7 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   tagged[[key]] <- seq_len(nrow(data))
 
   out <- with_seed(seed, draw_design(design, tagged))
-  pos <- out[[key]]
+  pos <- as.integer(out[[key]])
   out[[key]] <- NULL
 
   p <- p_all[pos]
@@ -132,14 +165,47 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
   out <- reindex(out, seq_len(nrow(out)))
   out[[".prob"]] <- p
   out[[".weight"]] <- w
-  out <- out[, c(".prob", ".weight", setdiff(names(out), c(".prob", ".weight"))),
-             drop = FALSE]
+  out[[".row"]] <- pos
+  out <- out[, c(added, setdiff(names(out), added)), drop = FALSE]
 
-  # Carry the design and the source rows so ht_total() can recover the joint
-  # inclusion probabilities without being handed the population again.
+  # Carry the design, the source rows, the frame and its probabilities so
+  # ht_total() can recover the joint inclusion probabilities without being
+  # handed the population again. The frame is a copy, because a data.table
+  # edited in place after the draw would otherwise change the sample's
+  # estimates.
   attr(out, "drawn_design") <- design
-  attr(out, "drawn_rows") <- pos
-  attr(out, "drawn_population") <- data
+  # `.row` holds `pos` itself, so the attribute gets its own copy; an
+  # in-place data.table::setorder() of the sample would reorder both.
+  attr(out, "drawn_rows") <- copy_column(pos)
+  attr(out, "drawn_population") <- snapshot_frame(data)
+  attr(out, "drawn_pi") <- p_all
+  table_ready(out)
+}
+
+#' Does a design put the same row in a sample more than once?
+#'
+#' A certainty design has no `replace` of its own; its `rest` decides.
+#'
+#' @noRd
+samples_with_replacement <- function(design) {
+  isTRUE(design$replace) ||
+    (inherits(design, "drawn_design_certainty") &&
+       samples_with_replacement(design$rest))
+}
+
+#' Let `:=` work on a data.table built by base subsetting
+#'
+#' Base `[` and `[[<-` return a data.table without the spare column slots
+#' data.table allocates, so the first `:=` on it warns about an invalid
+#' self-reference and copies. setalloccol() restores the slots. It runs last,
+#' because `attr<-` would copy the table again.
+#'
+#' @noRd
+table_ready <- function(out) {
+  if (inherits(out, "data.table") &&
+      requireNamespace("data.table", quietly = TRUE)) {
+    out <- data.table::setalloccol(out)
+  }
   out
 }
 

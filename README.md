@@ -94,7 +94,7 @@ tapply(inclusion_prob(invoices, plan), invoices$site, unique)
 ```
 
 **3. Draw,** with `weights = TRUE` to attach each row’s inclusion
-probability (`.prob`) and design weight (`.weight`).
+probability (`.prob`), design weight (`.weight`) and frame row (`.row`).
 
 **4. Check what you got.**
 

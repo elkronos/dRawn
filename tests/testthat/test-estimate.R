@@ -207,3 +207,112 @@ test_that("an empty sample is refused with a reason, not a crash", {
   expect_error(ht_mean(s, "y"), "no rows")
   expect_error(ht_total(s, "y"), "no rows")
 })
+
+# ---- a sample's rows are matched to the frame through `.row` ----------------
+
+reorder_designs <- function() {
+  list(
+    stratified = design_stratified("site", n = 30),
+    systematic = design_systematic(interval = 10),
+    certainty  = design_certainty("w", 440, design_stratified("site", n = 20))
+  )
+}
+
+estimate_summary <- function(s) {
+  t <- ht_total(s, "y")
+  m <- ht_mean(s, "y")
+  b <- ht_total(s, "y", by = "site")
+  list(total = t$total, se = t$se, df = t$df, deff = t$deff, method = t$method,
+       mean_se = m$se, by_se = b$se[order(b$site)])
+}
+
+test_that("reordering a weighted sample leaves every estimate unchanged", {
+  # The design's rows were recovered by position, so sorting a sample moved
+  # each row onto another row's stratum, cluster or systematic position:
+  # a stratified standard error fell from 3014 to 1332 on a sort by `y`.
+  d <- est_pop()
+  for (des in reorder_designs()) {
+    s <- draw(d, des, seed = 3, weights = TRUE)
+    want <- estimate_summary(s)
+    expect_equal(estimate_summary(s[order(s$y), ]), want)
+    expect_equal(estimate_summary(s[rev(seq_len(nrow(s))), ]), want)
+  }
+})
+
+test_that("an in-place data.table sort of a sample changes nothing", {
+  skip_if_not_installed("data.table")
+  d <- est_pop()
+  for (des in reorder_designs()) {
+    for (s in list(draw(d, des, seed = 3, weights = TRUE),
+                   draw(data.table::as.data.table(d), des, seed = 3,
+                        weights = TRUE))) {
+      want <- estimate_summary(s)
+      drawn_order <- attr(s, "drawn_rows")
+      data.table::setorderv(s, "y")
+      expect_false(is.unsorted(s$y))
+      expect_identical(attr(s, "drawn_rows"), drawn_order)
+      expect_equal(estimate_summary(s), want)
+    }
+  }
+})
+
+test_that("an in-place data.table edit of the frame does not reach the sample", {
+  # The sample held the caller's frame by reference: setkey() on it after
+  # drawing doubled a cluster design's standard error.
+  skip_if_not_installed("data.table")
+  dt <- data.table::as.data.table(est_pop())
+  for (des in list(design_cluster("cl", n_clusters = 6),
+                   design_certainty("w", 440, design_simple(n = 20)))) {
+    s <- draw(dt, des, seed = 3, weights = TRUE)
+    want <- estimate_summary(s)
+    data.table::setkeyv(dt, "w")
+    data.table::set(dt, j = "site", value = "z")
+    expect_equal(estimate_summary(s), want)
+    data.table::setorderv(dt, "id")
+  }
+})
+
+test_that("a subset, a bound or a merged sample is refused, not misread", {
+  d <- est_pop()
+  s <- draw(d, design_stratified("site", n = 30), seed = 3, weights = TRUE)
+  expect_error(ht_total(head(s), "y"), "`sample` has 6 of the 30 rows",
+               fixed = TRUE)
+  expect_error(ht_total(s[s$site == "a", ], "y"), "use `by` for groups",
+               fixed = TRUE)
+  expect_error(ht_mean(rbind(s, s), "y"), "more than once")
+  other <- draw(d, design_stratified("site", n = 30), seed = 4, weights = TRUE)
+  other <- other[!other$.row %in% s$.row, ]
+  expect_error(ht_total(rbind(s, other), "y"), "that were not in the sample")
+
+  merged <- merge(s, data.frame(id = s$id, resp = 1), by = "id")
+  expect_error(ht_total(merged, "y"), "does not carry its design")
+  expect_error(ht_total(merged, "y"), "merge()", fixed = TRUE)
+  expect_error(ht_total(s[, c("y", "site")], "y"), "column selection")
+})
+
+test_that("a damaged `.row` column is refused", {
+  d <- est_pop()
+  s <- draw(d, design_simple(n = 20), seed = 3, weights = TRUE)
+  gone <- s
+  gone$.row <- NULL
+  expect_error(ht_total(gone, "y"), "has no `.row` column", fixed = TRUE)
+  far <- s
+  far$.row[1] <- 1000L
+  expect_error(ht_total(far, "y"), "not rows of the 300-row frame")
+  half <- s
+  half$.row <- half$.row + 0.5
+  expect_error(ht_total(half, "y"), "not rows of the 300-row frame")
+  chr <- s
+  chr$.row <- as.character(chr$.row)
+  expect_error(ht_total(chr, "y"), "character `.row` column", fixed = TRUE)
+})
+
+test_that("a sample saved by drawn 0.2.0 still estimates, by position", {
+  d <- est_pop()
+  s <- draw(d, design_stratified("site", n = 30), seed = 3, weights = TRUE)
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  expect_equal(ht_total(old, "y")$se, ht_total(s, "y")$se)
+  expect_error(ht_total(old[1:10, ], "y"), "has 10 rows but was drawn with 30")
+})

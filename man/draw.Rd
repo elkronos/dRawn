@@ -14,7 +14,8 @@ connection, or a zero-argument generator function.}
 
 \item{seed}{Optional seed, applied only for this draw.}
 
-\item{weights}{Attach \code{.prob} and \code{.weight} columns. See "Design weights".}
+\item{weights}{Attach \code{.prob}, \code{.weight} and \code{.row} columns. See "Design
+weights".}
 }
 \value{
 The sampled rows. See "What you get back".
@@ -25,7 +26,8 @@ Applies a sampling design to data.
 \section{What you get back}{
 
 A data frame with the same class and the same columns, in the same order, as
-\code{data}. Two designs qualify that:
+\code{data}. \code{weights = TRUE} prepends three columns (see "Design weights"), and
+two designs qualify it further:
 \itemize{
 \item \code{\link[=design_bootstrap]{design_bootstrap()}} prepends a \code{.replicate} column identifying which
 replicate each row belongs to, so all replicates come back in one frame.
@@ -37,27 +39,45 @@ data frame, because there is nothing to make a data frame out of.
 
 \section{Design weights}{
 
-\code{weights = TRUE} prepends two columns: \code{.prob}, the probability that the row
-was included in the sample, and \code{.weight}, its reciprocal — the number of
-population units the row stands for. Those are what an unbiased estimate
-needs: a Horvitz-Thompson total is \code{sum(y * .weight)}.
+\code{weights = TRUE} prepends three columns: \code{.prob}, the probability that the
+row was included in the sample; \code{.weight}, its reciprocal, the number of
+population units the row stands for; and \code{.row}, the row of \code{data} it came
+from. \code{.prob} and \code{.weight} are what an unbiased estimate needs: a
+Horvitz-Thompson total is \code{sum(y * .weight)}.
 
 They come from the design applied to the population, not from the drawn
 sample, and some designs have no closed form for them. \code{\link[=inclusion_prob]{inclusion_prob()}}
 documents which, why, and what to do instead.
 
-The sample also carries its design, the frame rows it came from and the
-frame itself as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
-\code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone. Two
-consequences: estimate before subsetting (use \code{by} for groups), since
-\code{[} drops the attributes; and saving the sample with \code{\link[=saveRDS]{saveRDS()}} saves the
-frame with it.
+The sample also carries its design, the frame rows it came from and a copy
+of the frame as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
+\code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone.
+\itemize{
+\item The frame is copied when the sample is drawn. Later edits to \code{data},
+including data.table's in-place \verb{:=}, \code{setorder()} and \code{setkey()}, do not
+reach the sample, and saving the sample with \code{\link[=saveRDS]{saveRDS()}} saves the copy
+with it.
+\item Reordering the sample by \code{[}, \code{dplyr::arrange()} or
+\code{data.table::setorder()} is safe, because each row finds its frame row
+through \code{.row}.
+\item Estimate from the whole sample and use \code{by} for groups. Row subsets
+(\code{head()}, \code{s[cond, ]}, \code{dplyr::filter()}), \code{\link[=rbind]{rbind()}} of samples and joins
+that repeat rows keep the attributes but no longer match the rows that
+were drawn, and the functions above refuse them. \code{\link[=merge]{merge()}}, column
+selection (\code{s[, cols]}), \code{\link[=subset]{subset()}} and \code{\link[=transform]{transform()}} drop the attributes
+altogether. Add fieldwork results with \code{s$col <- value}.
+}
 
 \code{weights = TRUE} is not available for a design that samples \strong{with
-replacement}. \code{.prob} there is the probability of being selected \emph{at least
-once}, but the sample holds duplicates, so \code{sum(y * .weight)} over it counts
-each duplicate at the distinct-unit weight and comes out around 15\% high.
-Use \code{replace = FALSE}, or the Hansen-Hurwitz form \code{N / n * sum(y)}.
+replacement}, or a \code{\link[=design_certainty]{design_certainty()}} whose \code{rest} does. \code{.prob} there
+is the probability of being selected \emph{at least once}, but the sample holds
+duplicates, so \code{sum(y * .weight)} over it counts each duplicate at the
+distinct-unit weight. The total comes out high by a factor of
+\code{(n / N) / (1 - (1 - 1 / N)^n)}, which is about 5\% at \code{n = N / 10}, 15\% at
+\code{n = 0.3 * N}, 58\% at \code{n = N} and more beyond, applied within each stratum
+of a stratified design. Use \code{replace = FALSE}, or the Hansen-Hurwitz form
+\code{N / n * sum(y)}, summed over strata as \code{N_h / n_h * sum(y_h)} for a
+stratified design.
 }
 
 \section{Seeding}{
