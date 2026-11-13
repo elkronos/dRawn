@@ -17,14 +17,24 @@
 #'
 #' @noRd
 cluster_codes <- function(labels) {
-  v <- if (is.factor(labels)) {
+  v <- cluster_values(labels)
+  match(v, unique(v[!is.na(v)]))
+}
+
+#' The values cluster labels are compared on
+#'
+#' A factor's level numbers, the underlying numbers of a date or time, and
+#' any other vector as it is.
+#'
+#' @noRd
+cluster_values <- function(labels) {
+  if (is.factor(labels)) {
     as.integer(labels)
   } else if (is.object(labels) && is.atomic(labels)) {
     unclass(labels)
   } else {
     labels
   }
-  match(v, unique(v[!is.na(v)]))
 }
 
 #' Validate the cluster column and select clusters at random
@@ -34,6 +44,10 @@ cluster_codes <- function(labels) {
 #' `sample(unique(labels), n_clusters)` would give. Sampling the numbers also
 #' keeps `sample()` from reading a single numeric cluster id as a range. The
 #' rows of the chosen clusters are found in one pass over the frame.
+#'
+#' A multistage design with `size` selects the numbers by systematic PPS
+#' over the clusters' stage-one probabilities in `cl$pi1`, with clusters at
+#' probability 1 always among them.
 #'
 #' @param design A cluster or multistage design.
 #' @param data The population.
@@ -49,7 +63,11 @@ select_clusters <- function(design, data, cl = cluster_setup(design, data)) {
   labels <- cl$labels[cl$present]
   k <- cl$total
 
-  chosen <- sample.int(k, size = design$n_clusters)
+  chosen <- if (is.null(cl$pi1)) {
+    sample.int(k, size = design$n_clusters)
+  } else {
+    systematic_pps(cl$pi1)
+  }
   pos <- match(code, chosen)
   hit <- which(!is.na(pos))
   idx <- split(hit, structure(pos[hit],
@@ -66,17 +84,30 @@ select_clusters <- function(design, data, cl = cluster_setup(design, data)) {
 #' Shared by the two designs' probabilities, variances and hand-off to
 #' `survey`. `code` is each row's cluster from `cluster_codes()`, `NA` where
 #' the label is missing, and `total` the number of clusters, the `A` in the
-#' stage-one selection probability `n_clusters / A`.
+#' stage-one selection probability `n_clusters / A`. `values` holds the
+#' value each code stands for, as `cluster_values()` gives it, so rows of
+#' another frame can be coded alike.
+#'
+#' A multistage design with `size` cannot place a row whose size is missing,
+#' so such a row has no code, like a row with no label, and the clusters are
+#' numbered over the rows left.
 #'
 #' @noRd
 count_clusters <- function(design, data) {
-  validate_data(data, required_columns = design$clusters)
+  validate_data(data, required_columns = c(design$clusters, design$size))
   check_key_columns(data, design$clusters, "clusters")
   labels <- data[[design$clusters]]
-  code <- cluster_codes(labels)
+  v <- cluster_values(labels)
+  if (!is.null(design$size)) {
+    check_key_columns(data, design$size, "size")
+    v[is.na(data[[design$size]])] <- NA
+  }
+  values <- unique(v[!is.na(v)])
+  code <- match(v, values)
   present <- !is.na(code)
   list(labels = labels, code = code, present = present,
-       total = if (any(present)) max(code[present]) else 0L)
+       total = if (any(present)) max(code[present]) else 0L,
+       values = values)
 }
 
 #' Refuse a cluster selection the frame cannot supply
@@ -89,9 +120,15 @@ count_clusters <- function(design, data) {
 #' @noRd
 cluster_setup <- function(design, data) {
   cl <- count_clusters(design, data)
-  check_na_policy(!cl$present, design$na_rm, "a missing cluster label")
+  unlabelled <- is.na(cl$labels)
+  check_na_policy(unlabelled, design$na_rm, "a missing cluster label")
+  if (!is.null(design$size)) {
+    check_na_policy(!cl$present & !unlabelled, design$na_rm,
+                    paste0("a missing size in `", design$size, "`"))
+  }
   if (!any(cl$present)) {
-    stop("Every row has a missing cluster label.", call. = FALSE)
+    stop("Every row has a missing cluster label",
+         if (!is.null(design$size)) " or size", ".", call. = FALSE)
   }
   if (design$n_clusters > cl$total) {
     stop("`n_clusters` (", design$n_clusters, ") exceeds the ", cl$total,

@@ -680,6 +680,36 @@
   `design_systematic()` with `interval` or `n` there, since the allocation
   sets each stratum's size. `design_systematic()` with neither is now built
   for this role, and refused if drawn on its own.
+* `design_weighted()` takes `strata` and `allocation`, for sampling in
+  proportion to size within strata. `n` is split over the strata by
+  `"proportional"` or `"equal"` allocation over their rows, or by a count
+  for each stratum, as `design_stratified()` splits it, and each stratum is
+  then sampled by `"systematic"` or `"poisson"` on its own, with rows past
+  certainty taken with certainty within it. `"successive"` is refused with
+  `strata`. `inclusion_prob()` gives `n_h * p_i` within each stratum,
+  `ht_total()` and `ht_mean()` add up Deville's approximation over the
+  strata for `"systematic"` and count degrees of freedom as for a
+  stratified sample, a stratum with one sampled row below certainty is
+  refused by name, and the jackknife deletes within strata.
+  `as_svydesign()` hands `survey` the strata, with Brewer's approximation
+  within each, and `allocation_table()` and `sample_summary()` list them.
+  Samples drawn stratum by stratum and bound with `rbind()` were the only
+  way before, and the estimators refuse them.
+* `design_multistage()` takes `size`, a column holding each cluster's size
+  measure, to select clusters with probability proportional to it by
+  systematic PPS, taking a cluster with certainty where `n_clusters` times
+  its share passes 1, and then the same `n / n_clusters` rows from each by
+  simple random sampling. A row's inclusion probability is its cluster's
+  stage-one probability times `m / N_i`, so a measure equal to the
+  cluster's row count gives every row `n / N`. `ht_total()` and `ht_mean()`
+  use Deville's approximation over the estimated totals of the clusters
+  below certainty plus the variance within the selected clusters, which is
+  the exact two-stage estimator when every cluster has the same chance, and
+  count each cluster taken with certainty as a stratum of its rows.
+  `as_svydesign()` hands `survey` the two stages with Brewer's
+  approximation at the first. A measure that differs within a cluster,
+  `allocation = "proportional"` and an `n` that `n_clusters` does not
+  divide are refused.
 
 ## Speed and memory
 

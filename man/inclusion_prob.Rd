@@ -58,8 +58,8 @@ Most do, and those are computed exactly:
 \code{\link[=design_stratified]{design_stratified()}}  \tab \code{n_h / N_h} within each stratum \cr
 \code{\link[=design_systematic]{design_systematic()}}  \tab \code{1 / interval} with a random \code{start}, or \code{n / N} with \code{n}, for every row walked, exactly \cr
 \code{\link[=design_cluster]{design_cluster()}}     \tab \code{n_clusters / N_clusters} \cr
-\code{\link[=design_multistage]{design_multistage()}}  \tab \code{(n_clusters / N_clusters) * (n_h / N_h)}, when the per-cluster take \code{n_h} is constant; with replacement, \code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)} \cr
-\code{\link[=design_weighted]{design_weighted()}}    \tab \code{n * p_i} for the \code{"systematic"} and \code{"poisson"} methods \cr
+\code{\link[=design_multistage]{design_multistage()}}  \tab \code{(n_clusters / N_clusters) * (n_h / N_h)}, when the per-cluster take \code{n_h} is constant; with replacement, \code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)}; with \code{size}, the cluster's \code{pi_h = n_clusters * M_h / sum(M)} in place of \code{n_clusters / N_clusters} \cr
+\code{\link[=design_weighted]{design_weighted()}}    \tab \code{n * p_i} for the \code{"systematic"} and \code{"poisson"} methods; with \code{strata}, \code{n_h * p_i} within each stratum \cr
 \code{\link[=design_certainty]{design_certainty()}}   \tab \code{1} above the threshold, \code{rest}'s own below it \cr
 \code{\link[=design_reservoir]{design_reservoir()}}   \tab \code{n / min(N, max_items)}, and \code{0} past \code{max_items} \cr
 \code{\link[=design_temporal]{design_temporal()}}    \tab \code{per_interval / N_bucket} within each interval \cr

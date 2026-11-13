@@ -13,8 +13,10 @@
 #'   \item{[design_systematic()]}{Every *k*-th row, or `n` rows at an even
 #'     step, from one random start or several.}
 #'   \item{[design_cluster()]}{Whole clusters.}
-#'   \item{[design_multistage()]}{Clusters, then rows within them.}
-#'   \item{[design_weighted()]}{Rows with probability governed by a weight.}
+#'   \item{[design_multistage()]}{Clusters, at random or in proportion to
+#'     size, then rows within them.}
+#'   \item{[design_weighted()]}{Rows with probability governed by a weight,
+#'     within strata if asked.}
 #'   \item{[design_certainty()]}{Everything above a threshold, plus a sample of
 #'     the rest.}
 #'   \item{[design_reservoir()]}{A fixed-size sample from a stream.}
@@ -34,8 +36,9 @@
 #'   follows from which clusters were selected.
 #' * `allocation` always says how a total is split across groups:
 #'   `"proportional"`, `"equal"` or, in [design_stratified()] only,
-#'   `"neyman"`. [design_stratified()] and [design_spread()] also take the
-#'   count for each stratum in place of a rule, and `n` is then their total.
+#'   `"neyman"`. [design_stratified()], [design_spread()] and
+#'   [design_weighted()] also take the count for each stratum in place of a
+#'   rule, and `n` is then their total.
 #'   Splitting is exact: the largest-remainder method is used, so a request
 #'   for 60 rows returns 60 rather than drifting with per-group rounding.
 #' * `na_rm` always decides whether rows with a missing key are dropped or raise
@@ -95,9 +98,12 @@
 #'     `min_per_stratum` if rare groups must appear.}
 #'   \item{Fieldwork cost matters more than efficiency}{[design_cluster()] or
 #'     [design_multistage()] — visiting five sites is cheaper than visiting
-#'     fifty, at the cost of precision.}
+#'     fifty, at the cost of precision. With `size`, [design_multistage()]
+#'     selects the sites in proportion to size and takes the same number of
+#'     rows from each.}
 #'   \item{Large units matter more}{[design_weighted()], with
-#'     `method = "systematic"` or `"poisson"` if you intend to estimate.}
+#'     `method = "systematic"` or `"poisson"` if you intend to estimate, and
+#'     `strata` to sample in proportion to size within each stratum.}
 #'   \item{A few units dominate the total}{[design_certainty()] — take those
 #'     with certainty and sample the tail, which removes them from the variance
 #'     entirely.}

@@ -9,8 +9,9 @@ allocation_table(data, design)
 \arguments{
 \item{data}{A data frame.}
 
-\item{design}{\code{\link[=design_stratified]{design_stratified()}}, \code{\link[=design_spread]{design_spread()}} with \code{strata}, or
-\code{\link[=design_certainty]{design_certainty()}} whose \code{rest} is one of these. For the last the
+\item{design}{\code{\link[=design_stratified]{design_stratified()}}, \code{\link[=design_spread]{design_spread()}} or
+\code{\link[=design_weighted]{design_weighted()}} with \code{strata}, or \code{\link[=design_certainty]{design_certainty()}} whose \code{rest}
+is one of these. For the last the
 table describes \code{rest} over the rows below the threshold, and the rows
 at or above it, which are taken with certainty, are not counted in any
 stratum. Other designs are refused.}
@@ -22,9 +23,10 @@ A data frame with one row per stratum of \code{data}, in key order (see
 \item{\code{N}}{Rows in the stratum.}
 \item{\code{n}}{Rows drawn from it.}
 \item{\code{prob}}{The inclusion probability of each of its rows, as
-\code{\link[=inclusion_prob]{inclusion_prob()}} gives it. \code{NA} for \code{\link[=design_spread]{design_spread()}} with \code{size},
-whose rows in one stratum have different probabilities; there
-\code{\link[=inclusion_prob]{inclusion_prob()}} gives them row by row.}
+\code{\link[=inclusion_prob]{inclusion_prob()}} gives it. \code{NA} for \code{\link[=design_spread]{design_spread()}} with \code{size}
+and for \code{\link[=design_weighted]{design_weighted()}}, whose rows in one stratum have
+different probabilities; there \code{\link[=inclusion_prob]{inclusion_prob()}} gives them row by
+row.}
 \item{\code{sd}}{Under Neyman allocation, the stratum's standard deviation
 that the split used: of the \code{allocation_by} column within the
 stratum, or as given. \code{NA} under other allocations.}

@@ -38,9 +38,10 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_temporal]{design_temporal()}} \tab \code{strata} from the sampling intervals, \code{fpc} each interval's size \tab identical \cr
 \code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} a \code{.cluster} column numbering the clusters, \code{fpc} the number of clusters \tab identical \cr
 \code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
-\code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size \tab identical \cr
+\code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size; with \code{strata}, the strata too, which change only the degrees of freedom \tab identical \cr
 \code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as \code{rest} \cr
-\code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab close for totals, less so for means \cr
+\code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities; with \code{strata}, \code{strata} from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
+\code{\link[=design_multistage]{design_multistage()}} with \code{size} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{pps = "brewer"} with each cluster's stage-one probability and \code{m / N_i} at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units \tab close \cr
 \code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size}; with \code{strata}, \code{strata} from the strata columns and \code{fpc} each stratum's size, or Brewer's within them \tab \strong{\code{survey}'s is larger} \cr
 \code{\link[=design_systematic]{design_systematic()}} with \code{n_starts} of 2 or more \tab \code{ids} a \code{.cluster} column numbering the replicates, \code{fpc} the \code{n_starts * interval} possible starts \tab identical \cr
 \code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the rows the walk can reach \tab \strong{differ} \cr
@@ -60,7 +61,16 @@ typically by 1 to 4 percent and by up to 7 percent at a sampling fraction
 of one half. On a frame whose units below certainty had probabilities
 from 0.05 to 0.95, with about 17 of them in each sample, totals differed
 by 2 percent typically and by up to 8 percent. The degrees of freedom
-agree.
+agree. With \code{strata}, each stratum is handed over the same way.
+\code{\link[=design_multistage]{design_multistage()}} with \code{size} meets the same two approximations at
+the first stage, while the variance within the selected clusters is the
+same in both packages. Where the clusters below certainty had
+stage-one probabilities of 0.12 to 0.41, the standard errors of totals
+agreed within 0.3 percent over 200 samples. With a cluster at 0.93 among
+them, \code{survey}'s came out 0.97 to 1.48 times this package's: Brewer's
+approximation centres on the plain mean of the clusters' totals over
+their probabilities, which that cluster pulls, where Deville's weights
+each by \code{1 - pi}.
 \item \strong{Spread.} \code{survey} has no estimator for a spatially balanced sample, so
 it is told only the first-order design and computes a variance that
 ignores the spreading. That errs conservative, often substantially.

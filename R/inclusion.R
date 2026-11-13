@@ -18,8 +18,8 @@
 #'   [design_stratified()]  \tab `n_h / N_h` within each stratum \cr
 #'   [design_systematic()]  \tab `1 / interval` with a random `start`, or `n / N` with `n`, for every row walked, exactly \cr
 #'   [design_cluster()]     \tab `n_clusters / N_clusters` \cr
-#'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)` \cr
-#'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods \cr
+#'   [design_multistage()]  \tab `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)`; with `size`, the cluster's `pi_h = n_clusters * M_h / sum(M)` in place of `n_clusters / N_clusters` \cr
+#'   [design_weighted()]    \tab `n * p_i` for the `"systematic"` and `"poisson"` methods; with `strata`, `n_h * p_i` within each stratum \cr
 #'   [design_certainty()]   \tab `1` above the threshold, `rest`'s own below it \cr
 #'   [design_reservoir()]   \tab `n / min(N, max_items)`, and `0` past `max_items` \cr
 #'   [design_temporal()]    \tab `per_interval / N_bucket` within each interval \cr
@@ -154,10 +154,11 @@ sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
 #'   `which(inclusion_prob(data, design) == 1)`. Its attribute `threshold` is
 #'   the smallest size among them, or `NA` when there are none. Of the rows
 #'   the design can select, those whose size is at least `threshold` are the
-#'   set. [design_spread()] with `strata` puts the cut-off in each stratum
-#'   at its own size, so there `threshold` is `NA`. For [design_weighted()],
-#'   [design_certainty()] with that `threshold` on the weights column
-#'   therefore takes the same rows with certainty, and a `rest` of the same
+#'   set. With `strata`, [design_weighted()] and [design_spread()] put the
+#'   cut-off in each stratum at its own size, so there `threshold` is `NA`.
+#'   For [design_weighted()] without `strata`, [design_certainty()] with
+#'   that `threshold` on the weights column therefore takes the same rows
+#'   with certainty, and a `rest` of the same
 #'   method with `n` reduced by the number of rows in the set gives the other
 #'   rows the same probabilities too.
 #'

@@ -175,3 +175,136 @@ test_that("the jackknife fallback says when it inflates the between-cluster part
   expect_match(all, "Every cluster is selected", fixed = TRUE)
   expect_match(all, "design_stratified()", fixed = TRUE)
 })
+
+# ---- clusters in proportion to size -----------------------------------------
+
+pps_clusters <- function() {
+  sizes <- c(40, 6, 8, 10, 6, 8, 10, 12)
+  d <- data.frame(cl = rep(sprintf("k%d", 1:8), times = sizes))
+  d$rows <- rep(sizes, times = sizes)
+  d$y <- rep(c(50, 20, 35, 40, 25, 30, 45, 60), times = sizes) +
+    seq_len(nrow(d)) %% 5 * 3
+  d
+}
+
+test_that("size selects clusters in proportion to it, certain ones always", {
+  d <- pps_clusters()
+  des <- design_multistage("cl", n_clusters = 3, n = 6, size = "rows")
+  p <- inclusion_prob(d, des)
+  # k1 holds 40 of 100 rows: 3 * 0.4 passes 1, so it is certain, and the
+  # other two selections are spread over the 60 rows left.
+  first <- c(1, 2 * c(6, 8, 10, 6, 8, 10, 12) / 60)
+  expect_equal(p, rep(first * 2 / c(40, 6, 8, 10, 6, 8, 10, 12),
+                      times = c(40, 6, 8, 10, 6, 8, 10, 12)))
+  expect_equal(sum(p), 6)
+  # Below certainty the design is self-weighting: (2 * N_i / 60) * (2 / N_i)
+  # for every row.
+  expect_equal(unique(round(p[d$cl != "k1"], 12)), round(4 / 60, 12))
+  for (i in 1:10) {
+    s <- draw(d, des, seed = i)
+    expect_true("k1" %in% s$cl)
+    expect_identical(as.vector(table(s$cl)), rep(2L, 3))
+  }
+})
+
+test_that("first-stage selection matches its probabilities in simulation", {
+  skip_on_cran()
+  d <- pps_clusters()
+  des <- design_multistage("cl", n_clusters = 3, n = 6, size = "rows")
+  sim <- inclusion_prob(d, des, simulate = TRUE, R = 2000, seed = 1)
+  claim <- inclusion_prob(d, des)
+  # Compared cluster by cluster, where the counts are large enough to test.
+  expect_equal(as.vector(tapply(sim, d$cl, sum)),
+               as.vector(tapply(claim, d$cl, sum)), tolerance = 0.06)
+})
+
+test_that("with equal measures the variance is the two-stage estimator", {
+  d <- pps_clusters()
+  d$one <- 1
+  s <- draw(d, design_multistage("cl", n_clusters = 4, n = 12), seed = 3,
+            weights = TRUE)
+  des <- design_multistage("cl", n_clusters = 4, n = 12, size = "one")
+  expect_equal(inclusion_prob(d, des),
+               inclusion_prob(d, design_multistage("cl", 4, 12)))
+  expect_equal(pps_stage_variance(des, d, s$.row, s$y, s$.prob)$variance,
+               ht_total(s, "y")$variance)
+})
+
+test_that("a certain cluster is a stratum of its sampled rows", {
+  d <- pps_clusters()
+  s <- draw(d, design_multistage("cl", n_clusters = 4, n = 12, size = "rows"),
+            seed = 2, weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_identical(r$method, "deville")
+  # Three clusters below certainty less one, and three rows of k1 less one.
+  expect_identical(r$df, 4)
+  k1 <- s$cl == "k1"
+  within <- 40^2 * (1 - 3 / 40) * stats::var(s$y[k1]) / 3
+  rest <- !k1
+  u <- rowsum(s$y[rest] / s$.prob[rest], s$cl[rest])[, 1]
+  p1 <- 3 * c(k2 = 6, k3 = 8, k4 = 10, k5 = 6, k6 = 8, k7 = 10,
+              k8 = 12)[names(u)] / 60
+  w_i <- vapply(names(u), function(k) {
+    i <- s$cl == k
+    N <- d$rows[match(k, d$cl)]
+    N^2 * (1 - 3 / N) * stats::var(s$y[i]) / 3
+  }, numeric(1))
+  expect_equal(r$variance, deville_variance(u * p1, p1)$variance + within +
+                 sum(w_i / p1))
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_match(jk$note, "Jackknife over 6 primary sampling unit(s) in 2 strata",
+               fixed = TRUE)
+})
+
+test_that("one row per cluster, or one cluster below certainty, declines", {
+  d <- pps_clusters()
+  s <- draw(d, design_multistage("cl", n_clusters = 3, n = 3, size = "rows"),
+            seed = 1, weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_true(is.na(r$se))
+  expect_match(r$note, "one row per selected cluster", fixed = TRUE)
+  expect_match(r$note, "cluster taken with certainty `k1` has a single",
+               fixed = TRUE)
+  # Measures that need not be row counts: k2 and k3 are certain, and one
+  # selection is left for the other six clusters.
+  big <- d
+  big$rows[big$cl %in% c("k2", "k3")] <- 500
+  s2 <- draw(big, design_multistage("cl", n_clusters = 3, n = 6,
+                                    size = "rows"), seed = 1, weights = TRUE)
+  r2 <- ht_total(s2, "y", variance = "analytic")
+  expect_match(r2$note, "this sample has one, besides the 2 taken with",
+               fixed = TRUE)
+  expect_match(ht_total(s2, "y")$note,
+               "The jackknife needs at least two clusters below certainty",
+               fixed = TRUE)
+})
+
+test_that("a size that is not one per cluster, or not usable, is refused", {
+  d <- pps_clusters()
+  bad <- d
+  bad$rows[2] <- 7
+  des <- design_multistage("cl", n_clusters = 3, n = 6, size = "rows")
+  expect_error(draw(bad, des, seed = 1),
+               "one size for each cluster, but cluster `k1` has 40 and 7",
+               fixed = TRUE)
+  expect_error(inclusion_prob(bad, des), "one size for each cluster")
+  bad$rows <- as.character(d$rows)
+  expect_error(inclusion_prob(bad, des), "must be numeric", fixed = TRUE)
+  expect_error(design_multistage("cl", n_clusters = 3, n = 7, size = "rows"),
+               "Use n = 6 or n = 9.", fixed = TRUE)
+  expect_error(design_multistage("cl", n_clusters = 3, n = 6, size = "rows",
+                                 allocation = "proportional"),
+               "`allocation` is \"proportional\"", fixed = TRUE)
+  expect_error(joint_prob(d, des, rows = 1:3), "simulate = TRUE",
+               fixed = TRUE)
+
+  gap <- d
+  gap$rows[45] <- NA
+  expect_error(inclusion_prob(gap, des),
+               "1 row(s) have a missing size in `rows`", fixed = TRUE)
+  kept <- design_multistage("cl", n_clusters = 3, n = 6, size = "rows",
+                            na_rm = TRUE)
+  p <- inclusion_prob(gap, kept)
+  expect_identical(p[45], 0)
+  expect_equal(sum(p), 6)
+})

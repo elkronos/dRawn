@@ -223,7 +223,7 @@ print.drawn_plan <- function(x, ...) {
 #'     \item{`by_group`}{A data frame of `group`, `drawn`, `in_frame` and
 #'       `rate` per stratum or cluster, or `NULL` for a design with no
 #'       grouping. The strata are those of [design_stratified()], and of
-#'       [design_spread()] when it has `strata`.}
+#'       [design_spread()] and [design_weighted()] when they have `strata`.}
 #'     \item{`group_col`}{The column(s) `by_group` is keyed on.}
 #'   }
 #'
@@ -246,7 +246,8 @@ sample_summary <- function(sample) {
 
   grp_col <- switch(design_type(design),
     stratified = ,
-    spread = design$strata,
+    spread = ,
+    weighted = design$strata,
     cluster = ,
     multistage = design$clusters,
     NULL

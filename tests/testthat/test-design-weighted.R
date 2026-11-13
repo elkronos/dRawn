@@ -111,3 +111,47 @@ test_that("a weight of 0 is refused with the column and what to do", {
   expect_error(inclusion_prob(pop, design_spread("w", n = 5, size = "w")),
                "`w` must be positive", fixed = TRUE)
 })
+
+test_that("a design without strata draws the rows it drew before", {
+  d <- data.frame(id = 1:30, w = c(1:29, 90))
+  for (m in c("systematic", "poisson")) {
+    des <- design_weighted("w", n = 6, method = m)
+    expect_null(des$strata)
+    expect_null(des$allocation)
+    pi <- pps_pi(d$w, 6)
+    old <- with_seed(4, if (m == "poisson") {
+      which(stats::runif(30) < pi)
+    } else {
+      systematic_pps(pi)
+    })
+    expect_identical(draw(d, des, seed = 4)$id, old)
+  }
+  expect_false(any(grepl("strata|allocation",
+                         utils::capture.output(print(
+                           design_weighted("w", n = 6))))))
+})
+
+test_that("strata and allocation print, and other designs are not stratified", {
+  des <- design_weighted("w", n = 6, method = "systematic", strata = "g",
+                         allocation = "equal")
+  out <- utils::capture.output(print(des))
+  expect_true(any(grepl("strata +\"g\"", out)))
+  expect_true(any(grepl("allocation +\"equal\"", out)))
+  expect_error(allocation_table(data.frame(w = 1:4, g = "a"),
+                                design_weighted("w", n = 2,
+                                                method = "systematic")),
+               "design_weighted() with `strata`", fixed = TRUE)
+})
+
+test_that("strata of a weighted design are summarised from the frame", {
+  d <- data.frame(id = 1:40, g = rep(c("x", "y"), c(30, 10)),
+                  w = rep(1:4, 10))
+  s <- draw(d, design_weighted("w", n = 8, method = "systematic",
+                               strata = "g"), seed = 1, weights = TRUE)
+  sm <- sample_summary(s)
+  expect_identical(sm$group_col, "g")
+  expect_identical(sm$by_group$drawn, c(6L, 2L))
+  expect_identical(sm$by_group$in_frame, c(30L, 10L))
+  s$g <- "renamed"
+  expect_identical(sample_summary(s)$by_group$drawn, c(6L, 2L))
+})

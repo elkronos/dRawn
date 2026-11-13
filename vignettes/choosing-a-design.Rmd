@@ -401,6 +401,27 @@ of the way from stratification to PPS, and on `checks` it gives up nothing
 against stratifying by site, where PPS lost badly. When you are not sure the
 size measure predicts what you will measure, that is the safer use of it.
 
+Strata and size also combine. With `strata`, `design_weighted()` splits `n`
+over the sites as `design_stratified()` would, and samples each site in
+proportion to `value` on its own, with a random start of its own. Every site
+gets its share of the sample, and large invoices are still favoured within
+it:
+
+```{r}
+pps_site <- design_weighted("value", n = 60, method = "systematic",
+                            strata = "site")
+allocation_table(invoices, pps_site)
+round(cbind(bet, spread = spread_sd,
+            pps_by_site = c(cost   = spread_of(pps_site, "cost"),
+                            checks = spread_of(pps_site, "checks"))), 1)
+```
+
+The invoices of every site were drawn from the same distribution, so here
+the strata change little against PPS over the whole frame. They pay where
+the strata differ in what you measure, and they guarantee each site its
+rows either way. `ht_total()` adds up Deville's approximation over the
+sites, and `as_svydesign()` hands the sites to `survey` as strata.
+
 ## The units too big to leave to chance
 
 PPS is one answer to dominant units. The blunter one is to stop sampling them
@@ -554,6 +575,23 @@ ms <- design_multistage("team", n_clusters = 6, n = 60)
 res_ms <- draw(invoices, ms, seed = 1)
 table(res_ms$team)
 ```
+
+The teams here are all the same size. Where clusters differ, or some matter
+more than others, `size` selects them in proportion to a measure known for
+every cluster, here each team's total invoice value, and still takes the same
+number of rows from each. A row's inclusion probability is its team's chance
+of selection times 10 out of 30:
+
+```{r}
+teams <- transform(invoices, team_value = ave(value, team, FUN = sum))
+ms_pps <- design_multistage("team", n_clusters = 6, n = 60,
+                            size = "team_value")
+range(inclusion_prob(teams, ms_pps))
+ht_total(draw(teams, ms_pps, seed = 1, weights = TRUE), "cost")
+```
+
+Had the measure been each team's number of invoices, every invoice would have
+had the same chance, `n / N`.
 
 Both are estimable, but cluster designs pay for their convenience in precision —
 and in degrees of freedom. With four clusters there are three degrees of

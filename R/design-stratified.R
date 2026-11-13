@@ -578,8 +578,9 @@ stratum_allocation <- function(design, data) {
 #' [inclusion_prob()], so they always agree with both.
 #'
 #' @param data A data frame.
-#' @param design [design_stratified()], [design_spread()] with `strata`, or
-#'   [design_certainty()] whose `rest` is one of these. For the last the
+#' @param design [design_stratified()], [design_spread()] or
+#'   [design_weighted()] with `strata`, or [design_certainty()] whose `rest`
+#'   is one of these. For the last the
 #'   table describes `rest` over the rows below the threshold, and the rows
 #'   at or above it, which are taken with certainty, are not counted in any
 #'   stratum. Other designs are refused.
@@ -590,9 +591,10 @@ stratum_allocation <- function(design, data) {
 #'     \item{`N`}{Rows in the stratum.}
 #'     \item{`n`}{Rows drawn from it.}
 #'     \item{`prob`}{The inclusion probability of each of its rows, as
-#'       [inclusion_prob()] gives it. `NA` for [design_spread()] with `size`,
-#'       whose rows in one stratum have different probabilities; there
-#'       [inclusion_prob()] gives them row by row.}
+#'       [inclusion_prob()] gives it. `NA` for [design_spread()] with `size`
+#'       and for [design_weighted()], whose rows in one stratum have
+#'       different probabilities; there [inclusion_prob()] gives them row by
+#'       row.}
 #'     \item{`sd`}{Under Neyman allocation, the stratum's standard deviation
 #'       that the split used: of the `allocation_by` column within the
 #'       stratum, or as given. `NA` under other allocations.}
@@ -641,8 +643,8 @@ allocation_table <- function(data, design) {
   if (!has_strata(design)) {
     stop("`design` is ", design_label(design), ", which has no strata to ",
          "allocate over. allocation_table() takes design_stratified(), ",
-         "design_spread() with `strata`, or design_certainty() with one of ",
-         "those as `rest`.", call. = FALSE)
+         "design_spread() or design_weighted() with `strata`, or ",
+         "design_certainty() with one of those as `rest`.", call. = FALSE)
   }
   stratum_table(design, data)
 }
@@ -651,15 +653,16 @@ allocation_table <- function(data, design) {
 #' @noRd
 has_strata <- function(design) {
   inherits(design, "drawn_design_stratified") ||
-    (inherits(design, "drawn_design_spread") && !is.null(design$strata))
+    (inherits(design, c("drawn_design_spread", "drawn_design_weighted")) &&
+       !is.null(design$strata))
 }
 
 #' The table `allocation_table()` returns, for a design with strata
 #'
 #' A frame with no rows gives a table with no strata. Only a certainty
 #' design with no rows below its threshold, where `rest` draws nothing,
-#' passes one. A spread design's strata hold the rows it can draw, and have
-#' no floor.
+#' passes one. The strata of a spread or weighted design hold the rows it
+#' can draw, and have no floor.
 #'
 #' @noRd
 stratum_table <- function(design, data) {
@@ -685,6 +688,12 @@ stratum_table <- function(design, data) {
     } else {
       rep(NA_real_, length(fr$sizes))
     }
+  } else if (inherits(design, "drawn_design_weighted")) {
+    st <- weighted_setup(design, data)
+    al <- list(idx = lapply(st$idx, function(i) st$keep[i]),
+               sizes = st$sizes, n_alloc = st$n_alloc)
+    # Rows of one stratum have probabilities proportional to their size.
+    prob <- rep(NA_real_, length(st$sizes))
   } else {
     al <- stratum_allocation(design, data)
     prob <- stratum_prob(design, al)

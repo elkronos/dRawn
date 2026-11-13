@@ -9,7 +9,9 @@ design_weighted(
   n,
   replace = FALSE,
   method = c("successive", "systematic", "poisson"),
-  na_rm = FALSE
+  na_rm = FALSE,
+  strata = NULL,
+  allocation = c("proportional", "equal")
 )
 }
 \arguments{
@@ -18,8 +20,10 @@ is refused under every method, not given a probability of 0; drop such
 rows from the frame first, since a design that selects in proportion to
 size could never select them.}
 
-\item{n}{Number of rows to draw. Under \code{method = "poisson"} this is the
-expected number, not a guarantee.}
+\item{n}{Number of rows to draw, the total across \code{strata} when given.
+Under \code{method = "poisson"} this is the expected number, not a guarantee.
+With counts in \code{allocation} it can be left out and is their sum; when
+given, it must equal that sum.}
 
 \item{replace}{Sample with replacement? Only available for
 \code{method = "successive"}.}
@@ -27,7 +31,24 @@ expected number, not a guarantee.}
 \item{method}{One of \code{"successive"}, \code{"systematic"} or \code{"poisson"}. See
 "Choosing a method".}
 
-\item{na_rm}{Drop rows whose weight is \code{NA} instead of raising an error.}
+\item{na_rm}{Drop rows whose weight or stratum key is \code{NA} instead of
+raising an error.}
+
+\item{strata}{Optional column name(s) defining strata, to sample in
+proportion to size within each one. Several columns are
+cross-classified. Needs \code{method = "systematic"} or \code{"poisson"}. See
+"Strata".}
+
+\item{allocation}{How \code{n} is split across \code{strata}: \code{"proportional"} to
+the number of rows in each stratum, or \code{"equal"}, by the
+largest-remainder method of \code{\link[=design_stratified]{design_stratified()}}, with a stratum that
+would get more rows than it holds taken whole; or the count for each
+stratum, as a named vector such as \code{c(north = 10, south = 5)} when
+\code{strata} is one column, or a data frame of the \code{strata} columns and \code{n}.
+Counts follow the rules of \code{\link[=design_stratified]{design_stratified()}}: every stratum of the
+frame needs one, a count for a stratum the frame does not have is
+refused, and no count may exceed the rows in its stratum. Only with
+\code{strata}.}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -74,6 +95,44 @@ proportional to size and every pair can co-occur, at the cost of a
 \code{method = "successive"}.
 }
 
+\section{Strata}{
+
+With \code{strata}, \code{n} is split over the strata by \code{allocation}, as
+\code{\link[=design_stratified]{design_stratified()}} splits it over the rows in each stratum, and each
+stratum is then sampled in proportion to size on its own: a row of stratum
+\code{h} gets \code{n_h * w_i / sum(w)}, the sum running over the stratum, with rows
+past certainty taken with certainty within it. Under \code{"systematic"} each
+stratum is shuffled and walked from a start of its own, in key order;
+under \code{"poisson"} every row is included independently with the probability
+its stratum gives it, so the size of each stratum's sample is random.
+\code{"successive"} has no closed-form inclusion probability and is refused with
+\code{strata}. To split \code{n} in proportion to each stratum's total size rather
+than its rows, work out the counts and give them as \code{allocation}.
+
+The strata are sampled independently. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} add up
+Deville's approximation over the strata for \code{"systematic"}, and the
+Poisson variance needs no change. The degrees of freedom are the sampled
+rows below certainty less the strata that hold them. A stratum with one
+sampled row below certainty has nothing to compare it with, and the
+variance is refused with the stratum named; draw at least two in each.
+
+In simulations of 2,000 draws each from frames of 600 rows in four strata,
+drawing 24 or 60 rows by \code{"systematic"}, the variance averaged 0.94 to
+1.04 times the true variance of the total, and 95\% intervals covered 88\%
+to 96\% of the time. The low coverage came where \code{y / pi} was skewed, so
+that samples with a low total also had a low estimated variance; the same
+frames without strata covered 92\% to 94\%.
+
+\code{\link[=as_svydesign]{as_svydesign()}} hands the strata to \code{survey}, with Brewer's approximation
+within each, \code{\link[=allocation_table]{allocation_table()}} shows the split before anything is
+drawn, and \code{\link[=sample_summary]{sample_summary()}} counts the rows drawn from each stratum.
+
+Drawing each stratum with a design of its own and binding the samples with
+\code{\link[=rbind]{rbind()}} does not give a sample to estimate from. The bound sample keeps
+the first draw's frame and design, so \code{\link[=ht_total]{ht_total()}} refuses it; use
+\code{strata} instead.
+}
+
 \examples{
 df <- data.frame(id = 1:20, w = 1:20)
 draw(df, design_weighted("w", n = 5), seed = 1)
@@ -85,6 +144,13 @@ round(inclusion_prob(df, d), 3)
 # Which is what makes an unbiased total possible
 s <- draw(df, d, seed = 1, weights = TRUE)
 sum(s$w * s$.weight)   # estimates sum(df$w) = 210
+
+# In proportion to size within each of two regions
+df$region <- rep(c("east", "west"), each = 10)
+by_region <- design_weighted("w", n = 8, method = "systematic",
+                             strata = "region")
+allocation_table(df, by_region)
+round(inclusion_prob(df, by_region), 3)
 
 }
 \references{

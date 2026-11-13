@@ -552,3 +552,49 @@ test_that("a systematic design's fpc counts the rows its walk can reach", {
   expect_equal(survey::SE(survey::svytotal(~y, sv1)),
                survey::SE(survey::svytotal(~y, as_svydesign(s2))))
 })
+
+test_that("PPS within strata maps to strata, with Brewer's in each", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  d$size[c(1, 250)] <- c(9000, 7000)
+  for (m in c("systematic", "poisson")) {
+    s <- draw(d, design_weighted("size", n = 60, method = m, strata = "site"),
+              seed = 1, weights = TRUE)
+    des <- as_svydesign(s)
+    ours <- ht_total(s, "spend")
+    theirs <- survey::svytotal(~spend, des)
+    expect_equal(as.numeric(theirs), ours$total, tolerance = 1e-8)
+    expect_equal(survey::degf(des), ours$df)
+    if (m == "poisson") {
+      expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8)
+    } else {
+      # Deville here, Brewer there, stratum by stratum.
+      expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 5e-3)
+    }
+  }
+})
+
+test_that("clusters selected by size go to survey in two stages", {
+  skip_if_not_installed("survey")
+  sizes <- c(120, 90, rep(c(8, 12, 16, 20), length.out = 28))
+  d <- data.frame(cl = rep(sprintf("k%02d", 1:30), times = sizes))
+  d$rows <- rep(sizes, times = sizes)
+  d$y <- rep((1:30 * 37) %% 41 + 20, times = sizes) +
+    seq_len(nrow(d)) %% 9 * 2
+  # Ten clusters take k01 and k02 with certainty; without them, none is.
+  cases <- list(list(d, 10), list(d[!d$cl %in% c("k01", "k02"), ], 6))
+  for (case in cases) {
+    n_clusters <- case[[2]]
+    s <- draw(case[[1]], design_multistage("cl", n_clusters = n_clusters,
+                                           n = 4 * n_clusters, size = "rows"),
+              seed = 2, weights = TRUE)
+    des <- as_svydesign(s)
+    ours <- ht_total(s, "y")
+    theirs <- survey::svytotal(~y, des)
+    expect_equal(as.numeric(theirs), ours$total, tolerance = 1e-8)
+    expect_equal(survey::degf(des), ours$df)
+    # Brewer and Deville at the first stage, the same terms within clusters.
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 5e-3)
+  }
+  expect_identical(length(unique(as_svydesign(s)$strata[, 1])), 1L)
+})

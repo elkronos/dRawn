@@ -12,7 +12,7 @@
 #'   [design_simple()]      \tab `n(n-1) / (N(N-1))` for a pair, without replacement \cr
 #'   [design_stratified()]  \tab within a stratum as above; across strata, independent \cr
 #'   [design_cluster()]     \tab same cluster: `a/A`; different clusters: `a(a-1)/(A(A-1))` \cr
-#'   [design_multistage()]  \tab the two stages multiplied, where the per-cluster take is constant \cr
+#'   [design_multistage()]  \tab the two stages multiplied, where the per-cluster take is constant and `size` is not given \cr
 #'   [design_certainty()]   \tab `1` between certainty rows; otherwise the other row's own `pi` \cr
 #'   [design_reservoir()]   \tab simple random sampling over the first `max_items` rows \cr
 #'   [design_temporal()]    \tab within an interval as above; across intervals, independent \cr
@@ -37,12 +37,13 @@
 #' get the overlap of their stretches, as with `n`, and pairs in two strata
 #' the product of their probabilities.
 #'
-#' Two designs have joint probabilities that are positive but have no closed
-#' form: `design_weighted(method = "systematic")`, which shuffles the rows
-#' before walking them so every pair can co-occur, and [design_spread()]. For
-#' both, [ht_total()] uses a variance approximation that needs only
-#' first-order probabilities, and `simulate = TRUE` here estimates the joint
-#' probabilities themselves.
+#' Three designs have joint probabilities that are positive but have no
+#' closed form: `design_weighted(method = "systematic")`, which shuffles the
+#' rows before walking them so every pair can co-occur, with or without
+#' `strata`; [design_multistage()] with `size`, which does the same with the
+#' clusters; and [design_spread()]. For all three, [ht_total()] uses a
+#' variance approximation that needs only first-order probabilities, and
+#' `simulate = TRUE` here estimates the joint probabilities themselves.
 #'
 #' @section Size:
 #' The matrix has a row and a column for each of `rows`, by default every row
@@ -364,6 +365,16 @@ joint_inclusion.drawn_design_cluster <- function(design, data, rows) {
 #' @noRd
 joint_inclusion.drawn_design_multistage <- function(design, data, rows) {
   cl <- multistage_setup(design, data)
+  if (!is.null(design$size)) {
+    no_joint_form(
+      "`design_multistage(size = )`",
+      paste0("Its clusters are shuffled before the systematic PPS walk, so ",
+             "every pair of clusters\ncan be selected together, but their ",
+             "joint probabilities average over every ordering\nand have no ",
+             "closed form. Pass simulate = TRUE to estimate them; ht_total() ",
+             "uses\nDeville's approximation for the clusters.")
+    )
+  }
   if (design$allocation == "proportional") {
     no_joint_form("`design_multistage(allocation = \"proportional\")`",
                   "Use allocation = \"equal\".")

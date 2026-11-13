@@ -36,7 +36,9 @@
 #'     (Matei and Tillé 2005). Randomised systematic selection is close to high
 #'     entropy (Hartley and Rao 1962). Unlike a plain jackknife, each row's
 #'     contribution is scaled by its own `1 - pi`, so rows near certainty stop
-#'     adding variance they do not have.}
+#'     adding variance they do not have. With `strata` it is added up over
+#'     the strata. [design_multistage()] with `size` applies it to the
+#'     estimated totals of the clusters, and adds the variance within them.}
 #'   \item{`"successive difference"`}{[design_systematic()]. No
 #'     design-unbiased estimator exists — the design has one random start, and
 #'     most pairs of rows can never be drawn together — so this uses the
@@ -594,7 +596,7 @@ sample_units <- function(design, units, pop, rows) {
                                  rows))
   }
   if (!inherits(design, "drawn_design_certainty")) {
-    return(jackknife_groups(design, units))
+    return(jackknife_groups(design, units, pop))
   }
   v <- units[[design$above]]
   below <- !is.na(v) & v < design$threshold
@@ -649,7 +651,9 @@ overflow_note <- function() {
 #'
 #' A cluster counts when any of its sampled rows is below certainty. A
 #' two-stage design that takes every cluster, but not every row in them, has
-#' the number of clusters less one.
+#' the number of clusters less one. With `size`, a cluster taken with
+#' certainty is a stratum whose units are its sampled rows, as
+#' `cluster_units()` lays it out.
 #'
 #' With no unit below certainty the variance is exactly 0 and the result is
 #' `Inf`. An empty sample, and a certainty design whose `rest` drew none of the
@@ -680,6 +684,13 @@ design_df <- function(design, units, pop, rows, pi_i) {
     # number of starts, counting a replicate that drew no rows.
     return(if (any(!is_certain(pi_i))) systematic_starts(design) - 1 else Inf)
   }
+  if (inherits(design, "drawn_design_multistage") && !is.null(design$size)) {
+    cu <- cluster_units(design, units, pop)
+    random <- cu$psu %in% cu$psu[!is_certain(pi_i)]
+    if (!any(random)) return(Inf)
+    return(max(length(unique(cu$psu[random])) -
+                 length(unique(cu$stratum[random])), 0))
+  }
   psu <- switch(design_type(design),
     cluster = ,
     multistage = cluster_codes(units[[design$clusters]]),
@@ -687,7 +698,8 @@ design_df <- function(design, units, pop, rows, pi_i) {
   )
   stratum <- switch(design_type(design),
     stratified = ,
-    spread = if (!is.null(design$strata)) {
+    spread = ,
+    weighted = if (!is.null(design$strata)) {
       as.integer(group_key(units, design$strata))
     },
     temporal = temporal_bucket(design, units),
@@ -1000,10 +1012,14 @@ lonely_text <- function(lonely, noun, fix, domain = NULL) {
 #' What to change so that no stratum or interval holds one sampled row
 #' @noRd
 lonely_fix <- function(design) {
+  if (inherits(design, "drawn_design_multistage")) {
+    return(paste0("Draw at least two rows per cluster (`n` of at least ",
+                  "twice `n_clusters`)."))
+  }
   if (inherits(design, "drawn_design_temporal")) {
     return("Draw at least two rows per interval (per_interval = 2).")
   }
-  if (inherits(design, "drawn_design_spread")) {
+  if (inherits(design, c("drawn_design_spread", "drawn_design_weighted"))) {
     return(paste0("Draw at least two rows below certainty per stratum (",
                   if (!has_counts(design)) "a larger `n`, or ",
                   "a count of 2 or more for each in `allocation`)."))
@@ -1254,6 +1270,10 @@ ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
 #' @noRd
 ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
                                                 domain = NULL, ctx = NULL) {
+  if (!is.null(design$size)) {
+    if (design$replace) return(NextMethod())
+    return(pps_stage_variance(design, data, rows, y, pi_i, ctx))
+  }
   cl <- from_context(ctx, "clusters", count_clusters(design, data))
   n_cl <- length(unique(cl$code[rows]))
   if (n_cl < 2L && !all(is_certain(pi_i))) {
@@ -1277,6 +1297,60 @@ ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
                           from_context(ctx, "cluster_sizes",
                                        tabulate(cl$code, cl$total)))
   list(variance = v, note = NULL)
+}
+
+#' Two-stage variance with clusters selected in proportion to size
+#'
+#' The unbiased two-stage estimator is the first-stage estimator applied to
+#' the estimated cluster totals, plus `sum(V_i / pi_i)` over the selected
+#' clusters, where `V_i = N_i^2 * (1 - m / N_i) * s_i^2 / m` is the variance
+#' of the simple random sample of `m` rows within cluster `i` (Särndal,
+#' Swensson and Wretman 1992). Systematic PPS has no joint
+#' probabilities for the first stage, so Deville's approximation takes its
+#' place, over the clusters below certainty; a cluster taken with certainty
+#' adds only its own `V_i`. With every `pi_i` equal this is
+#' `two_stage_variance()`.
+#'
+#' One row per cluster leaves `V_i` unmeasurable, and one cluster below
+#' certainty leaves nothing to compare between clusters, so both decline.
+#'
+#' @noRd
+pps_stage_variance <- function(design, data, rows, y, pi_i, ctx = NULL) {
+  if (all(is_certain(pi_i))) return(all_certain())
+  st <- from_context(ctx, "stage_one", cluster_stage(design, data))
+  code <- st$code[rows]
+  live <- unique(code)
+  g <- match(code, live)
+  k <- length(live)
+  p1 <- st$pi1[live]
+  N <- as.numeric(st$sizes[live])
+  m <- tabulate(g, k)
+  if (any(m < 2L & m < N)) {
+    return(list(variance = NA_real_, note = paste0(
+      "With one row per selected cluster the variation within clusters ",
+      "cannot be measured, and leaving it out would understate the ",
+      "variance.")))
+  }
+  open <- which(!is_certain(p1))
+  if (length(open) == 1L) {
+    return(list(variance = NA_real_, note = paste0(
+      "A variance needs at least two clusters below certainty; this sample ",
+      "has one, besides the ", k - 1L, " taken with certainty.")))
+  }
+  z <- as.numeric(y)
+  mu <- rowsum(z, g)[, 1L] / m
+  ss <- rowsum((z - mu[g])^2, g)[, 1L]
+  use <- m >= 2L & m < N
+  within <- sum((N^2 * (1 - m / N) * ss / ((m - 1) * m) / p1)[use])
+  if (!length(open)) return(list(variance = within, note = NULL))
+  # Each cluster's estimated total over its stage-one probability.
+  u <- rowsum(z / pi_i, g)[, 1L]
+  between <- deville_variance(u[open] * p1[open], p1[open])$variance
+  list(variance = between + within, method = "deville",
+       note = paste0("Deville's approximation for the clusters selected in ",
+                     "proportion to size, which have no closed-form joint ",
+                     "inclusion probabilities, plus the variance within the ",
+                     "selected clusters."))
 }
 
 #' What the ultimate-cluster jackknife does to a multistage variance
@@ -1320,6 +1394,9 @@ ht_variance.drawn_design_weighted <- function(design, data, rows, y, pi_i,
     return(list(variance = sum((1 - pi_i) / pi_i^2 * y^2), note = NULL))
   }
   if (design$method == "systematic") {
+    if (!is.null(design$strata)) {
+      return(deville_strata(design, data, rows, y, pi_i, domain, ctx))
+    }
     return(deville_variance(y, pi_i))
   }
   stop_declined(paste0("`design_weighted(method = \"successive\")` has no ",
@@ -1353,6 +1430,45 @@ deville_variance <- function(y, pi_i) {
        note = paste0("Deville's approximation for unequal-probability ",
                      "sampling: systematic PPS has no closed-form joint ",
                      "inclusion probabilities."))
+}
+
+#' Deville's approximation for systematic PPS within strata
+#'
+#' The strata are drawn independently, so the variance is the sum of
+#' `deville_variance()` over each stratum's sampled rows, which is
+#' `sampling::varest()` applied stratum by stratum and added up. Rows taken
+#' with certainty add nothing. A stratum with one sampled row below certainty
+#' has nothing to compare it with, so it is refused by `lonely_note()`,
+#' unless `domain` shows it holds no unit of the domain, when it adds 0.
+#'
+#' @noRd
+deville_strata <- function(design, data, rows, y, pi_i, domain = NULL,
+                           ctx = NULL) {
+  free <- !is_certain(pi_i)
+  if (!any(free)) return(all_certain("deville"))
+  st <- from_context(ctx, "weighted", weighted_setup(design, data))
+  p <- from_context(ctx, "pps_pi", weighted_pi(design, st))
+  # Each frame row's stratum, counting only the rows below certainty.
+  code <- rep(NA_integer_, nrow(data))
+  open <- !is_certain(p)
+  code[st$keep[open]] <- st$code[open]
+  group <- structure(code, levels = st$labels, class = "factor")
+  note <- lonely_note(group, rows, c("stratum", "strata"), lonely_fix(design),
+                      domain)
+  if (!is.null(note)) {
+    return(list(variance = NA_real_, method = "deville", note = note))
+  }
+  h <- code[rows]
+  v <- 0
+  for (g in unique(h[free])) {
+    i <- which(free & h == g)
+    if (length(i) < 2L) next
+    v <- v + deville_variance(y[i], pi_i[i])$variance
+  }
+  list(variance = v, method = "deville",
+       note = paste0("Deville's approximation for unequal-probability ",
+                     "sampling, summed over strata: systematic PPS has no ",
+                     "closed-form joint inclusion probabilities."))
 }
 
 #' Successive-difference variance for a systematic sample
@@ -1499,7 +1615,7 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
     return(jackknife_certainty(design, units, pop, y, pi_i, domain, ctx))
   }
 
-  psu <- from_context(ctx, "psu", jackknife_groups(design, units))
+  psu <- from_context(ctx, "psu", jackknife_groups(design, units, pop, ctx))
   fixed <- !(psu %in% psu[!is_certain(pi_i)])
   if (all(fixed)) return(all_certain("jackknife"))
   n_fixed <- length(unique(psu[fixed]))
@@ -1541,8 +1657,15 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
                               }, ". Draw more units below certainty.")))
   }
   if (length(lonely)) {
+    if (!is.null(st$between) && st$between %in% st$levels[lonely]) {
+      return(list(variance = NA_real_, method = "jackknife", note = paste0(
+        "The jackknife needs at least two clusters below certainty; this ",
+        "sample has one.")))
+    }
     noun <- if (inherits(design, "drawn_design_temporal")) {
       c("interval", "intervals")
+    } else if (!is.null(st$between)) {
+      c("cluster taken with certainty", "clusters taken with certainty")
     } else {
       c("stratum", "strata")
     }
@@ -1626,20 +1749,26 @@ jackknife_refusal <- function(design) {
 
 #' Strata for the jackknife, and each stratum's finite population correction
 #'
-#' Stratified and temporal designs, and spread designs with `strata`, delete
-#' within strata, with each stratum's own `1 - n_h / N_h`. A spread design's
-#' strata count only the rows it can draw. Everything else is a single
-#' stratum, corrected by `jackknife_fpc()`. Only strata holding a unit that
-#' is not `fixed` are listed, and both counts leave the fixed units out. A
-#' unit taken with certainty is in every sample, so the fixed units in the
-#' frame are the ones in the sample. A stratum taken whole drops out.
+#' Stratified and temporal designs, and spread and weighted designs with
+#' `strata`, delete within strata, with each stratum's own `1 - n_h / N_h`.
+#' The strata of a spread or weighted design count only the rows it can
+#' draw. Everything else is a single stratum, corrected by
+#' `jackknife_fpc()`. Only strata holding a unit that is not `fixed` are
+#' listed, and both counts leave the fixed units out. A unit taken with
+#' certainty is in every sample, so the fixed units in the frame are the
+#' ones in the sample. A stratum taken whole drops out.
+#'
+#' A multistage design with `size` deletes clusters below certainty in one
+#' stratum, `between`, with no correction, and the rows of each cluster
+#' taken with certainty within a stratum of its own, as `cluster_units()`
+#' lays them out.
 #'
 #' Returns each row's `stratum`, the `levels` listed, their `labels`, `fpc`
-#' and `in_domain`, in the same order. The levels are integer codes in key
-#' order, and the labels the key's levels, as the analytic estimators name
-#' the same strata and intervals. `in_domain` is `FALSE` for a stratum that
-#' `domain`, a logical vector over the frame, shows to hold no unit of the
-#' domain, and `TRUE` otherwise.
+#' and `in_domain`, in the same order, and `between`. The levels are integer
+#' codes in key order, and the labels the key's levels, as the analytic
+#' estimators name the same strata and intervals. `in_domain` is `FALSE` for
+#' a stratum that `domain`, a logical vector over the frame, shows to hold
+#' no unit of the domain, and `TRUE` otherwise.
 #'
 #' @noRd
 jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
@@ -1647,18 +1776,36 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
   # Integer codes, shared by the sampled rows and the frame.
   grp <- from_context(ctx, "strata", switch(design_type(design),
     stratified = ,
-    spread = if (!is.null(design$strata)) {
+    spread = ,
+    weighted = if (!is.null(design$strata)) {
       key <- group_key2(units, pop, design$strata)
       pop_code <- as.integer(key$table)
-      if (inherits(design, "drawn_design_spread")) {
-        # Rows the design drops have no stratum to count in.
-        fr <- from_context(ctx, "spread", spread_frame(design, pop))
+      # Rows the design drops have no stratum to count in.
+      keep <- switch(design_type(design),
+        spread = from_context(ctx, "spread", spread_frame(design, pop))$keep,
+        weighted = from_context(ctx, "weighted",
+                                weighted_setup(design, pop))$keep,
+        NULL
+      )
+      if (!is.null(keep)) {
         out <- rep(TRUE, nrow(pop))
-        out[fr$keep] <- FALSE
+        out[keep] <- FALSE
         pop_code[out] <- NA_integer_
       }
       list(sample = as.integer(key$x), pop = pop_code,
            labels = levels(key$x))
+    },
+    multistage = if (!is.null(design$size)) {
+      # Clusters below certainty share stratum 1, with no finite population
+      # correction, as for any multistage design; each cluster taken with
+      # certainty is a stratum of its own, of rows drawn without replacement.
+      cu <- cluster_units(design, units, pop, ctx)
+      st <- from_context(ctx, "stage_one", cluster_stage(design, pop))
+      first <- match(seq_along(st$pi1), st$code)
+      list(sample = cu$stratum, pop = cu$pop_stratum,
+           labels = c("(below certainty)",
+                      as.character(pop[[design$clusters]][first])),
+           between = 1L)
     },
     temporal = {
       # Keyed as srs_groups() keys the intervals, so the two name them alike.
@@ -1688,9 +1835,10 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
   } else {
     rep(TRUE, length(lev))
   }
+  fpc <- ifelse(free_h > n_h, 1 - n_h / free_h, 0)
+  if (!is.null(grp$between)) fpc[lev == grp$between] <- 1
   list(stratum = grp$sample, levels = lev, labels = grp$labels[lev],
-       fpc = ifelse(free_h > n_h, 1 - n_h / free_h, 0),
-       in_domain = in_domain)
+       fpc = fpc, in_domain = in_domain, between = grp$between)
 }
 
 #' The share of primary sampling units NOT taken
@@ -1753,7 +1901,7 @@ reachable_rows <- function(design, pop) {
     spatial = sum(spatial_inside(design, pop)),
     temporal = sum(!is.na(temporal_bucket(design, pop))),
     systematic = sum(!is.na(systematic_positions(design, pop))),
-    weighted = keyed(design$weights),
+    weighted = keyed(c(design$weights, design$strata)),
     spread = {
       bad <- spread_missing(
         coordinate_columns(pop, design$across, "across", time = TRUE),
@@ -1765,7 +1913,7 @@ reachable_rows <- function(design, pop) {
     },
     stratified = keyed(c(design$strata, design$within$order_by)),
     cluster = ,
-    multistage = keyed(design$clusters),
+    multistage = keyed(c(design$clusters, design$size)),
     certainty = {
       sp <- certainty_split(design, pop)
       length(sp$take) +
@@ -1779,10 +1927,16 @@ reachable_rows <- function(design, pop) {
 #'
 #' Whole clusters for a cluster or multistage design, read from the frame's
 #' copy of the sampled rows, which always has the cluster column, as integer
-#' codes; otherwise each row is its own unit.
+#' codes; otherwise each row is its own unit. A multistage design with
+#' `size` reads which clusters were taken with certainty from the frame
+#' `pop`, and makes each of their sampled rows a unit, as `cluster_units()`
+#' does.
 #'
 #' @noRd
-jackknife_groups <- function(design, units) {
+jackknife_groups <- function(design, units, pop = NULL, ctx = NULL) {
+  if (inherits(design, "drawn_design_multistage") && !is.null(design$size)) {
+    return(cluster_units(design, units, pop, ctx)$psu)
+  }
   if (inherits(design, c("drawn_design_cluster", "drawn_design_multistage"))) {
     return(cluster_codes(units[[design$clusters]]))
   }

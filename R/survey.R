@@ -18,9 +18,10 @@
 #'   [design_temporal()] \tab `strata` from the sampling intervals, `fpc` each interval's size \tab identical \cr
 #'   [design_cluster()] \tab `ids` a `.cluster` column numbering the clusters, `fpc` the number of clusters \tab identical \cr
 #'   [design_multistage()] \tab two stages, `ids` the `.cluster` numbers then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
-#'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size \tab identical \cr
+#'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size; with `strata`, the strata too, which change only the degrees of freedom \tab identical \cr
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole \tab as `rest` \cr
-#'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab close for totals, less so for means \cr
+#'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities; with `strata`, `strata` from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
+#'   [design_multistage()] with `size` \tab two stages, `ids` the `.cluster` numbers then the rows, `pps = "brewer"` with each cluster's stage-one probability and `m / N_i` at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units \tab close \cr
 #'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size`; with `strata`, `strata` from the strata columns and `fpc` each stratum's size, or Brewer's within them \tab **`survey`'s is larger** \cr
 #'   [design_systematic()] with `n_starts` of 2 or more \tab `ids` a `.cluster` column numbering the replicates, `fpc` the `n_starts * interval` possible starts \tab identical \cr
 #'   [design_systematic()] \tab `ids = ~1` with `fpc` the rows the walk can reach \tab **differ** \cr
@@ -40,7 +41,16 @@
 #'   of one half. On a frame whose units below certainty had probabilities
 #'   from 0.05 to 0.95, with about 17 of them in each sample, totals differed
 #'   by 2 percent typically and by up to 8 percent. The degrees of freedom
-#'   agree.
+#'   agree. With `strata`, each stratum is handed over the same way.
+#'   [design_multistage()] with `size` meets the same two approximations at
+#'   the first stage, while the variance within the selected clusters is the
+#'   same in both packages. Where the clusters below certainty had
+#'   stage-one probabilities of 0.12 to 0.41, the standard errors of totals
+#'   agreed within 0.3 percent over 200 samples. With a cluster at 0.93 among
+#'   them, `survey`'s came out 0.97 to 1.48 times this package's: Brewer's
+#'   approximation centres on the plain mean of the clusters' totals over
+#'   their probabilities, which that cluster pulls, where Deville's weights
+#'   each by `1 - pi`.
 #' * **Spread.** `survey` has no estimator for a spatially balanced sample, so
 #'   it is told only the first-order design and computes a variance that
 #'   ignores the spreading. That errs conservative, often substantially.
@@ -244,6 +254,9 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       by_group(match(bucket, labels), labels)
     },
     weighted = {
+      if (!is.null(design$strata)) {
+        return(weighted_strata_parts(design, dat, pop, prefix, by_group))
+      }
       if (design$method != "poisson") {
         # Neither package has the joint probabilities of systematic PPS.
         # `survey` uses Brewer's approximation and this package Deville's.
@@ -262,6 +275,9 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
                            "kinds of sampling unit"))
       # Integer codes, not labels: `survey` makes a factor of the ids, which
       # compares them as text and merges two numbers that print alike.
+      if (!is.null(design$size)) {
+        return(pps_stage_parts(design, units, pop))
+      }
       cl <- count_clusters(design, pop)
       n_clusters <- cl$total
       cluster <- cl$code[rows]
@@ -350,6 +366,32 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
   )
 }
 
+#' A multistage sample with clusters selected in proportion to size
+#'
+#' Two stages, with Brewer's approximation at the first. Clusters below
+#' certainty share the stratum `(pps)`, with their stage-one probabilities
+#' as `fpc` and `m / N_i` at the second stage, so `survey` adds the
+#' variance within each cluster divided by its probability, as
+#' `pps_stage_variance()` does. A cluster taken with certainty is a stratum
+#' of its own whose units are its sampled rows, with `m / N_i` at the first
+#' stage and nothing left to sample at the second; one taken whole as well
+#' is a single unit with an `fpc` of 1. `survey::degf()` then counts what
+#' `design_df()` counts.
+#'
+#' @noRd
+pps_stage_parts <- function(design, units, pop) {
+  cu <- cluster_units(design, units, pop)
+  st <- cluster_stage(design, pop)
+  p1 <- st$pi1[cu$code]
+  share <- st$m / st$sizes[cu$code]
+  certain <- is_certain(p1)
+  list(stratum = ifelse(certain, paste0("(certain) ", cu$code), "(pps)"),
+       fpc = ifelse(certain, pmin(share, 1), p1),
+       fpc2 = ifelse(certain, 1, share),
+       ids = stats::as.formula("~.cluster + .unit"), cluster = cu$psu,
+       extra = list(pps = "brewer"))
+}
+
 #' A systematic sample with several starts, as a sample of clusters
 #'
 #' The `m` starts are a simple random sample of the `m * interval` possible
@@ -384,11 +426,9 @@ replicate_parts <- function(design, dat, pop, rows) {
 #'
 #' Each stratum is handed over as the draw it is at first order: without
 #' `size`, a simple random sample of its rows, and with it, Brewer's
-#' approximation over their probabilities. Rows a `size` column takes with
-#' certainty go in a stratum of their own, `(certain)`, as `pps_parts()` puts
-#' them, so that Brewer's approximation runs over the other rows. `by_group`
-#' is the helper of `survey_parts()`, which reads the sampled frame rows, and
-#' `n_pop` the number of rows in the frame.
+#' approximation over their probabilities, as `strata_pps_parts()` gives
+#' it. `by_group` is the helper of `survey_parts()`, which reads the sampled
+#' frame rows, and `n_pop` the number of rows in the frame.
 #'
 #' @noRd
 spread_strata_parts <- function(design, dat, n_pop, fr, prefix, by_group) {
@@ -397,8 +437,46 @@ spread_strata_parts <- function(design, dat, n_pop, fr, prefix, by_group) {
   code[fr$keep] <- fr$code
   labels <- unique_labels(structure(integer(0), levels = fr$labels,
                                     class = "factor"))
+  if (is.null(design$size)) return(by_group(code, labels))
+  strata_pps_parts(code, labels, dat, prefix, by_group, "brewer")
+}
+
+#' A weighted design with strata, as stratified PPS
+#'
+#' Systematic PPS goes to `survey` as Brewer's approximation within each
+#' stratum, and Poisson sampling as `survey::poisson_sampling()` with the
+#' strata, whose variance does not depend on them but whose degrees of
+#' freedom count them, as `design_df()` does.
+#'
+#' @noRd
+weighted_strata_parts <- function(design, dat, pop, prefix, by_group) {
+  pps <- if (design$method == "poisson") {
+    refuse_nested(prefix, "a Poisson `rest`",
+                  "its sample size is random, which no stratum can express")
+    survey::poisson_sampling(dat$.prob)
+  } else {
+    "brewer"
+  }
+  st <- weighted_setup(design, pop)
+  # Each frame row's stratum; rows the design drops count in none.
+  code <- rep(NA_integer_, nrow(pop))
+  code[st$keep] <- st$code
+  labels <- unique_labels(structure(integer(0), levels = st$labels,
+                                    class = "factor"))
+  strata_pps_parts(code, labels, dat, prefix, by_group, pps)
+}
+
+#' Strata sampled in proportion to size, with a stratum for certain units
+#'
+#' `code` gives each frame row's stratum as a position in `labels`. Rows
+#' taken with certainty go in a stratum of their own, `(certain)`, as
+#' `pps_parts()` puts them, so that `survey`'s approximation runs over the
+#' other rows of each stratum. Every other row has its inclusion probability
+#' as `fpc`, for `pps`.
+#'
+#' @noRd
+strata_pps_parts <- function(code, labels, dat, prefix, by_group, pps) {
   out <- by_group(code, labels)
-  if (is.null(design$size)) return(out)
   certain <- is_certain(dat$.prob)
   # A stratum of the frame could be called `(certain)` too.
   cert <- paste0(prefix, "(certain)")
@@ -406,7 +484,7 @@ spread_strata_parts <- function(design, dat, n_pop, fr, prefix, by_group) {
   out$stratum[certain] <- cert
   out$fpc <- ifelse(certain, 1, dat$.prob)
   out$whole <- certain
-  out$extra <- list(pps = "brewer")
+  out$extra <- list(pps = pps)
   out
 }
 

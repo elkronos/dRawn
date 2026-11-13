@@ -18,8 +18,10 @@ walked in order.}
 \item{\code{\link[=design_systematic]{design_systematic()}}}{Every \emph{k}-th row, or \code{n} rows at an even
 step, from one random start or several.}
 \item{\code{\link[=design_cluster]{design_cluster()}}}{Whole clusters.}
-\item{\code{\link[=design_multistage]{design_multistage()}}}{Clusters, then rows within them.}
-\item{\code{\link[=design_weighted]{design_weighted()}}}{Rows with probability governed by a weight.}
+\item{\code{\link[=design_multistage]{design_multistage()}}}{Clusters, at random or in proportion to
+size, then rows within them.}
+\item{\code{\link[=design_weighted]{design_weighted()}}}{Rows with probability governed by a weight,
+within strata if asked.}
 \item{\code{\link[=design_certainty]{design_certainty()}}}{Everything above a threshold, plus a sample of
 the rest.}
 \item{\code{\link[=design_reservoir]{design_reservoir()}}}{A fixed-size sample from a stream.}
@@ -41,8 +43,9 @@ group, and \code{\link[=design_cluster]{design_cluster()}} has no \code{n} at al
 follows from which clusters were selected.
 \item \code{allocation} always says how a total is split across groups:
 \code{"proportional"}, \code{"equal"} or, in \code{\link[=design_stratified]{design_stratified()}} only,
-\code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}} and \code{\link[=design_spread]{design_spread()}} also take the
-count for each stratum in place of a rule, and \code{n} is then their total.
+\code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}}, \code{\link[=design_spread]{design_spread()}} and
+\code{\link[=design_weighted]{design_weighted()}} also take the count for each stratum in place of a
+rule, and \code{n} is then their total.
 Splitting is exact: the largest-remainder method is used, so a request
 for 60 rows returns 60 rather than drifting with per-group rounding.
 \item \code{na_rm} always decides whether rows with a missing key are dropped or raise
@@ -107,9 +110,12 @@ returning an approximation.
 \code{min_per_stratum} if rare groups must appear.}
 \item{Fieldwork cost matters more than efficiency}{\code{\link[=design_cluster]{design_cluster()}} or
 \code{\link[=design_multistage]{design_multistage()}} — visiting five sites is cheaper than visiting
-fifty, at the cost of precision.}
+fifty, at the cost of precision. With \code{size}, \code{\link[=design_multistage]{design_multistage()}}
+selects the sites in proportion to size and takes the same number of
+rows from each.}
 \item{Large units matter more}{\code{\link[=design_weighted]{design_weighted()}}, with
-\code{method = "systematic"} or \code{"poisson"} if you intend to estimate.}
+\code{method = "systematic"} or \code{"poisson"} if you intend to estimate, and
+\code{strata} to sample in proportion to size within each stratum.}
 \item{A few units dominate the total}{\code{\link[=design_certainty]{design_certainty()}} — take those
 with certainty and sample the tail, which removes them from the variance
 entirely.}

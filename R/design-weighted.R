@@ -39,17 +39,70 @@
 #' `replace = TRUE` is with-replacement PPS and applies only to
 #' `method = "successive"`.
 #'
+#' @section Strata:
+#' With `strata`, `n` is split over the strata by `allocation`, as
+#' [design_stratified()] splits it over the rows in each stratum, and each
+#' stratum is then sampled in proportion to size on its own: a row of stratum
+#' `h` gets `n_h * w_i / sum(w)`, the sum running over the stratum, with rows
+#' past certainty taken with certainty within it. Under `"systematic"` each
+#' stratum is shuffled and walked from a start of its own, in key order;
+#' under `"poisson"` every row is included independently with the probability
+#' its stratum gives it, so the size of each stratum's sample is random.
+#' `"successive"` has no closed-form inclusion probability and is refused with
+#' `strata`. To split `n` in proportion to each stratum's total size rather
+#' than its rows, work out the counts and give them as `allocation`.
+#'
+#' The strata are sampled independently. [ht_total()] and [ht_mean()] add up
+#' Deville's approximation over the strata for `"systematic"`, and the
+#' Poisson variance needs no change. The degrees of freedom are the sampled
+#' rows below certainty less the strata that hold them. A stratum with one
+#' sampled row below certainty has nothing to compare it with, and the
+#' variance is refused with the stratum named; draw at least two in each.
+#'
+#' In simulations of 2,000 draws each from frames of 600 rows in four strata,
+#' drawing 24 or 60 rows by `"systematic"`, the variance averaged 0.94 to
+#' 1.04 times the true variance of the total, and 95% intervals covered 88%
+#' to 96% of the time. The low coverage came where `y / pi` was skewed, so
+#' that samples with a low total also had a low estimated variance; the same
+#' frames without strata covered 92% to 94%.
+#'
+#' [as_svydesign()] hands the strata to `survey`, with Brewer's approximation
+#' within each, [allocation_table()] shows the split before anything is
+#' drawn, and [sample_summary()] counts the rows drawn from each stratum.
+#'
+#' Drawing each stratum with a design of its own and binding the samples with
+#' [rbind()] does not give a sample to estimate from. The bound sample keeps
+#' the first draw's frame and design, so [ht_total()] refuses it; use
+#' `strata` instead.
+#'
 #' @param weights Column of positive, finite, numeric weights. A weight of 0
 #'   is refused under every method, not given a probability of 0; drop such
 #'   rows from the frame first, since a design that selects in proportion to
 #'   size could never select them.
-#' @param n Number of rows to draw. Under `method = "poisson"` this is the
-#'   expected number, not a guarantee.
+#' @param n Number of rows to draw, the total across `strata` when given.
+#'   Under `method = "poisson"` this is the expected number, not a guarantee.
+#'   With counts in `allocation` it can be left out and is their sum; when
+#'   given, it must equal that sum.
 #' @param replace Sample with replacement? Only available for
 #'   `method = "successive"`.
 #' @param method One of `"successive"`, `"systematic"` or `"poisson"`. See
 #'   "Choosing a method".
-#' @param na_rm Drop rows whose weight is `NA` instead of raising an error.
+#' @param na_rm Drop rows whose weight or stratum key is `NA` instead of
+#'   raising an error.
+#' @param strata Optional column name(s) defining strata, to sample in
+#'   proportion to size within each one. Several columns are
+#'   cross-classified. Needs `method = "systematic"` or `"poisson"`. See
+#'   "Strata".
+#' @param allocation How `n` is split across `strata`: `"proportional"` to
+#'   the number of rows in each stratum, or `"equal"`, by the
+#'   largest-remainder method of [design_stratified()], with a stratum that
+#'   would get more rows than it holds taken whole; or the count for each
+#'   stratum, as a named vector such as `c(north = 10, south = 5)` when
+#'   `strata` is one column, or a data frame of the `strata` columns and `n`.
+#'   Counts follow the rules of [design_stratified()]: every stratum of the
+#'   frame needs one, a count for a stratum the frame does not have is
+#'   refused, and no count may exceed the rows in its stratum. Only with
+#'   `strata`.
 #'
 #' @return A design object, for use with [draw()].
 #'
@@ -78,6 +131,13 @@
 #' s <- draw(df, d, seed = 1, weights = TRUE)
 #' sum(s$w * s$.weight)   # estimates sum(df$w) = 210
 #'
+#' # In proportion to size within each of two regions
+#' df$region <- rep(c("east", "west"), each = 10)
+#' by_region <- design_weighted("w", n = 8, method = "systematic",
+#'                              strata = "region")
+#' allocation_table(df, by_region)
+#' round(inclusion_prob(df, by_region), 3)
+#'
 #' @family designs
 #' @seealso [draw()], [inclusion_prob()], [certainty_set()] for the rows
 #'   taken with certainty, [design_spread()] to select in
@@ -87,7 +147,8 @@
 #' @export
 design_weighted <- function(weights, n, replace = FALSE,
                             method = c("successive", "systematic", "poisson"),
-                            na_rm = FALSE) {
+                            na_rm = FALSE, strata = NULL,
+                            allocation = c("proportional", "equal")) {
   method <- check_choice(method, c("successive", "systematic", "poisson"),
                          "method")
   replace <- check_flag(replace, "replace")
@@ -96,12 +157,48 @@ design_weighted <- function(weights, n, replace = FALSE,
          "method = \"", method, "\". Use method = \"successive\", or set ",
          "replace = FALSE.", call. = FALSE)
   }
+  if (is.null(strata)) {
+    if (!missing(allocation)) {
+      stop("`allocation` splits `n` over strata, and `strata` is NULL. Name ",
+           "the strata columns in `strata`, or leave `allocation` out.",
+           call. = FALSE)
+    }
+    allocation <- NULL
+    n <- check_count(n, "n")
+  } else {
+    strata <- check_columns(strata, "strata")
+    if (method == "successive") {
+      stop("`strata` cannot be combined with method = \"successive\", whose ",
+           "inclusion probabilities have no closed form, so a total could not ",
+           "be estimated from the strata. Use method = \"systematic\" or ",
+           "\"poisson\".", call. = FALSE)
+    }
+    if (is.numeric(allocation) || is.data.frame(allocation)) {
+      allocation <- check_stratum_counts(allocation, strata)
+      n <- counts_n(if (!missing(n)) n, allocation)
+    } else {
+      if (!is.character(allocation)) {
+        stop("`allocation` must be \"proportional\", \"equal\" or the count ",
+             "for each stratum, not ", format_bad(allocation), ".",
+             call. = FALSE)
+      }
+      allocation <- check_choice(allocation, c("proportional", "equal"),
+                                 "allocation")
+      if (missing(n) || is.null(n)) {
+        stop("`n` is missing. Give the total number of rows to draw, or the ",
+             "count for each stratum in `allocation`.", call. = FALSE)
+      }
+      n <- check_count(n, "n")
+    }
+  }
   new_design("weighted", list(
     weights = check_columns(weights, "weights", 1L),
-    n = check_count(n, "n"),
+    n = n,
     replace = replace,
     method = method,
-    na_rm = check_flag(na_rm, "na_rm")
+    na_rm = check_flag(na_rm, "na_rm"),
+    strata = strata,
+    allocation = allocation
   ))
 }
 
@@ -113,16 +210,25 @@ design_weighted <- function(weights, n, replace = FALSE,
 #' not positive, and an `n` above the rows left. Returns `keep`, the rows the
 #' design uses, and `w`, their weights.
 #'
+#' With `strata`, a row with a missing stratum key is refused or dropped as a
+#' missing weight is, and `n` is split over the strata of the rows kept by
+#' `stratum_allocation()`. The result then also holds `code`, each kept
+#' row's stratum as a position in `labels`, `sizes` and `n_alloc`, and `idx`,
+#' the positions in `keep` of each stratum's rows, in key order.
+#'
 #' @noRd
 weighted_setup <- function(design, data) {
   col <- design$weights
-  validate_data(data, required_columns = col)
+  strata <- design$strata
+  validate_data(data, required_columns = c(col, strata))
   check_key_columns(data, col, "weights")
+  if (!is.null(strata)) check_key_columns(data, strata, "strata")
   w <- data[[col]]
   check_weights(w, col)
   what <- paste0("a missing weight in `", col, "`")
   bad <- check_na_policy(is.na(w), design$na_rm, what)
   if (all(bad)) stop("Every row has ", what, ".", call. = FALSE)
+  if (!is.null(strata)) return(weighted_strata(design, data, w, bad))
   keep <- which(!bad)
   n_rows <- length(keep)
   if (design$method == "successive") {
@@ -132,6 +238,48 @@ weighted_setup <- function(design, data) {
          ") for method = \"", design$method, "\".", call. = FALSE)
   }
   list(keep = keep, w = w[keep])
+}
+
+#' The strata of a weighted design, and its split of `n` over them
+#'
+#' `bad` marks the rows dropped for a missing weight. The allocation runs
+#' over the rows left, so a stratum's size counts only rows the design can
+#' draw.
+#'
+#' @noRd
+weighted_strata <- function(design, data, w, bad) {
+  strata <- design$strata
+  gone <- check_na_policy(is.na(group_key(data, strata)) & !bad,
+                          design$na_rm, "a missing stratum key")
+  keep <- which(!bad & !gone)
+  if (!length(keep)) {
+    stop("Every row has a missing weight in `", design$weights, "` or a ",
+         "missing stratum key.", call. = FALSE)
+  }
+  # These methods have no `replace`, so a count above its stratum's rows is
+  # refused without offering one.
+  split_by <- design
+  split_by$replace <- NULL
+  al <- stratum_allocation(split_by, table_frame(
+    lapply(strata, function(col) data[[col]][keep]), strata, list()))
+  list(keep = keep, w = w[keep], code = al$code, labels = al$labels,
+       idx = al$idx, sizes = al$sizes, n_alloc = al$n_alloc)
+}
+
+#' Each kept row's inclusion probability under a PPS method
+#'
+#' `st` is `weighted_setup()`. Without strata, `pps_pi()` over all the rows;
+#' with them, `pps_pi()` within each stratum, for its share of `n`.
+#'
+#' @noRd
+weighted_pi <- function(design, st) {
+  if (is.null(design$strata)) return(pps_pi(st$w, design$n))
+  pi <- numeric(length(st$keep))
+  for (h in seq_along(st$idx)) {
+    i <- st$idx[[h]]
+    pi[i] <- pps_pi(st$w[i], st$n_alloc[h])
+  }
+  pi
 }
 
 #' @export
@@ -147,10 +295,20 @@ draw_design.drawn_design_weighted <- function(design, data) {
     return(reindex(data, idx))
   }
 
-  pi <- pps_pi(w, design$n)
+  if (!is.null(design$strata)) {
+    warn_empty_groups(st$n_alloc, st$sizes, st$labels, fix = paste0(
+      if (has_counts(design)) "Give " else "Raise `n`, or give ",
+      "each stratum a count of at least 1 in `allocation` (or 2, so each ",
+      "stratum also supports a variance)."))
+  }
+  pi <- weighted_pi(design, st)
 
   idx <- if (design$method == "poisson") {
     which(stats::runif(n_rows) < pi)
+  } else if (!is.null(design$strata)) {
+    # Each stratum is shuffled and walked on its own, in key order.
+    unlist(lapply(st$idx, function(i) i[systematic_pps(pi[i])]),
+           use.names = FALSE)
   } else {
     systematic_pps(pi)
   }
@@ -251,7 +409,7 @@ exact_inclusion.drawn_design_weighted <- function(design, data) {
     )
   }
   out <- numeric(nrow(data))
-  out[st$keep] <- pps_pi(st$w, design$n)
+  out[st$keep] <- weighted_pi(design, st)
   out
 }
 

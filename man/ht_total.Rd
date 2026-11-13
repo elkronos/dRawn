@@ -117,7 +117,9 @@ best-performing of the standard approximations for high-entropy designs
 (Matei and Tillé 2005). Randomised systematic selection is close to high
 entropy (Hartley and Rao 1962). Unlike a plain jackknife, each row's
 contribution is scaled by its own \code{1 - pi}, so rows near certainty stop
-adding variance they do not have.}
+adding variance they do not have. With \code{strata} it is added up over
+the strata. \code{\link[=design_multistage]{design_multistage()}} with \code{size} applies it to the
+estimated totals of the clusters, and adds the variance within them.}
 \item{\code{"successive difference"}}{\code{\link[=design_systematic]{design_systematic()}}. No
 design-unbiased estimator exists — the design has one random start, and
 most pairs of rows can never be drawn together — so this uses the

@@ -11,7 +11,8 @@ design_multistage(
   allocation = c("equal", "proportional"),
   min_per_cluster = 0L,
   replace = FALSE,
-  na_rm = FALSE
+  na_rm = FALSE,
+  size = NULL
 )
 }
 \arguments{
@@ -43,8 +44,13 @@ inclusion probability is the chance of being drawn at least once,
 \code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^m)} for a take of \code{m}
 from a cluster of \code{N_h} rows.}
 
-\item{na_rm}{Drop rows whose cluster label is \code{NA} instead of raising an
-error.}
+\item{na_rm}{Drop rows whose cluster label, or \code{size}, is \code{NA} instead of
+raising an error.}
+
+\item{size}{Optional column holding each cluster's size measure, the same
+on every row of a cluster: positive, finite and numeric. Clusters are
+then selected with probability proportional to it. See "Clusters in
+proportion to size".}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -54,9 +60,56 @@ Selects clusters at the first stage, then draws rows within them at the
 second. \code{n} is the total across the selected clusters under both allocations,
 matching \code{\link[=design_stratified]{design_stratified()}}.
 }
+\section{Clusters in proportion to size}{
+
+With \code{size}, the clusters are selected with probability proportional to a
+size measure, such as a count of households from a census, by
+systematic PPS as in \code{\link[=design_weighted]{design_weighted()}}: cluster \code{i} gets
+\code{pi_i = n_clusters * M_i / sum(M)}, and a cluster large enough that this
+passes 1 is taken with certainty, the rest of \code{n_clusters} being spread
+over the others. Each selected cluster then gives the same \code{m = n / n_clusters} rows by simple random sampling, so a row of cluster \code{i}, of
+\code{N_i} rows, has inclusion probability \code{pi_i * m / N_i}. When the measure
+is the cluster's row count and no cluster is certain, every row gets
+\code{n / N}: the design is self-weighting, with a fixed number of interviews
+per cluster.
+
+The measure is a property of the cluster, so every row of a cluster must
+carry the same value; a cluster with two values is refused. \code{n} must be a
+multiple of \code{n_clusters}, and \code{allocation} must be \code{"equal"}.
+
+\code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} estimate the variance as Deville's
+approximation over the estimated totals of the selected clusters below
+certainty, each scaled by its own \code{1 - pi_i}, plus the variance within the
+selected clusters, each divided by its \code{pi_i}. That is the two-stage
+estimator of \code{\link[=design_multistage]{design_multistage()}} without \code{size} when every \code{pi_i} is
+equal. A cluster taken with certainty is a stratum, and adds only the
+variance of the simple random sample within it. The degrees of freedom
+count the clusters below certainty less one, and in each certain cluster
+the sampled rows less one. The variance is declined when one row is taken
+per cluster, whose variation within clusters cannot be measured, or when
+one cluster below certainty is selected. In simulations of 2,000 draws
+each from frames of 78 or 80 clusters of 10 to 600 rows, taking 2 or 5
+rows from each of 12 or 20 clusters, with and without clusters taken
+with certainty, the variance averaged 0.94 to 1.02 times the true
+variance of the total, and 95\% intervals covered 93\% to 95\% of the time.
+
+\code{\link[=as_svydesign]{as_svydesign()}} hands the design to \code{survey} in two stages with
+Brewer's approximation at the first. Joint probabilities have no closed
+form; \code{\link[=joint_prob]{joint_prob()}} estimates them with \code{simulate = TRUE}.
+}
+
 \examples{
 df <- data.frame(id = 1:100, site = rep(paste0("s", 1:10), each = 10))
 nrow(draw(df, design_multistage("site", n_clusters = 4, n = 12), seed = 1))
+
+# Villages selected in proportion to their households, then 5 households
+# from each: every household has the same chance, 20 / 260
+hh <- data.frame(village = rep(paste0("v", 1:8),
+                               times = c(10, 20, 30, 40, 20, 50, 60, 30)))
+hh$households <- ave(seq_len(nrow(hh)), hh$village, FUN = length)
+pps <- design_multistage("village", n_clusters = 4, n = 20,
+                         size = "households")
+unique(round(inclusion_prob(hh, pps), 4))
 
 }
 \seealso{

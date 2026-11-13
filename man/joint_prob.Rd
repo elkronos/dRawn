@@ -47,7 +47,7 @@ independent across groups or a simple random sample within them:
 \code{\link[=design_simple]{design_simple()}}      \tab \code{n(n-1) / (N(N-1))} for a pair, without replacement \cr
 \code{\link[=design_stratified]{design_stratified()}}  \tab within a stratum as above; across strata, independent \cr
 \code{\link[=design_cluster]{design_cluster()}}     \tab same cluster: \code{a/A}; different clusters: \code{a(a-1)/(A(A-1))} \cr
-\code{\link[=design_multistage]{design_multistage()}}  \tab the two stages multiplied, where the per-cluster take is constant \cr
+\code{\link[=design_multistage]{design_multistage()}}  \tab the two stages multiplied, where the per-cluster take is constant and \code{size} is not given \cr
 \code{\link[=design_certainty]{design_certainty()}}   \tab \code{1} between certainty rows; otherwise the other row's own \code{pi} \cr
 \code{\link[=design_reservoir]{design_reservoir()}}   \tab simple random sampling over the first \code{max_items} rows \cr
 \code{\link[=design_temporal]{design_temporal()}}    \tab within an interval as above; across intervals, independent \cr
@@ -72,12 +72,13 @@ replicated sample its unbiased variance. Within the strata of
 get the overlap of their stretches, as with \code{n}, and pairs in two strata
 the product of their probabilities.
 
-Two designs have joint probabilities that are positive but have no closed
-form: \code{design_weighted(method = "systematic")}, which shuffles the rows
-before walking them so every pair can co-occur, and \code{\link[=design_spread]{design_spread()}}. For
-both, \code{\link[=ht_total]{ht_total()}} uses a variance approximation that needs only
-first-order probabilities, and \code{simulate = TRUE} here estimates the joint
-probabilities themselves.
+Three designs have joint probabilities that are positive but have no
+closed form: \code{design_weighted(method = "systematic")}, which shuffles the
+rows before walking them so every pair can co-occur, with or without
+\code{strata}; \code{\link[=design_multistage]{design_multistage()}} with \code{size}, which does the same with the
+clusters; and \code{\link[=design_spread]{design_spread()}}. For all three, \code{\link[=ht_total]{ht_total()}} uses a
+variance approximation that needs only first-order probabilities, and
+\code{simulate = TRUE} here estimates the joint probabilities themselves.
 }
 
 \section{Size}{

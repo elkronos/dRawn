@@ -234,3 +234,175 @@ test_that("certainty_set() gives the rows taken with certainty and the cut-off",
                                                   method = "systematic")),
                "cannot exceed the number of rows (12)", fixed = TRUE)
 })
+
+# ---- within strata -----------------------------------------------------------
+
+strata_pps_pop <- function() {
+  data.frame(
+    id = 1:60,
+    g = rep(c("a", "b", "c"), times = c(30, 20, 10)),
+    w = c(1:29, 200, (1:20) * 2, c(5, 5, 6, 6, 7, 7, 8, 8, 9, 9)),
+    y = (1:60) %% 7 * 3 + c(1:29, 200, (1:20) * 2,
+                            c(5, 5, 6, 6, 7, 7, 8, 8, 9, 9)) * 2
+  )
+}
+
+test_that("PPS within strata draws each stratum's share of n", {
+  pop <- strata_pps_pop()
+  d <- design_weighted("w", n = 12, method = "systematic", strata = "g")
+  tab <- allocation_table(pop, d)
+  expect_identical(tab$n, c(6L, 4L, 2L))
+  expect_identical(tab$status, rep("rule", 3))
+  expect_true(all(is.na(tab$prob)))
+  for (i in 1:20) {
+    s <- draw(pop, d, seed = i)
+    expect_identical(as.vector(table(factor(s$g, c("a", "b", "c")))),
+                     c(6L, 4L, 2L))
+  }
+  p <- inclusion_prob(pop, d)
+  expect_equal(as.vector(tapply(p, pop$g, sum)), c(6, 4, 2))
+  # Proportional to size within each stratum, with the heavy row of `a`
+  # taken with certainty and the rest of its share spread over the others.
+  expect_identical(p[30], 1)
+  expect_equal(p[1:29], 5 * pop$w[1:29] / sum(pop$w[1:29]))
+  expect_equal(p[31:50], 4 * pop$w[31:50] / sum(pop$w[31:50]))
+  expect_identical(as.vector(certainty_set(pop, d)), 30L)
+  expect_identical(attr(certainty_set(pop, d), "threshold"), NA_real_)
+
+  eq <- design_weighted("w", n = 12, method = "poisson", strata = "g",
+                        allocation = "equal")
+  expect_equal(as.vector(tapply(inclusion_prob(pop, eq), pop$g, sum)),
+               c(4, 4, 4))
+  counts <- design_weighted("w", method = "systematic", strata = "g",
+                            allocation = c(a = 2, b = 3, c = 5))
+  expect_identical(counts$n, 10L)
+  expect_identical(allocation_table(pop, counts)$status, rep("count", 3))
+  expect_equal(as.vector(tapply(inclusion_prob(pop, counts), pop$g, sum)),
+               c(2, 3, 5))
+})
+
+test_that("PPS within strata includes each row as often as it claims", {
+  skip_on_cran()
+  pop <- strata_pps_pop()[c(1:8, 31:36, 51:55), ]
+  for (m in c("systematic", "poisson")) {
+    d <- design_weighted("w", n = 7, method = m, strata = "g")
+    expect_equal(inclusion_prob(pop, d, simulate = TRUE, R = 2000, seed = 1),
+                 inclusion_prob(pop, d), tolerance = 0.06)
+  }
+})
+
+test_that("Deville within strata is sampling::varest() added over strata", {
+  skip_if_not_installed("sampling")
+  pop <- strata_pps_pop()
+  d <- design_weighted("w", n = 18, method = "systematic", strata = "g")
+  for (i in 1:3) {
+    s <- draw(pop, d, seed = i, weights = TRUE)
+    r <- ht_total(s, "y")
+    free <- s$.prob < 1
+    ref <- sum(vapply(split(which(free), s$g[free]), function(j) {
+      sampling::varest(s$y[j], pik = s$.prob[j])
+    }, numeric(1)))
+    expect_equal(r$variance, ref)
+    expect_identical(r$method, "deville")
+    # Rows below certainty less the strata that hold them.
+    expect_identical(r$df, sum(free) - 3)
+  }
+})
+
+test_that("a stratum with one sampled row below certainty is refused by name", {
+  pop <- strata_pps_pop()
+  d <- design_weighted("w", method = "systematic", strata = "g",
+                       allocation = c(a = 4, b = 4, c = 1))
+  s <- draw(pop, d, seed = 1, weights = TRUE)
+  r <- ht_total(s, "y", variance = "analytic")
+  expect_true(is.na(r$se))
+  expect_match(r$note, "The stratum `c` has a single sampled row",
+               fixed = TRUE)
+  expect_match(r$note, "count of 2 or more for each in `allocation`",
+               fixed = TRUE)
+  # The jackknife refuses it too, rather than leave the stratum out.
+  expect_true(is.na(ht_total(s, "y")$se))
+  # A domain with no unit in that stratum is measured.
+  pop$dom <- ifelse(pop$g == "c", "out", "in")
+  s2 <- draw(pop, d, seed = 1, weights = TRUE)
+  by <- ht_total(s2, "y", by = "dom", variance = "analytic")
+  expect_false(is.na(by$se[by$dom == "in"]))
+  expect_true(is.na(by$se[by$dom == "out"]))
+})
+
+test_that("the jackknife of PPS within strata deletes rows within strata", {
+  pop <- strata_pps_pop()
+  s <- draw(pop, design_weighted("w", n = 18, method = "systematic",
+                                 strata = "g"), seed = 2, weights = TRUE)
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_match(jk$note, "in 3 strata", fixed = TRUE)
+  expect_match(jk$note, "taken with certainty add no variance", fixed = TRUE)
+  expect_gt(jk$se, 0)
+})
+
+test_that("Poisson within strata keeps the Poisson variance", {
+  pop <- strata_pps_pop()
+  s <- draw(pop, design_weighted("w", n = 18, method = "poisson",
+                                 strata = "g"), seed = 3, weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_equal(r$variance, sum((1 - s$.prob) / s$.prob^2 * s$y^2))
+  free <- s$.prob < 1
+  expect_identical(r$df,
+                   as.numeric(sum(free) - length(unique(s$g[free]))))
+})
+
+test_that("strata need a closed-form PPS method; allocation needs strata", {
+  expect_error(design_weighted("w", n = 10, strata = "g"),
+               "cannot be combined with method = \"successive\"",
+               fixed = TRUE)
+  expect_error(design_weighted("w", n = 10, method = "poisson",
+                               allocation = "equal"),
+               "`strata` is NULL", fixed = TRUE)
+  expect_error(design_weighted("w", n = 10, method = "poisson", strata = "g",
+                               allocation = "neyman"),
+               "`allocation` must be one of", fixed = TRUE)
+  expect_error(design_weighted("w", method = "poisson", strata = "g"),
+               "`n` is missing", fixed = TRUE)
+  expect_error(design_weighted("w", n = 9, method = "poisson", strata = "g",
+                               allocation = c(a = 2, b = 3)),
+               "not the sum of the counts", fixed = TRUE)
+  pop <- strata_pps_pop()
+  expect_error(inclusion_prob(pop, design_weighted(
+    "w", method = "systematic", strata = "g",
+    allocation = c(a = 2, b = 3, c = 11))),
+    "Stratum `c` has 10 row(s) but `allocation` asks for 11. Lower its count.",
+    fixed = TRUE)
+  expect_error(inclusion_prob(pop, design_weighted(
+    "w", method = "systematic", strata = "g",
+    allocation = c(a = 2, b = 3, c = 5, d = 1))), "`d`", fixed = TRUE)
+  expect_error(inclusion_prob(pop, design_weighted(
+    "w", method = "systematic", strata = "g",
+    allocation = c(a = 2, b = 3))), "`c`", fixed = TRUE)
+})
+
+test_that("a missing stratum key follows na_rm, like a missing weight", {
+  pop <- strata_pps_pop()
+  pop$g[2] <- NA
+  d <- design_weighted("w", n = 12, method = "systematic", strata = "g")
+  expect_error(draw(pop, d, seed = 1), "1 row(s) have a missing stratum key",
+               fixed = TRUE)
+  kept <- design_weighted("w", n = 12, method = "systematic", strata = "g",
+                          na_rm = TRUE)
+  p <- inclusion_prob(pop, kept)
+  expect_identical(p[2], 0)
+  expect_equal(sum(p), 12)
+  expect_identical(allocation_table(pop, kept)$N, c(29L, 20L, 10L))
+})
+
+test_that("samples bound stratum by stratum are refused, with strata the way", {
+  pop <- strata_pps_pop()
+  parts <- lapply(c("a", "b", "c"), function(h) {
+    draw(pop[pop$g == h, ], design_weighted("w", n = 4,
+                                            method = "systematic"),
+         seed = 1, weights = TRUE)
+  })
+  expect_error(ht_total(do.call(rbind, parts), "y"))
+  whole <- draw(pop, design_weighted("w", n = 12, method = "systematic",
+                                     strata = "g"), seed = 1, weights = TRUE)
+  expect_false(is.na(ht_total(whole, "y")$se))
+})
