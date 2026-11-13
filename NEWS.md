@@ -873,6 +873,40 @@
   estimates describe the units that can be reached, and `?use_reserves`
   says what that assumes. `as_drawn()` rebuilds a list read back from a
   file through its `.reserve` column.
+* `ht_ratio()` estimates the ratio of two population totals,
+  `sum(y / pi) / sum(x / pi)`, such as audited value per unit of book
+  value, with a standard error from the linearised residuals
+  `(y - R x) / X_hat` and the design's own variance estimator, on the
+  design's degrees of freedom. With `by` it gives each domain's ratio,
+  estimated from the whole sample. For the designs `as_svydesign()` maps
+  with identical standard errors it equals `survey::svyratio()`, and
+  `survey::svyby(..., survey::svyratio)` by domain; systematic, spread and
+  systematic PPS samples get the estimators `ht_total()` uses for them. A
+  ratio needed linearised residuals built by hand, or the hand-off to
+  `survey`. Its result has the `coef()`, `vcov()`, `confint()`,
+  `as.data.frame()`, `tidy()` and `deff()` methods of the other estimates.
+* `ht_total()` takes `ratio`, the name of a frame column `x`, and returns
+  the ratio estimator of the total: the ratio of `y` to `x` in the sample
+  times the total of `x` over the frame rows the design can reach, read
+  from the frame stored with the sample. It equals
+  `predict(survey::svyratio(), total =)`, and when `y` is close to
+  proportional to `x` it is more precise than the Horvitz-Thompson total. A
+  missing `x` in a frame row the design can reach is refused, and so is
+  `ratio` with `by`.
+* `ht_total()` and `ht_mean()` take several column names as `y`, and
+  return one table with a row per variable, or per variable and domain with
+  `by`, each row what a call for that variable alone gives. Its `vcov()`
+  holds the covariances between the variables' estimates, each from one
+  more run of the design's estimator, `(V(z_a + z_b) - V(z_a) - V(z_b)) / 2`,
+  which equals `vcov(survey::svytotal(~a + b))` for the designs
+  `as_svydesign()` maps with identical standard errors.
+  `ht_total(s, c("y", "w"))` stopped with a message that `y` must be a
+  numeric column name, and the covariance of two estimates, which the
+  standard error of their difference needs, was not available at all. A
+  `y` that is none of one column name, several column names or a numeric
+  vector as long as the sample is refused with a message that lists those
+  forms and says what `y` was, and a column that is not numeric is named
+  with its type.
 
 ## Speed and memory
 

@@ -773,3 +773,238 @@ test_that("ht_mean(na_rm = TRUE) refuses what it cannot estimate", {
   expect_true(is.na(one$se))
   expect_match(one$note, "The domain of rows with `y` present has one")
 })
+
+# ---- ratios -----------------------------------------------------------------
+
+ratio_pop <- function() {
+  id <- 1:300
+  book <- 20 + (id * 37) %% 400
+  data.frame(id = id, site = rep(c("a", "b", "c"), times = c(150, 100, 50)),
+             cl = rep(paste0("c", 1:30), each = 10), book = book,
+             audited = book * (0.9 + ((id * 7) %% 11) / 50))
+}
+
+test_that("a ratio and a ratio total match survey::svyratio()", {
+  skip_if_not_installed("survey")
+  d <- ratio_pop()
+  for (des in list(design_stratified("site", n = 45),
+                   design_cluster("cl", n_clusters = 6))) {
+    s <- draw(d, des, seed = 3, weights = TRUE)
+    sv <- survey::svyratio(~audited, ~book, as_svydesign(s))
+    r <- ht_ratio(s, "audited", "book")
+    expect_s3_class(r, "drawn_ratio")
+    expect_equal(r$ratio, unname(coef(sv)))
+    expect_equal(r$se, unname(survey::SE(sv)))
+    expect_equal(r$ratio, r$total_y / r$total_x)
+    expect_equal(r$df, ht_total(s, "audited")$df)
+
+    t <- ht_total(s, "audited", ratio = "book")
+    p <- predict(sv, total = sum(d$book))
+    expect_s3_class(t, "drawn_ht")
+    expect_equal(t$total, as.numeric(p$total))
+    expect_equal(t$se, as.numeric(p$se))
+    expect_equal(t$ratio, r$ratio)
+    expect_equal(t$frame_total, sum(d$book))
+  }
+  # The design effect is measured as svyratio(deff = TRUE) measures it.
+  s <- draw(d, design_stratified("site", n = 45), seed = 3, weights = TRUE)
+  sv <- survey::svyratio(~audited, ~book, as_svydesign(s), deff = TRUE)
+  expect_equal(ht_ratio(s, "audited", "book")$deff,
+               as.numeric(attr(sv, "deff")))
+})
+
+test_that("the ratio total uses the frame total over the rows reached", {
+  d <- ratio_pop()
+  d$book[d$site == "c"] <- NA
+  # Site c is outside the design, so its missing `book` plays no part.
+  expect_warning(
+    s <- draw(d, design_stratified("site", n = 40,
+                                   allocation = c(a = 25, b = 15, c = 0)),
+              seed = 3, weights = TRUE),
+    class = "drawn_empty_stratum")
+  t <- ht_total(s, "audited", ratio = "book")
+  expect_equal(t$frame_total, sum(d$book[d$site != "c"]))
+  expect_equal(t$frame_total, unname(frame_totals(s, ~book)["book"]))
+  # Close to proportional to `book`, so far more precise than the HT total.
+  expect_lt(t$se, ht_total(s, "audited")$se / 3)
+  expect_output(print(t), "Ratio estimate of the total")
+  expect_output(print(t), "`book` over the frame", fixed = TRUE)
+})
+
+test_that("ht_ratio() and ht_total(ratio =) refuse what they cannot estimate", {
+  d <- ratio_pop()
+  s <- draw(d, design_stratified("site", n = 45), seed = 3, weights = TRUE)
+  s$gap <- s$book
+  s$gap[3] <- NA
+  expect_error(ht_ratio(s, "audited", "gap"), "`x` is missing in 1 of the 45")
+  s$zero <- 0
+  expect_error(ht_ratio(s, "audited", "zero"),
+               "The estimated total of `zero`, `sum(x / pi)` over the sampled",
+               fixed = TRUE)
+  expect_error(ht_ratio(s, "audited", "site"),
+               "`x` names `site`, a character column")
+  expect_error(ht_ratio(s, "audited", c("book", "id")),
+               "`x` must be one column name or a numeric vector")
+  expect_error(ht_total(s, "audited", ratio = "zero"),
+               "`ratio` names `zero`, which is not a column of the frame")
+  expect_error(ht_total(s, "audited", ratio = "site"),
+               "a character column of the frame")
+  expect_error(ht_total(s, "audited", ratio = c("book", "id")),
+               "`ratio` must be the name of one column")
+  expect_error(ht_total(s, "audited", ratio = "book", by = "site"),
+               "`ratio` gives one ratio estimator of the total")
+
+  d$part <- d$book
+  d$part[7] <- NA
+  s <- draw(d, design_stratified("site", n = 45), seed = 3, weights = TRUE)
+  expect_error(ht_total(s, "audited", ratio = "part"),
+               "`part` is missing in 1 of the 300 frame rows")
+  small <- compact_sample(s)
+  expect_error(ht_total(small, "audited", ratio = "book"),
+               "compact_sample() dropped", fixed = TRUE)
+})
+
+test_that("a ratio over one sampling unit has no se, an exact one a note", {
+  d <- ratio_pop()
+  s <- draw(d, design_cluster("cl", n_clusters = 1), seed = 1,
+            weights = TRUE)
+  r <- ht_ratio(s, "audited", "book")
+  expect_true(is.na(r$se))
+  expect_match(r$note, "A ratio's linearised residuals sum to zero")
+  expect_true(is.na(ht_total(s, "audited", ratio = "book")$se))
+
+  # `y` proportional to `x`: residuals of exactly 0 rather than rounding
+  # error, and no design effect.
+  s <- draw(d, design_simple(n = 30), seed = 1, weights = TRUE)
+  s$part <- 0.3 * s$book
+  r <- ht_ratio(s, "part", "book")
+  expect_identical(r$variance, 0)
+  expect_true(is.na(r$deff))
+  expect_match(r$note, "`y / x` is 0.3 in every sampled row", fixed = TRUE)
+})
+
+test_that("a ratio has coef(), vcov(), confint(), as.data.frame() and tidy()", {
+  s <- draw(ratio_pop(), design_stratified("site", n = 45), seed = 3,
+            weights = TRUE)
+  r <- ht_ratio(s, "audited", "book")
+  expect_equal(coef(r), c("audited/book" = r$ratio))
+  expect_equal(vcov(r), matrix(r$variance, 1, 1,
+                               dimnames = list("audited/book",
+                                               "audited/book")))
+  expect_equal(unname(confint(r)[1, ]), r$ci)
+  expect_equal(unname(confint(r, level = 0.8)[1, ]),
+               ht_ratio(s, "audited", "book", level = 0.8)$ci)
+  df <- as.data.frame(r)
+  expect_equal(df$x, "book")
+  expect_equal(df$ratio, r$ratio)
+  expect_equal(df$se, r$se)
+  expect_equal(deff(r), r$deff)
+  expect_output(print(r), "Ratio of Horvitz-Thompson totals")
+  expect_output(print(r), "`audited` / `book`", fixed = TRUE)
+
+  # Vectors have no names.
+  v <- ht_ratio(s, s$audited, s$book)
+  expect_equal(names(coef(v)), "y/x")
+  expect_equal(v$se, r$se)
+  expect_null(v$x)
+
+  skip_if_not_installed("generics")
+  expect_equal(generics::tidy(r)$term, "audited/book")
+  skip_if_not_installed("survey")
+  expect_equal(survey::deff(r), r$deff)
+})
+
+# ---- several variables ------------------------------------------------------
+
+test_that("several y give a table whose rows are their own estimates", {
+  s <- draw(est_pop(), design_stratified("site", n = 40), seed = 1,
+            weights = TRUE)
+  s$hit <- s$y > 200
+  b <- ht_total(s, c("y", "w"))
+  expect_s3_class(b, "drawn_by")
+  expect_equal(names(b), c("variable", "n", "total", "variance", "se",
+                           "ci_lower", "ci_upper", "method"))
+  expect_equal(b$variable, c("y", "w"))
+  m <- ht_mean(s, c("y", "hit"))
+  for (i in 1:2) {
+    one <- ht_total(s, b$variable[i])
+    expect_equal(b$total[i], one$total)
+    expect_equal(b$se[i], one$se)
+    expect_equal(c(b$ci_lower[i], b$ci_upper[i]), one$ci)
+    one <- ht_mean(s, m$variable[i])
+    expect_equal(m$mean[i], one$mean)
+    expect_equal(c(m$ci_lower[i], m$ci_upper[i]), one$ci)
+  }
+  expect_equal(coef(b), c(y = b$total[1], w = b$total[2]))
+  V <- vcov(b)
+  expect_equal(dimnames(V), list(c("y", "w"), c("y", "w")))
+  expect_equal(unname(diag(V)), b$variance)
+  expect_equal(V[1, 2], V[2, 1])
+  # The proportion keeps its logit interval at another level.
+  expect_equal(unname(confint(m, level = 0.8)[2, ]),
+               ht_mean(s, "hit", level = 0.8)$ci)
+  expect_output(print(m), "Hajek mean by variable")
+  expect_output(print(m), "logit for proportions")
+  expect_error(deff(b), "several variables")
+  skip_if_not_installed("generics")
+  expect_equal(generics::tidy(b)$term, c("y", "w"))
+})
+
+test_that("the covariances of several estimates are survey's", {
+  skip_if_not_installed("survey")
+  d <- est_pop()
+  d$z <- (d$id * 17) %% 23
+  for (des in list(design_stratified("site", n = 40),
+                   design_cluster("cl", n_clusters = 6))) {
+    s <- draw(d, des, seed = 1, weights = TRUE)
+    svd <- as_svydesign(s)
+    b <- ht_total(s, c("y", "z"))
+    expect_equal(unname(vcov(b)),
+                 unname(matrix(vcov(survey::svytotal(~y + z, svd)), 2)))
+    m <- ht_mean(s, c("y", "z"))
+    expect_equal(unname(vcov(m)),
+                 unname(matrix(vcov(survey::svymean(~y + z, svd)), 2)))
+  }
+})
+
+test_that("several means with y missing are each over their own rows", {
+  s <- draw(est_pop(), design_stratified("site", n = 40), seed = 1,
+            weights = TRUE)
+  s$y[c(2, 7)] <- NA
+  m <- ht_mean(s, c("y", "w"), na_rm = TRUE)
+  expect_equal(m$mean, c(ht_mean(s, "y", na_rm = TRUE)$mean,
+                         ht_mean(s, "w")$mean))
+  expect_equal(m$se, c(ht_mean(s, "y", na_rm = TRUE)$se, ht_mean(s, "w")$se))
+  expect_identical(m$n, c(38L, 40L))
+  expect_match(attr(m, "notes"), "^`y`: 2 of the 40 sampled rows",
+               all = FALSE)
+  expect_error(ht_total(s, c("w", "y")),
+               "`y`, named in `y`, is missing in 2 of the 40", fixed = TRUE)
+
+  # Each covariance is that of the two means' linearised residuals.
+  skip_if_not_installed("survey")
+  r <- !is.na(s$y)
+  s$za <- 0
+  s$za[r] <- (s$y[r] - m$mean[1]) / sum(s$.weight[r])
+  s$zb <- (s$w - m$mean[2]) / sum(s$.weight)
+  V <- vcov(survey::svytotal(~za + zb, as_svydesign(s)))
+  expect_equal(vcov(m)[1, 2], V[1, 2])
+})
+
+test_that("a y that is not a column name or a numeric vector says so", {
+  s <- draw(est_pop(), design_simple(n = 20), seed = 1, weights = TRUE)
+  forms <- paste0("`y` must be one column name, several column names, or a ",
+                  "numeric vector as long as `sample`.")
+  expect_error(ht_total(s, letters[1:20]), forms, fixed = TRUE)
+  expect_error(ht_total(s, letters[1:20]), "none of them a column")
+  expect_error(ht_mean(s, c("y", NA)), "some of them missing or empty")
+  expect_error(ht_total(s, 1:3),
+               "an integer vector of length 3, and `sample` has 20 rows")
+  expect_error(ht_total(s, list(1)), forms, fixed = TRUE)
+  expect_error(ht_mean(s, "site"), "`y` names `site`, a character column")
+  expect_error(ht_total(s, c("y", "y")), "`y` names `y` more than once")
+  expect_error(ht_total(s, c("y", "nope")), "`sample` has no column `nope`")
+  expect_error(ht_total(s, c("y", "w"), by = "site",
+                        contrast = c(a = 1, b = -1)),
+               "`contrast` weighs the domains of one variable")
+})

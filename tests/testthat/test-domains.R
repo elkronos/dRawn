@@ -672,3 +672,66 @@ test_that("a contrast gives the same methods, named by its weights", {
   expect_equal(df$contrast, k$contrast)
   expect_true(is.na(deff(k)))
 })
+
+test_that("several y by domain hold the covariances within each domain", {
+  s <- draw(table_pop(), design_stratified("site", n = 60), seed = 1,
+            weights = TRUE)
+  s$v <- s$y %% 7
+  b <- ht_total(s, c("y", "v"), by = "half")
+  expect_equal(names(b)[1:3], c("variable", "half", "n"))
+  one <- ht_total(s, "v", by = "half")
+  expect_equal(b$total[b$variable == "v"], one$total)
+  expect_equal(b$se[b$variable == "v"], one$se)
+  V <- vcov(b)
+  expect_equal(rownames(V), c("y . east", "y . west", "v . east",
+                              "v . west"))
+  expect_equal(unname(diag(V)), b$variance)
+  expect_equal(V["y . east", "v . west"], 0)
+  # Selecting rows keeps the matching part of the matrix.
+  expect_equal(vcov(b[c(4, 1), ]), V[c(4, 1), c(4, 1)])
+  expect_output(print(b), "by variable and domain")
+  s$variable <- s$half
+  expect_error(ht_total(s, c("y", "v"), by = "variable"),
+               "`by` names `variable`")
+
+  skip_if_not_installed("survey")
+  svd <- as_svydesign(s)
+  sb <- survey::svyby(~y + v, ~half, svd, survey::svytotal, covmat = TRUE)
+  expect_equal(V["y . east", "v . east"], vcov(sb)["east:y", "east:v"])
+  expect_equal(V["y . west", "v . west"], vcov(sb)["west:y", "west:v"])
+  m <- ht_mean(s, c("y", "v"), by = "half")
+  sm <- survey::svyby(~y + v, ~half, svd, survey::svymean, covmat = TRUE)
+  expect_equal(vcov(m)["y . west", "v . west"],
+               vcov(sm)["west:y", "west:v"])
+})
+
+test_that("domain ratios match survey::svyby(svyratio)", {
+  d <- dom_pop()
+  d$x <- 1 + d$id %% 9
+  s <- draw(d, design_stratified("site", n = 80), seed = 2, weights = TRUE)
+  b <- ht_ratio(s, "y", "x", by = "region")
+  expect_equal(names(b), c("region", "n", "ratio", "variance", "se",
+                           "ci_lower", "ci_upper", "method"))
+  for (r in c("east", "west")) {
+    i <- s$region == r
+    expect_equal(b$ratio[b$region == r],
+                 sum(s$y[i] * s$.weight[i]) / sum(s$x[i] * s$.weight[i]))
+  }
+  expect_output(print(b), "Ratio `y` / `x` by domain", fixed = TRUE)
+  s$x0 <- ifelse(s$region == "east", 0, s$x)
+  expect_error(ht_ratio(s, "y", "x0", by = "region"),
+               "The estimated total of `x0` is 0 in the domain `east`")
+  skip_if_not_installed("generics")
+  expect_equal(generics::tidy(b)$term, c("y/x", "y/x"))
+
+  skip_if_not_installed("survey")
+  for (des in list(design_stratified("site", n = 80),
+                   design_cluster("cl", n_clusters = 8))) {
+    s <- draw(d, des, seed = 2, weights = TRUE)
+    ours <- ht_ratio(s, "y", "x", by = "region")
+    theirs <- survey::svyby(~y, ~region, as_svydesign(s), survey::svyratio,
+                            denominator = ~x)
+    expect_equal(ours$ratio, unname(coef(theirs)))
+    expect_equal(ours$se, unname(survey::SE(theirs)))
+  }
+})

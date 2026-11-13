@@ -76,9 +76,11 @@
 #' strata of a frame, and which strata it holds at the floor, takes whole or
 #' leaves empty. [joint_prob()] gives
 #' second-order probabilities, and [ht_total()] and [ht_mean()] turn a sample
-#' into a population total, mean or proportion — overall or by domain — with a
-#' standard error from the variance estimator suited to the design and a
-#' confidence interval on the design's degrees of freedom. [deff()] reports
+#' into a population total, mean or proportion — overall or by domain, for
+#' one variable or several — with a standard error from the variance
+#' estimator suited to the design and a confidence interval on the design's
+#' degrees of freedom. [ht_ratio()] estimates a ratio of two totals the same
+#' way, and `ht_total(ratio =)` the ratio estimator of a total. [deff()] reports
 #' what the design cost in precision against simple random sampling, and
 #' [sample_summary()] reports what was actually drawn against what was in the
 #' frame. [add_fieldwork()] joins fieldwork results to a sample by an id,

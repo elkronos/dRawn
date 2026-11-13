@@ -86,9 +86,11 @@ a design that selects in proportion to size takes with certainty.
 strata of a frame, and which strata it holds at the floor, takes whole or
 leaves empty. \code{\link[=joint_prob]{joint_prob()}} gives
 second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} turn a sample
-into a population total, mean or proportion — overall or by domain — with a
-standard error from the variance estimator suited to the design and a
-confidence interval on the design's degrees of freedom. \code{\link[=deff]{deff()}} reports
+into a population total, mean or proportion — overall or by domain, for
+one variable or several — with a standard error from the variance
+estimator suited to the design and a confidence interval on the design's
+degrees of freedom. \code{\link[=ht_ratio]{ht_ratio()}} estimates a ratio of two totals the same
+way, and \code{ht_total(ratio =)} the ratio estimator of a total. \code{\link[=deff]{deff()}} reports
 what the design cost in precision against simple random sampling, and
 \code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn against what was in the
 frame. \code{\link[=add_fieldwork]{add_fieldwork()}} joins fieldwork results to a sample by an id,

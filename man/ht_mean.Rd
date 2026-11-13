@@ -24,8 +24,9 @@ ht_mean(
 read as \code{\link[=ht_total]{ht_total()}} reads it: \code{.prob} for the probabilities, and the
 stored frame for the design's columns. See "Which columns are read" there.}
 
-\item{y}{The variable to average: a column name, or a numeric vector as long
-as \code{sample}.}
+\item{y}{The variable to average: a column name, several column names, or
+a numeric vector as long as \code{sample}. See "Several variables" in
+\code{\link[=ht_total]{ht_total()}}.}
 
 \item{estimator}{\code{"hajek"} or \code{"ht"}. See above.}
 
@@ -54,8 +55,10 @@ with \code{y} missing that \code{na_rm = TRUE} left out. See \code{\link[=ht_tot
 \code{variable}, \code{n_random}, \code{method}, \code{df}, \code{note} and \code{unreachable} say,
 and \code{\link[=deff]{deff()}} for the design effect. With \code{by}, a data frame with one row
 per domain, and with \code{contrast} a \code{drawn_contrast}, as for \code{\link[=ht_total]{ht_total()}}.
-Each has \code{coef()}, \code{vcov()}, \code{confint()}, \code{as.data.frame()} and \code{tidy()}
-methods; see "Working with the result" in \code{\link[=ht_total]{ht_total()}}.
+With several column names as \code{y}, a \code{drawn_by} table with a row per
+variable, as for \code{\link[=ht_total]{ht_total()}}. Each has \code{coef()}, \code{vcov()}, \code{confint()},
+\code{as.data.frame()} and \code{tidy()} methods; see "Working with the result" in
+\code{\link[=ht_total]{ht_total()}}.
 }
 \description{
 The Hajek estimator, \code{sum(y / pi) / sum(1 / pi)}, is the default. It divides
@@ -223,5 +226,5 @@ estimators: linearization and residual techniques. \emph{Survey Methodology},
 25, 193–203.
 }
 \seealso{
-\code{\link[=ht_total]{ht_total()}}, \code{\link[=deff]{deff()}}, \code{\link[=sample_summary]{sample_summary()}}
+\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=deff]{deff()}}, \code{\link[=sample_summary]{sample_summary()}}
 }

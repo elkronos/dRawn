@@ -79,7 +79,8 @@ test_that("ht_total validates y and level", {
   d <- var_pop()
   s <- draw(d, design_simple(n = 30), seed = 1, weights = TRUE)
   expect_error(ht_total(s, "nope"), "no column")
-  expect_error(ht_total(s, letters[1:30]), "numeric column name")
+  expect_error(ht_total(s, letters[1:30]),
+               "one column name, several column names, or a numeric vector")
   expect_error(ht_total(s, "y", level = 1.5), "between 0 and 1")
 })
 

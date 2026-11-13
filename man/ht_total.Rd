@@ -12,15 +12,16 @@ ht_total(
   by = NULL,
   df = NULL,
   alternative = c("two.sided", "less", "greater"),
-  contrast = NULL
+  contrast = NULL,
+  ratio = NULL
 )
 }
 \arguments{
 \item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. See
 "Which columns are read".}
 
-\item{y}{The variable to total: a column name, or a numeric vector as long as
-\code{sample}.}
+\item{y}{The variable to total: a column name, several column names, or a
+numeric vector as long as \code{sample}. See "Several variables".}
 
 \item{variance}{How to compute it. \code{"auto"} uses the design's own estimator
 (see "Variance") and falls back to the jackknife when that declines;
@@ -48,6 +49,10 @@ vector such as \code{c(a = 1, b = -1)} for domain \code{a} less domain \code{b}.
 is the domain's value of a single \code{by} column, or the values of several
 joined by \code{" . "}, as in \code{"a . east"}, the way the notes of a \code{by} table
 name domains. Needs \code{by}. See "Contrasts".}
+
+\item{ratio}{Optional name of a numeric column \code{x} of the frame, for the
+ratio estimator of the total, \code{sum(y / pi) / sum(x / pi)} times the
+frame's total of \code{x}. Not with \code{by}. See "Ratio estimation".}
 }
 \value{
 A list with a \code{print()} method, holding:
@@ -74,6 +79,10 @@ cleanly.}
 which the estimate does not cover; \code{NA} for a sample saved by drawn
 0.2.0. See "Rows the design cannot reach".}
 }
+With \code{ratio}, the list also holds \code{ratio}, the estimated ratio of \code{y}
+to \code{x}, \code{x}, the column's name, and \code{frame_total}, its total over the
+frame.
+
 With \code{by}, a data frame of class \code{drawn_by} instead: one row per domain,
 with the domain columns, \code{n} (an integer), \code{total}, \code{variance}, \code{se},
 \code{ci_lower}, \code{ci_upper} and \code{method}, and the level, alternative, scale,
@@ -89,8 +98,12 @@ the weight and estimate of each domain it weighs; \code{what} (\code{"total"} or
 \code{ci_scale}, \code{design}, \code{method}, \code{note} and \code{unreachable} as above.
 \code{deff} is \code{NA}.
 
-Each of the three has \code{coef()}, \code{vcov()}, \code{confint()},
-\code{as.data.frame()} and \code{tidy()} methods; see "Working with the result".
+With several column names as \code{y}, a \code{drawn_by} table with a row for
+each variable, or each variable and domain, led by a \code{variable} column;
+see "Several variables".
+
+Each has \code{coef()}, \code{vcov()}, \code{confint()}, \code{as.data.frame()} and
+\code{tidy()} methods; see "Working with the result".
 }
 \description{
 Forms the Horvitz-Thompson total \code{sum(y / pi)} with a standard error, a
@@ -333,6 +346,61 @@ weighs rests on one primary sampling unit, the contrast gets no standard
 error, for the reason given under "Domains".
 }
 
+\section{Ratio estimation}{
+
+\code{ratio} names a column \code{x} of the frame, and the total of \code{y} is then
+estimated by the ratio estimator \code{sum(y / pi) / sum(x / pi) * X}, where
+\code{X} is the total of \code{x} over the frame rows the design can reach, read
+from the frame stored with the sample, as \code{\link[=frame_totals]{frame_totals()}} reads it.
+When \code{y} is close to proportional to \code{x}, such as an audited value and
+the book value it was drawn on, the residuals \verb{y - R x} vary far less
+than \code{y}, and the estimate is more precise than the Horvitz-Thompson
+total. Its variance is \code{X^2} times that of the
+ratio from \code{\link[=ht_ratio]{ht_ratio()}}, estimated from the residuals
+\verb{X (y - R x) / X_hat} with the design's own estimator, and it equals
+\code{predict(survey::svyratio(~y, ~x, design), total = X)} for the designs
+\code{\link[=as_svydesign]{as_svydesign()}} maps with identical standard errors. The sampled rows'
+values of \code{x} come from the frame too. A value of \code{x} missing from a
+frame row the design can reach is refused, since \code{X} is then unknown,
+and so is \code{ratio} with \code{by}. The result holds the ratio as \code{ratio}, the
+column as \code{x} and \code{X} as \code{frame_total}, and prints them.
+
+The ratio estimator is biased, by an amount of order \code{1 / n}, and its
+design effect compares it with the same estimator from a simple random
+sample of the same size. Calibration in \code{survey}, with the totals from
+\code{\link[=frame_totals]{frame_totals()}}, covers several auxiliary columns at once.
+}
+
+\section{Several variables}{
+
+\code{y} may name several columns, such as \code{c("spend", "visits")}. The result
+is then a \code{drawn_by} table with a row for each variable, or for each
+variable and domain with \code{by}, led by a \code{variable} column. Each row holds
+what a call for that variable alone gives: the same estimate, standard
+error, interval and method, with the same refusals for a missing or
+infinite value, named by its column. Notes that hold for every variable
+are printed once, and the others after the variable's name.
+
+\code{vcov()} of the table gives the covariances between the variables'
+estimates as well as their variances. Every variance estimator here is a
+quadratic form in the variable it totals, so the covariance of two
+estimates whose variables are \code{z_a} and \code{z_b} is
+\code{(V(z_a + z_b) - V(z_a) - V(z_b)) / 2}, one more run of the same
+estimator. For a total these variables are the \code{y} columns, and for a
+Hajek mean their linearised residuals. For the designs \code{\link[=as_svydesign]{as_svydesign()}}
+maps with identical standard errors, the matrix equals
+\code{vcov(survey::svytotal(~a + b, design))}, or that of \code{survey::svymean()}
+for means. With \code{by}, the covariances between the variables within each
+domain are estimated, and those between domains are 0, as for a \code{by}
+table of one variable. A covariance is \code{NA} when either
+variance is missing, or when the two variances, or the variance of their
+sum, did not come from one estimator, as when the design's own declined
+for one and the jackknife stood in.
+
+A \code{by} column named \code{variable} is refused, and so is \code{contrast}. The
+table has no design effect.
+}
+
 \section{Working with the result}{
 
 \code{coef()} gives the estimate, named after \code{y} when \code{y} is a column name,
@@ -358,11 +426,15 @@ A \code{by} table has the same methods. \code{coef()} names each domain as
 class and attributes. \code{vcov()} is a diagonal matrix of the
 domains' variances: the covariances between domains are not estimated,
 so its off-diagonal entries are 0, and the standard error of a difference
-between domains comes from \code{contrast}, not from \code{vcov()}. Selecting
+between domains comes from \code{contrast}, not from \code{vcov()}. A table of
+several variables names each row by its variable, then its domain, as in
+\code{"spend . a"}, and its \code{vcov()} holds the covariances between variables
+described under "Several variables". Selecting
 columns of the table with \code{[} or \code{subset()} drops the attributes these
 methods read, and the result prints as a plain data frame. Selecting rows
 keeps them. A \code{drawn_contrast} has the same methods, with the estimate
-named by its weights, as in \code{"a - b"}.
+named by its weights, as in \code{"a - b"}, and so does a ratio from
+\code{\link[=ht_ratio]{ht_ratio()}}, named as \code{"y/x"}.
 }
 
 \section{Missing values and nonresponse}{
@@ -442,6 +514,12 @@ tapply(pop$spend, pop$site, sum)
 # How much more site a spent than site b
 ht_total(s, "spend", by = "site", contrast = c(a = 1, b = -1))
 
+# Two variables at once, with the covariance between their totals
+s$visits <- round(s$spend / 50) + 1
+both <- ht_total(s, c("spend", "visits"))
+both
+vcov(both)
+
 }
 \references{
 Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
@@ -478,5 +556,6 @@ Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Surve
 Sampling}. Springer.
 }
 \seealso{
-\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=deff]{deff()}}, \code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
+\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=deff]{deff()}}, \code{\link[=joint_prob]{joint_prob()}},
+\code{\link[=inclusion_prob]{inclusion_prob()}}
 }

@@ -229,6 +229,57 @@
 #' weighs rests on one primary sampling unit, the contrast gets no standard
 #' error, for the reason given under "Domains".
 #'
+#' @section Ratio estimation:
+#' `ratio` names a column `x` of the frame, and the total of `y` is then
+#' estimated by the ratio estimator `sum(y / pi) / sum(x / pi) * X`, where
+#' `X` is the total of `x` over the frame rows the design can reach, read
+#' from the frame stored with the sample, as [frame_totals()] reads it.
+#' When `y` is close to proportional to `x`, such as an audited value and
+#' the book value it was drawn on, the residuals `y - R x` vary far less
+#' than `y`, and the estimate is more precise than the Horvitz-Thompson
+#' total. Its variance is `X^2` times that of the
+#' ratio from [ht_ratio()], estimated from the residuals
+#' `X (y - R x) / X_hat` with the design's own estimator, and it equals
+#' `predict(survey::svyratio(~y, ~x, design), total = X)` for the designs
+#' [as_svydesign()] maps with identical standard errors. The sampled rows'
+#' values of `x` come from the frame too. A value of `x` missing from a
+#' frame row the design can reach is refused, since `X` is then unknown,
+#' and so is `ratio` with `by`. The result holds the ratio as `ratio`, the
+#' column as `x` and `X` as `frame_total`, and prints them.
+#'
+#' The ratio estimator is biased, by an amount of order `1 / n`, and its
+#' design effect compares it with the same estimator from a simple random
+#' sample of the same size. Calibration in `survey`, with the totals from
+#' [frame_totals()], covers several auxiliary columns at once.
+#'
+#' @section Several variables:
+#' `y` may name several columns, such as `c("spend", "visits")`. The result
+#' is then a `drawn_by` table with a row for each variable, or for each
+#' variable and domain with `by`, led by a `variable` column. Each row holds
+#' what a call for that variable alone gives: the same estimate, standard
+#' error, interval and method, with the same refusals for a missing or
+#' infinite value, named by its column. Notes that hold for every variable
+#' are printed once, and the others after the variable's name.
+#'
+#' `vcov()` of the table gives the covariances between the variables'
+#' estimates as well as their variances. Every variance estimator here is a
+#' quadratic form in the variable it totals, so the covariance of two
+#' estimates whose variables are `z_a` and `z_b` is
+#' `(V(z_a + z_b) - V(z_a) - V(z_b)) / 2`, one more run of the same
+#' estimator. For a total these variables are the `y` columns, and for a
+#' Hajek mean their linearised residuals. For the designs [as_svydesign()]
+#' maps with identical standard errors, the matrix equals
+#' `vcov(survey::svytotal(~a + b, design))`, or that of `survey::svymean()`
+#' for means. With `by`, the covariances between the variables within each
+#' domain are estimated, and those between domains are 0, as for a `by`
+#' table of one variable. A covariance is `NA` when either
+#' variance is missing, or when the two variances, or the variance of their
+#' sum, did not come from one estimator, as when the design's own declined
+#' for one and the jackknife stood in.
+#'
+#' A `by` column named `variable` is refused, and so is `contrast`. The
+#' table has no design effect.
+#'
 #' @section Working with the result:
 #' `coef()` gives the estimate, named after `y` when `y` is a column name,
 #' `vcov()` its variance as a 1 by 1 matrix, and `confint()` its interval as
@@ -253,11 +304,15 @@
 #' class and attributes. `vcov()` is a diagonal matrix of the
 #' domains' variances: the covariances between domains are not estimated,
 #' so its off-diagonal entries are 0, and the standard error of a difference
-#' between domains comes from `contrast`, not from `vcov()`. Selecting
+#' between domains comes from `contrast`, not from `vcov()`. A table of
+#' several variables names each row by its variable, then its domain, as in
+#' `"spend . a"`, and its `vcov()` holds the covariances between variables
+#' described under "Several variables". Selecting
 #' columns of the table with `[` or `subset()` drops the attributes these
 #' methods read, and the result prints as a plain data frame. Selecting rows
 #' keeps them. A `drawn_contrast` has the same methods, with the estimate
-#' named by its weights, as in `"a - b"`.
+#' named by its weights, as in `"a - b"`, and so does a ratio from
+#' [ht_ratio()], named as `"y/x"`.
 #'
 #' @section Missing values and nonresponse:
 #' `ht_total()` refuses a missing `y`, from a nonresponse or a measurement
@@ -314,8 +369,8 @@
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
 #'   "Which columns are read".
-#' @param y The variable to total: a column name, or a numeric vector as long as
-#'   `sample`.
+#' @param y The variable to total: a column name, several column names, or a
+#'   numeric vector as long as `sample`. See "Several variables".
 #' @param variance How to compute it. `"auto"` uses the design's own estimator
 #'   (see "Variance") and falls back to the jackknife when that declines;
 #'   `"analytic"` insists on the design's own estimator, returning `NA` with
@@ -337,6 +392,9 @@
 #'   is the domain's value of a single `by` column, or the values of several
 #'   joined by `" . "`, as in `"a . east"`, the way the notes of a `by` table
 #'   name domains. Needs `by`. See "Contrasts".
+#' @param ratio Optional name of a numeric column `x` of the frame, for the
+#'   ratio estimator of the total, `sum(y / pi) / sum(x / pi)` times the
+#'   frame's total of `x`. Not with `by`. See "Ratio estimation".
 #'
 #' @return A list with a `print()` method, holding:
 #'   \describe{
@@ -362,6 +420,10 @@
 #'       which the estimate does not cover; `NA` for a sample saved by drawn
 #'       0.2.0. See "Rows the design cannot reach".}
 #'   }
+#'   With `ratio`, the list also holds `ratio`, the estimated ratio of `y`
+#'   to `x`, `x`, the column's name, and `frame_total`, its total over the
+#'   frame.
+#'
 #'   With `by`, a data frame of class `drawn_by` instead: one row per domain,
 #'   with the domain columns, `n` (an integer), `total`, `variance`, `se`,
 #'   `ci_lower`, `ci_upper` and `method`, and the level, alternative, scale,
@@ -377,8 +439,12 @@
 #'   `ci_scale`, `design`, `method`, `note` and `unreachable` as above.
 #'   `deff` is `NA`.
 #'
-#'   Each of the three has `coef()`, `vcov()`, `confint()`,
-#'   `as.data.frame()` and `tidy()` methods; see "Working with the result".
+#'   With several column names as `y`, a `drawn_by` table with a row for
+#'   each variable, or each variable and domain, led by a `variable` column;
+#'   see "Several variables".
+#'
+#'   Each has `coef()`, `vcov()`, `confint()`, `as.data.frame()` and
+#'   `tidy()` methods; see "Working with the result".
 #'
 #' @references
 #' Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
@@ -434,30 +500,56 @@
 #' # How much more site a spent than site b
 #' ht_total(s, "spend", by = "site", contrast = c(a = 1, b = -1))
 #'
-#' @seealso [ht_mean()], [deff()], [joint_prob()], [inclusion_prob()]
+#' # Two variables at once, with the covariance between their totals
+#' s$visits <- round(s$spend / 50) + 1
+#' both <- ht_total(s, c("spend", "visits"))
+#' both
+#' vcov(both)
+#'
+#' @seealso [ht_mean()], [ht_ratio()], [deff()], [joint_prob()],
+#'   [inclusion_prob()]
 #' @export
 ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
                                             "none"), level = 0.95,
                      by = NULL, df = NULL,
                      alternative = c("two.sided", "less", "greater"),
-                     contrast = NULL) {
+                     contrast = NULL, ratio = NULL) {
   variance <- check_choice(variance,
                            c("auto", "analytic", "jackknife", "none"),
                            "variance")
   alternative <- check_choice(alternative, c("two.sided", "less", "greater"),
                               "alternative")
   check_contrast_by(contrast, by)
+  check_ratio_by(ratio, by)
+  if (several_names(y)) {
+    return(estimate_several(sample, y, "total", variance, level, by, df,
+                            alternative, contrast, ratio = ratio))
+  }
   parts <- ht_prepare(sample, y, level, df, na_rm = NULL)
+  parts$ratio <- ratio_parts(parts, ratio)
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "total",
                        alternative = alternative, contrast = contrast))
   }
   warn_grouped(sample, "ht_total")
+  total_one(parts, variance, level, df, alternative)$result
+}
+
+#' One total, as ht_total() gives it without `by`
+#'
+#' The Horvitz-Thompson total, or with `parts$ratio` the ratio estimator of
+#' the total. Returns what mean_one() returns.
+#'
+#' @noRd
+total_one <- function(parts, variance, level, df, alternative, ctx = NULL) {
+  if (!is.null(parts$ratio)) {
+    return(ratio_total(parts, variance, level, df, alternative, ctx))
+  }
   yv <- parts$y
-  pi_i <- parts$pi
-  total <- sum(yv / pi_i)
-  estimate_one(parts, total, z = yv, variance, level, df, what = "total",
-               class = "drawn_ht", deff_y = yv, alternative = alternative)
+  out <- estimate_one(parts, sum(yv / parts$pi), z = yv, variance, level, df,
+                      what = "total", class = "drawn_ht", deff_y = yv,
+                      alternative = alternative, ctx = ctx)
+  list(result = out, z = yv, domain = NULL)
 }
 
 #' Variance, interval and design effect for one estimate
@@ -466,16 +558,18 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
 #' variance: `y` itself for a total, the linearised residual for a ratio.
 #' `var_out`, when given, is a variance already settled, such as the decline
 #' from `ratio_decline()`, and no estimator is run. `divide_by` is what a mean
-#' divides its total by, for the design effect.
+#' divides its total by, for the design effect. `ctx` is a
+#' `variance_context()` shared with other estimates from the same sample.
 #'
 #' @noRd
 estimate_one <- function(parts, est, z, variance, level, df, what, class,
                          deff_y = NULL, extra = list(), proportion = FALSE,
                          ci_method = "logit", alternative = "two.sided",
-                         var_out = NULL, divide_by = parts$reach) {
+                         var_out = NULL, divide_by = parts$reach,
+                         ctx = NULL) {
   var_out <- var_out %||% if (nrow(parts$sample)) {
     ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
-                         parts$pi, variance)
+                         parts$pi, variance, ctx = ctx)
   } else {
     empty_sample()
   }
@@ -609,10 +703,13 @@ sub_context <- function(ctx, name) {
   from_context(ctx, name, variance_context())
 }
 
-#' Decline the variance of a Hajek mean that rests on one sampling unit
+#' Decline the variance of a Hajek mean or a ratio that rests on one
+#' sampling unit
 #'
-#' The linearised residual of a ratio, `(y - mean) / N_hat` over the domain,
-#' sums to zero inside any primary sampling unit that holds the whole domain.
+#' The linearised residual of a ratio, `(y - mean) / N_hat` over the domain
+#' for a Hajek mean and `(y - R x) / X_hat` for a ratio of `y` to `x`, sums
+#' to zero over the domain, weighted by `1 / pi`, and so inside any primary
+#' sampling unit that holds the whole domain.
 #' Every variance estimator then returns 0, or a rounding error away from it,
 #' however much `y` varies. A domain of one sampled row, a domain inside one
 #' sampled cluster and a Poisson sample of one row all reported a zero-width
@@ -626,7 +723,9 @@ sub_context <- function(ctx, name) {
 #' sample, `NA` when the frame cannot say. `label` names the domain in the
 #' note, `subject` replaces the opening "The domain `label`" for a domain
 #' with no label, and `psu` takes `sample_units()` worked out once for many
-#' domains. Returns the decline, or `NULL` when the variance can go ahead.
+#' domains. `estimate` names what is estimated, as in "A Hajek mean's
+#' linearised residuals". Returns the decline, or `NULL` when the variance
+#' can go ahead.
 #'
 #' @noRd
 ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
@@ -634,7 +733,7 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                                              parts$pop, parts$rows),
                           subject = if (!is.null(label)) {
                             paste0("The domain `", label, "`")
-                          }) {
+                          }, estimate = "Hajek mean") {
   if (length(unique(psu[member])) >= 2L) return(NULL)
   pi_all <- parts$pi_all
   if (!is.null(pi_all) && !anyNA(frame)) {
@@ -644,9 +743,9 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
     if (!anyNA(pi_all[reach]) && all(is_certain(pi_all[reach]))) return(NULL)
   }
   unit <- unit_noun(parts$design)
-  core <- paste0("A Hajek mean's linearised residuals sum to zero over it, so ",
-                 "every variance estimator would give a standard error of ",
-                 "about 0, whatever the spread of `y`.")
+  core <- paste0("A ", estimate, "'s linearised residuals sum to zero over ",
+                 "it, so every variance estimator would give a standard ",
+                 "error of about 0, whatever the spread of `y`.")
   note <- if (is.null(subject)) {
     paste0("The sample has one ", unit, ". ", core, " A standard error needs ",
            "at least two.")
@@ -2430,5 +2529,13 @@ check_replicate_size <- function(n, R) {
 
 #' @export
 print.drawn_ht <- function(x, ...) {
-  print_estimate(x, "total", "Horvitz-Thompson total")
+  if (is.null(x$x)) {
+    return(print_estimate(x, "total", "Horvitz-Thompson total"))
+  }
+  print_estimate(x, "total", "Ratio estimate of the total", lines = c(
+    ratio = paste0(format(x$ratio), ", ", ratio_name(x$variable, "y"), " / `",
+                   x$x, "` in the sample"),
+    `x total` = paste0(format(x$frame_total, big.mark = ","), ", `", x$x,
+                       "` over the frame")
+  ))
 }

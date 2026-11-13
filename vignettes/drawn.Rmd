@@ -185,9 +185,9 @@ size of this one for the same precision.
 
 ## 6. Hand off
 
-`drawn` estimates totals, means and proportions. For regression, calibration
-or quantiles, hand the sample to `survey`; the design is expressed in `survey`'s
-own terms, so the standard errors agree.
+`drawn` estimates totals, means, ratios and proportions. For regression,
+calibration or quantiles, hand the sample to `survey`; the design is expressed
+in `survey`'s own terms, so the standard errors agree.
 
 ```{r survey, eval = requireNamespace("survey", quietly = TRUE)}
 des <- as_svydesign(audit)
