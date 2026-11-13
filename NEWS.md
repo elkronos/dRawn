@@ -286,6 +286,23 @@
   number.** `21 / 0.7` is `30.000000000000004` in floating point, so 21 rows
   at 70% response gave 31 to draw where 30 bring back 21, and with `N = 30`
   the plan said the frame was too small at that response rate.
+* **`plot(type = "probability")` on a frame larger than `max_dots` left out
+  unreachable and take-all rows.** It drew and summarised an evenly spaced
+  subset of the rows, so rows with probability 0 or 1 between them were
+  missing from the line, the count of unreachable rows and the range. On a
+  10,000-row frame with two unreachable rows, the subtitle gave a range of
+  0.0499 to 0.0501 and no unreachable row; with two take-all rows it gave a
+  highest probability of 0.0883. The counts, the range and the mean now
+  cover every row, rows taken with certainty are counted too, and above
+  `max_dots` each step covers a run of rows and passes through its lowest
+  and highest probability.
+* **`plot(type = "selection")` on a frame larger than `max_dots` could show
+  none of a systematic sample.** The evenly spaced subset of rows it drew
+  fell in step with the sampling interval, so `design_systematic(interval =
+  5)` on 10,000 rows showed 0, 667 or 1,333 of the 4,000 rows shown as
+  selected, depending on the start, where every start selects 2,000. Each
+  dot now stands for a run of consecutive rows and is filled when any of
+  them is selected, and the count under the title covers the whole frame.
 
 ## Refusals and clearer errors
 
@@ -637,6 +654,19 @@
 * A printed proportion plan shows the `p` it assumes, where it showed
   `sqrt(p * (1 - p))` as `sd`, and the result holds `p`, which is `NA` for a
   mean or a total.
+* `plot(type = "probability")` puts frame rows on its axis and centres a
+  plateau on each row, so the first and last rows are as wide as the others
+  and a one-row frame is drawn. The last row had no width, so a take-all
+  unit at the end of a frame sorted by size did not show, and frames of two
+  to four rows had repeated tick labels. The mean's label sits inside the
+  panel.
+* `plot(type = "selection")` and `plot(type = "map")` of a design that
+  samples with replacement count draws and distinct rows, as in "60 draws,
+  51 distinct rows of 240", and ring each row drawn more than once.
+* `plot()` of a `design_bootstrap()` shows its first replicate and says so.
+  It marked every row drawn in any replicate, which at the default 1,000
+  replicates is every row. `plot(type = "probability")` no longer points a
+  bootstrap to the selection view.
 
 ## New
 

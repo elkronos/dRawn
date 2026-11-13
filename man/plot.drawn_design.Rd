@@ -30,8 +30,12 @@ reproducible.}
 \item{ncol}{Dots per row in the \code{"selection"} grid. Defaults to whatever
 fills the panel at its current aspect ratio.}
 
-\item{max_dots}{Frames larger than this are shown as an evenly spaced
-subset, noted under the title. Keeps individual dots visible.}
+\item{max_dots}{The most dots or steps to draw, which keeps them visible.
+A larger frame is shown in runs of consecutive rows: in \code{"selection"} a
+dot stands for a run and is filled when any row in it is selected, and in
+\code{"probability"} a step spans the lowest and highest probability in its
+run. \code{"map"} draws every selected row and an evenly spaced subset of the
+others. The counts under the title cover the whole frame.}
 
 \item{main}{Title. Defaults to a description of the design.}
 
@@ -58,12 +62,17 @@ the selected ones filled in. Designs look distinct: simple random
 sampling scatters, systematic makes a lattice, cluster sampling takes
 solid contiguous runs, and probability-proportional-to-size thickens
 wherever the weight is large. If your frame is sorted by something
-meaningful, an unintended pattern shows up immediately.}
+meaningful, an unintended pattern shows up immediately. A design that
+samples with replacement rings each row it drew more than once, and the
+count under the title gives the draws and the distinct rows. A
+bootstrap is shown by its first replicate.}
 \item{\code{"probability"}}{Each row's inclusion probability across the frame,
-as a step. Flat means every row had the same chance; plateaus mean
-strata; a rise means size-proportional selection. Rows the design can
-never reach sit at zero and are marked, which is usually the thing worth
-finding out.}
+as a step, with frame rows along the axis. Flat means every row had the
+same chance; plateaus mean strata; a rise means size-proportional
+selection. Rows the design can never reach sit at zero and are marked,
+which is usually the thing worth finding out. The count of those rows,
+the count taken with certainty, the range and the mean cover every row
+of the frame.}
 \item{\code{"map"}}{Every row placed by two columns — coordinates, or any
 two numeric variables — with the selected ones filled in. This is the
 view for \code{\link[=design_spread]{design_spread()}} and \code{\link[=design_spatial]{design_spatial()}}, where what matters is
