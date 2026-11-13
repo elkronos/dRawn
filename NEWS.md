@@ -219,6 +219,38 @@
   leaves rows over, strata whose `allocation_by` does not vary share them in
   proportion to size, as when no stratum varies, where they were split
   evenly. `min_per_cluster` in `design_multistage()` is applied the same way.
+* **`design_temporal()` with `unit = "days"` or `"weeks"` drifted off
+  midnight after a daylight-saving change.** Intervals were a fixed 86,400
+  or 604,800 seconds, so in a zone with clock changes every interval after
+  the change started an hour off midnight. A `Date` column then put two
+  calendar days into one interval, which shared `per_interval` between them:
+  ten days of New York dates from 7 March 2024 gave nine intervals, with 10
+  and 11 March in one, and `draw()` returned nine rows. Days and weeks now
+  step by calendar days in the design's zone, so every interval starts at
+  the clock time of `from` and lasts 23 or 25 hours across a change.
+  Seconds, minutes and hours are still fixed durations, and
+  `?design_temporal` says so.
+* **`design_temporal()` placed a `Date` whose midnight a daylight-saving
+  change skips or repeats at the wrong instant.** Where clocks jump from
+  00:00 to 01:00, as in Santiago, Cairo and Sao Paulo, the `Date` became
+  23:00 the day before and fell in the previous day's or month's interval,
+  and the same day written as a string did not parse. Where midnight happens
+  twice, as in the Azores, the instant depended on the rows beside it, so
+  reversing the frame changed inclusion probabilities and totals. A frame
+  holding 30 December 2011 in Samoa, a day the zone skipped, stopped every
+  function with a base R error, even under `na_rm = TRUE`. A `Date`, and a
+  string without an offset, now stands for the first instant of its day in
+  the design's zone: 01:00 where midnight is skipped, the first midnight
+  where it repeats, and the start of the next day for a day the zone
+  skipped. A string ending in `Z` or an offset such as `+01:00` keeps the
+  instant it names. drawn now needs lubridate 1.9.0 or later.
+* **`design_temporal()` with `unit = "months"` or `"years"` anchored on the
+  29th to the 31st ran into the next month.** A window from 31 January had
+  intervals starting on 2 March, 31 March, 1 May and 31 May, and one from 29
+  February by years started each later interval on 1 March. Months and
+  years are now added to `from` itself, and a day the month lacks moves to
+  its last day: 29 February, 31 March, 30 April, and 28 February in the
+  years between leap years.
 
 ## Refusals and clearer errors
 
@@ -338,6 +370,14 @@
   suggests `min_per_stratum = 1`, since a larger `n` reaches such a stratum
   only once every other stratum is taken whole. `design_stratified()` with
   `n = 0` no longer warns for every stratum.
+* `design_temporal()` checks its zone and bounds when it is built. `tz`
+  must be a name from `OlsonNames()`, and `from` and `to` must each be one
+  date-time, date or string that parses, with `to` after `from`. The message
+  names the argument and gives its value. An unknown zone gave a raw CCTZ
+  error from every function that used the design, and an unparseable `from`
+  reached `inclusion_prob()` as "'to' must be a finite number". The message
+  for an unparseable timestamp in a string column lists the forms that are
+  read, and a `POSIXct` column in a zone R does not know is named.
 
 ## Behaviour changes
 
@@ -415,6 +455,21 @@
   multistage design whose `min_per_cluster` raises a cluster, can allocate
   different counts than drawn 0.2.0 did, as above, and a seed then selects
   different rows. Designs where no floor binds allocate and draw as before.
+* `design_temporal(tz = NULL)`, the default, lays out the window in the
+  zone of a `POSIXct` `time` column, and in UTC only when the column has
+  none: a `Date` or string column, or a `POSIXct` whose `tzone` is empty.
+  It always used UTC, so a window of local dates over New York data ran from
+  19:00 to 19:00 local time. Give `tz = "UTC"` for the old layout. A
+  printed design shows `tz` as "from the time column, else UTC" when it is
+  not set. This and the calendar fixes above change the intervals of some
+  designs. A sample drawn earlier whose probabilities they change is refused
+  by `ht_total()`, `ht_mean()`, `as_svydesign()` and `sample_summary()`,
+  which say the design now gives different probabilities; draw it again.
+* `design_temporal()` reads timestamps and bounds written as
+  `"2024-03-01 14:30"` or `"2024-03-01 14"`, with a space or a `T` before
+  the time. They were unparseable, so such rows stopped the draw or, under
+  `na_rm = TRUE`, were dropped. A date written day or month first, such as
+  `"01/02/2024"`, is still refused rather than guessed.
 
 ## New
 
@@ -519,6 +574,10 @@
   take 0.1; 200 domains of a spread sample of 1,000 from 20,000 rows took 16
   seconds and now take 0.3. The standard errors agree with the old ones to
   rounding error.
+* `inclusion_prob()`, `draw(weights = TRUE)` and the estimators of a
+  `design_temporal()` sample count the rows of every interval in one pass,
+  where they went over the rows once per interval. 200,000 rows in hourly
+  intervals over a year took about 6 seconds and now take 0.03.
 
 ## Handing off to survey
 

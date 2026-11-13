@@ -16,11 +16,16 @@ design_temporal(
 )
 }
 \arguments{
-\item{time}{Column of timestamps. \code{POSIXct} and \code{Date} columns are used as
-they are; character columns are parsed with \code{\link[lubridate:ymd_hms]{lubridate::ymd_hms()}}.}
+\item{time}{Column of timestamps: \code{POSIXct}, \code{POSIXlt}, \code{Date}, character
+or factor. Strings are read as year-month-day with an optional time, in
+the forms \code{\link[lubridate:ymd_hms]{lubridate::ymd_hms()}} accepts, such as \code{"2024-03-01 14:30:00"}
+or \code{"2024-03-01T14:30:00Z"}, and also \code{"2024-03-01 14:30"},
+\code{"2024-03-01 14"} and \code{"2024-03-01"}.}
 
-\item{from, to}{Window bounds, as timestamps or strings. The window is
-half-open: \verb{[from, to)}. Trailing partial intervals are dropped.}
+\item{from, to}{Window bounds, each a single \code{POSIXct}, \code{Date} or string
+read as \code{time} is. The window is half-open: \verb{[from, to)}. Trailing
+partial intervals are dropped. Both are checked when the design is
+built, and \code{to} must come after \code{from}.}
 
 \item{interval}{Interval width, in units of \code{unit}.}
 
@@ -28,12 +33,12 @@ half-open: \verb{[from, to)}. Trailing partial intervals are dropped.}
 rows contribute all of them.}
 
 \item{unit}{One of \code{"seconds"}, \code{"minutes"}, \code{"hours"}, \code{"days"}, \code{"weeks"},
-\code{"months"} or \code{"years"}. \code{"months"} and \code{"years"} step by calendar units,
-not by fixed 30.44-day durations.}
+\code{"months"} or \code{"years"}. See "Time zones and calendar steps".}
 
-\item{tz}{Time zone the timestamps are expressed in. Applied when the column
-\emph{and} both bounds are parsed, so it genuinely shifts the window rather than
-relabelling the output.}
+\item{tz}{Time zone, a name from \code{\link[=OlsonNames]{OlsonNames()}}, in which the bounds, any
+\code{Date} or string timestamps and the calendar steps are read. \code{NULL}, the
+default, takes the zone of a \code{POSIXct} \code{time} column and UTC otherwise.
+It shifts the window rather than relabelling the output.}
 
 \item{na_rm}{Drop rows whose timestamp is missing or unparseable instead of
 raising an error.}
@@ -42,15 +47,41 @@ raising an error.}
 A design object, for use with \code{\link[=draw]{draw()}}.
 }
 \description{
-Divides a time window into equal intervals and samples within each one.
-\code{per_interval} is named for what it is: unlike \code{n} elsewhere in the package,
-it is a per-group figure, not a total.
+Divides a time window into intervals of \code{interval} units and samples within
+each one. \code{per_interval} is named for what it is: unlike \code{n} elsewhere in
+the package, it is a per-group figure, not a total.
 }
 \details{
-Buckets are assigned arithmetically in a single pass rather than by
-re-filtering the data per interval, so cost scales with the data rather than
-with the number of intervals.
+Each row's interval is found in a single pass over the data, so the draw
+and the inclusion probabilities take time that grows with the number of
+rows rather than with rows times intervals.
 }
+\section{Time zones and calendar steps}{
+
+The window and the intervals are laid out in one time zone: \code{tz} when it
+is given, otherwise the zone of a \code{POSIXct} \code{time} column, otherwise UTC.
+A \code{POSIXct} column with an empty \code{tzone}, which R shows in the session's
+zone, also gets UTC, so a design gives the same intervals on every
+machine.
+
+A \code{Date}, in the column or as a bound, is its midnight in that zone, and a
+string without an offset is a clock time there. A clock time that a
+daylight-saving change skips moves to the moment the clocks jump, and one
+that happens twice takes its first occurrence, so a \code{Date} stands for the
+first instant of its day: 01:00 where the change skips midnight, as in
+Santiago or Cairo, and the first of two midnights where it repeats one, as
+in the Azores. A string ending in \code{Z} or an offset such as \code{+01:00} keeps
+the instant it names.
+
+\code{"seconds"}, \code{"minutes"} and \code{"hours"} are fixed durations counted from
+\code{from}, so hourly intervals ignore the clock change. \code{"days"} and
+\code{"weeks"} step by calendar days, so each interval starts at the same
+clock time as \code{from} and lasts 23 or 25 hours across a change.
+\code{"months"} and \code{"years"} step by calendar units counted from \code{from}, and a
+day the month lacks moves to its last day: a window starting on 31
+January 2024 has intervals starting on 29 February, 31 March and 30 April.
+}
+
 \examples{
 df <- data.frame(
   id = 1:48,

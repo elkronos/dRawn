@@ -293,14 +293,12 @@ joint_inclusion.drawn_design_stratified <- function(design, data, rows) {
 
 #' @noRd
 joint_inclusion.drawn_design_temporal <- function(design, data, rows) {
-  pi_all <- exact_inclusion(design, data)
-  bucket <- temporal_bucket(design, data)
-  sizes <- table(bucket[!is.na(bucket)])
-  n_g <- pmin(sizes, design$per_interval)
+  bucket <- temporal_setup(design, data)$bucket
+  sizes <- tabulate(bucket[!is.na(bucket)])
 
   # A row outside every interval has no code, so it co-occurs with nothing.
-  joint_from_groups(match(bucket[rows], names(sizes)), as.integer(n_g),
-                    as.integer(sizes), pi_all[rows])
+  joint_from_groups(bucket[rows], pmin(sizes, design$per_interval), sizes,
+                    temporal_pi(design, bucket)[rows])
 }
 
 #' @noRd

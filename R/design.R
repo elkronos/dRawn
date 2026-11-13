@@ -141,14 +141,18 @@ design_type <- function(x) {
 print.drawn_design <- function(x, ...) {
   cat("<sampling design: ", design_type(x), ">\n", sep = "")
   params <- unclass(x)
-  params <- params[!vapply(params, is.null, logical(1))]
-  if (length(params) == 0L) {
+  shown <- lapply(params, function(v) if (!is.null(v)) fmt_param(v))
+  # A temporal design without `tz` takes its zone from the data.
+  if (inherits(x, "drawn_design_temporal") && is.null(params$tz)) {
+    shown$tz <- "from the time column, else UTC"
+  }
+  shown <- shown[!vapply(shown, is.null, logical(1))]
+  if (length(shown) == 0L) {
     return(invisible(x))
   }
-  width <- max(nchar(names(params)))
-  for (nm in names(params)) {
-    cat("  ", formatC(nm, width = -width), "  ", fmt_param(params[[nm]]), "\n",
-        sep = "")
+  width <- max(nchar(names(shown)))
+  for (nm in names(shown)) {
+    cat("  ", formatC(nm, width = -width), "  ", shown[[nm]], "\n", sep = "")
   }
   invisible(x)
 }
