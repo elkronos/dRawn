@@ -84,7 +84,27 @@
 #' so the same design and the same variance machinery apply (Särndal, Swensson
 #' and Wretman 1992, section 10.3).
 #'
-#' @param sample A data frame returned by [draw()] with `weights = TRUE`.
+#' A sample grouped with `dplyr::group_by()` is estimated as a whole, with a
+#' warning of class `drawn_grouped_df`; the groups play no part. Use `by`.
+#'
+#' @section Which columns are read:
+#' `ht_total()` and [ht_mean()] divide by `.prob`, the inclusion probabilities
+#' [draw()] attached, and read strata, clusters, time stamps and the other
+#' design columns from the copy of the frame stored with the sample. From the
+#' sample itself they read only `y` and `by`, so renaming, recoding or dropping
+#' a design column in the sample changes nothing.
+#'
+#' `.weight` is not used. A weight adjusted after the draw, for nonresponse or
+#' by trimming, and written into `.weight` is ignored with a warning of class
+#' `drawn_weight_edited`; [as_svydesign()] hands `.weight` to `survey`, which is
+#' where adjusted weights are estimated from. A sample whose `.prob` was changed
+#' or removed is refused. So is one whose design gives the frame different
+#' inclusion probabilities in the current session than it did at draw time,
+#' which a change of [sf::sf_use_s2()] does to a [design_spatial()] sample: the
+#' variance is recomputed from the design and would describe another one.
+#'
+#' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
+#'   "Which columns are read".
 #' @param y The variable to total: a column name, or a numeric vector as long as
 #'   `sample`.
 #' @param variance How to compute it. `"auto"` uses the design's own estimator
@@ -177,6 +197,7 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
   if (!is.null(by)) {
     return(estimate_by(parts, by, variance, level, df, what = "total"))
   }
+  warn_grouped(sample, "ht_total")
   yv <- parts$y
   pi_i <- parts$pi
   total <- sum(yv / pi_i)
@@ -192,9 +213,9 @@ ht_total <- function(sample, y, variance = c("auto", "analytic", "jackknife",
 #' @noRd
 estimate_one <- function(parts, est, z, variance, level, df, what, class,
                          deff_y = NULL, extra = list(), logit = FALSE) {
-  var_out <- ht_variance_dispatch(parts$design, parts$sample, parts$pop,
+  var_out <- ht_variance_dispatch(parts$design, parts$units, parts$pop,
                                   parts$rows, z, parts$pi, variance)
-  df <- df %||% design_df(parts$design, parts$sample, parts$pop, parts$rows)
+  df <- df %||% design_df(parts$design, parts$units, parts$pop, parts$rows)
   out <- finish_estimate(est, var_out, level, df, nrow(parts$sample),
                          parts$design, deff_y, parts$pi, nrow(parts$pop),
                          what = what, class = class, logit = logit)
@@ -204,19 +225,21 @@ estimate_one <- function(parts, est, z, variance, level, df, what, class,
 
 #' Route to the requested variance estimator, falling back where allowed
 #'
-#' `sample` is passed through whole rather than reduced to its probabilities:
-#' the jackknife reads the clustering and stratification columns off it, and
+#' `units` holds the frame's copy of each sampled row, in the sample's order.
+#' The jackknife reads the clustering and stratification columns off it, and
 #' without them it would delete one row at a time across strata and overstate
-#' the variance many times over.
+#' the variance many times over. They come from the frame rather than the
+#' sample, so a column renamed or recoded in the sample after the draw cannot
+#' change which rows share a stratum or cluster.
 #'
 #' @noRd
-ht_variance_dispatch <- function(design, sample, pop, rows, z, pi_i, variance) {
+ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance) {
   if (variance == "none") {
     return(list(variance = NA_real_, method = "none",
                 note = "Variance not requested."))
   }
   if (variance == "jackknife") {
-    return(jackknife_variance(design, sample, pop, z, pi_i))
+    return(jackknife_variance(design, units, pop, z, pi_i))
   }
 
   # A negative Sen-Yates-Grundy estimate, or an estimator that declines with
@@ -226,7 +249,7 @@ ht_variance_dispatch <- function(design, sample, pop, rows, z, pi_i, variance) {
   got <- tryCatch({
     a <- ht_variance(design, pop, rows, z, pi_i)
     a$method <- a$method %||% "analytic"
-    if (is.na(a$variance)) {
+    if (!is.finite(a$variance)) {
       reason <- a$note %||% "The design's own estimator returned no figure."
       NULL
     } else if (a$variance < 0) {
@@ -248,7 +271,7 @@ ht_variance_dispatch <- function(design, sample, pop, rows, z, pi_i, variance) {
     return(list(variance = NA_real_, method = "none", note = reason))
   }
 
-  jk <- jackknife_variance(design, sample, pop, z, pi_i)
+  jk <- jackknife_variance(design, units, pop, z, pi_i)
   first <- sub("\n.*", "", reason)
   if (is.na(jk$variance)) {
     # The jackknife declined too. Say so, and keep its reason rather than
@@ -266,23 +289,24 @@ ht_variance_dispatch <- function(design, sample, pop, rows, z, pi_i, variance) {
 #'
 #' Primary sampling units minus strata, the usual rule (Korn and Graubard
 #' 1999) and the one `survey::degf()` applies, so intervals agree across the two
-#' packages.
+#' packages. Strata and clusters are read from `units`, the frame's copy of the
+#' sampled rows.
 #'
 #' @noRd
-design_df <- function(design, sample, pop, rows) {
-  n <- nrow(sample)
+design_df <- function(design, units, pop, rows) {
+  n <- nrow(units)
   out <- switch(design_type(design),
-    stratified = n - length(unique(group_key(sample, design$strata))),
-    temporal = n - length(unique(temporal_bucket(design, sample))),
+    stratified = n - length(unique(group_key(units, design$strata))),
+    temporal = n - length(unique(temporal_bucket(design, units))),
     cluster = ,
-    multistage = length(unique(sample[[design$clusters]])) - 1,
+    multistage = length(unique(units[[design$clusters]])) - 1,
     certainty = {
       sp <- certainty_split(design, pop)
       free <- !(rows %in% sp$keep[sp$take])
       if (!any(free)) {
         Inf
       } else {
-        design_df(design$rest, sample[free, , drop = FALSE],
+        design_df(design$rest, units[free, , drop = FALSE],
                   sp$data[sp$rest, , drop = FALSE],
                   match(rows[free], sp$keep[sp$rest]))
       }
@@ -509,8 +533,9 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i) {
 
 #' Delete-a-group jackknife variance
 #'
-#' Works from the sample alone, which is what makes it available where the
-#' analytic form is not. Primary sampling units are whole clusters where the
+#' Works from the sampled rows alone, which is what makes it available where
+#' the analytic form is not. `units` is the frame's copy of those rows, so the
+#' strata and clusters are the ones the sample was drawn with. Primary sampling units are whole clusters where the
 #' design has them, otherwise individual rows; where the design has strata --
 #' stratified, and temporal, whose intervals are strata -- units are deleted
 #' within their own stratum and only that stratum is reweighted (JKn). Deleting
@@ -524,7 +549,7 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i) {
 #' random size; deleting rows from it understates by a factor of three.
 #'
 #' @noRd
-jackknife_variance <- function(design, sample, pop, y, pi_i) {
+jackknife_variance <- function(design, units, pop, y, pi_i) {
   refusal <- jackknife_refusal(design)
   if (!is.null(refusal)) {
     return(list(variance = NA_real_, method = "jackknife", note = refusal))
@@ -540,13 +565,13 @@ jackknife_variance <- function(design, sample, pop, y, pi_i) {
         "rather than estimated.")))
     }
     sp <- certainty_split(design, pop)
-    return(jackknife_variance(design$rest, sample[keep, , drop = FALSE],
+    return(jackknife_variance(design$rest, units[keep, , drop = FALSE],
                               sp$data[sp$rest, , drop = FALSE],
                               y[keep], pi_i[keep]))
   }
 
-  psu <- jackknife_groups(design, sample)
-  st <- jackknife_strata(design, sample, pop, psu)
+  psu <- jackknife_groups(design, units)
+  st <- jackknife_strata(design, units, pop, psu)
   base <- y / pi_i
   total <- sum(base)
 
@@ -578,6 +603,12 @@ jackknife_variance <- function(design, sample, pop, y, pi_i) {
   if (length(lonely)) {
     return(list(variance = NA_real_, method = "jackknife", note = paste0(
       "The stratified jackknife needs two units per stratum as well.")))
+  }
+  if (!is.finite(v)) {
+    return(list(variance = NA_real_, method = "jackknife", note = paste0(
+      "The jackknife gave no finite variance because the replicate totals ",
+      "overflowed. Rescale `y`, to thousands for example, and estimate ",
+      "again.")))
   }
   list(variance = v, method = "jackknife",
        note = paste0("Jackknife over ", n_psu, " primary sampling unit(s)",
@@ -612,21 +643,21 @@ jackknife_refusal <- function(design) {
 #' `jackknife_fpc()`.
 #'
 #' @noRd
-jackknife_strata <- function(design, sample, pop, psu) {
+jackknife_strata <- function(design, units, pop, psu) {
   grp <- switch(design_type(design),
     stratified = list(
-      sample = as.character(group_key(sample, design$strata)),
+      sample = as.character(group_key(units, design$strata)),
       pop = as.character(group_key(pop, design$strata))
     ),
     temporal = list(
-      sample = temporal_bucket(design, sample),
+      sample = temporal_bucket(design, units),
       pop = temporal_bucket(design, pop)
     ),
     NULL
   )
   if (is.null(grp)) {
     m <- length(unique(psu))
-    return(list(stratum = rep("all", nrow(sample)),
+    return(list(stratum = rep("all", nrow(units)),
                 fpc = list(all = jackknife_fpc(design, pop, m))))
   }
   N_h <- table(grp$pop[!is.na(grp$pop)])
@@ -671,19 +702,18 @@ jackknife_fpc <- function(design, pop, m) {
   1 - m / total
 }
 
+#' Primary sampling units for the jackknife
+#'
+#' Whole clusters for a cluster or multistage design, read from the frame's
+#' copy of the sampled rows, which always has the cluster column; otherwise
+#' each row is its own unit.
+#'
 #' @noRd
-jackknife_groups <- function(design, sample) {
-  col <- if (inherits(design, c("drawn_design_cluster",
-                                "drawn_design_multistage"))) {
-    design$clusters
-  } else {
-    NULL   # rows are the sampling units
+jackknife_groups <- function(design, units) {
+  if (inherits(design, c("drawn_design_cluster", "drawn_design_multistage"))) {
+    return(as.character(units[[design$clusters]]))
   }
-  if (!is.null(col) && col %in% names(sample)) {
-    as.character(sample[[col]])
-  } else {
-    as.character(seq_len(nrow(sample)))
-  }
+  as.character(seq_len(nrow(units)))
 }
 
 #' @export

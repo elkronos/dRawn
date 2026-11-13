@@ -14,7 +14,8 @@ ht_total(
 )
 }
 \arguments{
-\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}.}
+\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. See
+"Which columns are read".}
 
 \item{y}{The variable to total: a column name, or a numeric vector as long as
 \code{sample}.}
@@ -140,6 +141,27 @@ number of rows that happen to fall in a domain is itself random. Here each
 domain's total is estimated from \verb{y * (row in domain)} over the whole sample,
 so the same design and the same variance machinery apply (Särndal, Swensson
 and Wretman 1992, section 10.3).
+
+A sample grouped with \code{dplyr::group_by()} is estimated as a whole, with a
+warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}.
+}
+
+\section{Which columns are read}{
+
+\code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} divide by \code{.prob}, the inclusion probabilities
+\code{\link[=draw]{draw()}} attached, and read strata, clusters, time stamps and the other
+design columns from the copy of the frame stored with the sample. From the
+sample itself they read only \code{y} and \code{by}, so renaming, recoding or dropping
+a design column in the sample changes nothing.
+
+\code{.weight} is not used. A weight adjusted after the draw, for nonresponse or
+by trimming, and written into \code{.weight} is ignored with a warning of class
+\code{drawn_weight_edited}; \code{\link[=as_svydesign]{as_svydesign()}} hands \code{.weight} to \code{survey}, which is
+where adjusted weights are estimated from. A sample whose \code{.prob} was changed
+or removed is refused. So is one whose design gives the frame different
+inclusion probabilities in the current session than it did at draw time,
+which a change of \code{\link[sf:s2]{sf::sf_use_s2()}} does to a \code{\link[=design_spatial]{design_spatial()}} sample: the
+variance is recomputed from the design and would describe another one.
 }
 
 \examples{

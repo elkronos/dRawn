@@ -358,3 +358,55 @@ test_that("a design neither estimator can handle says so once, truthfully", {
   expect_match(r$note, "at least two clusters")
   expect_match(r$note, "at least two primary")
 })
+
+test_that("strata and clusters come from the frame, not the sample's columns", {
+  d <- var_pop()
+  designs <- list(
+    site = design_stratified("site", n = 40, min_per_stratum = 2),
+    cl = design_cluster("cl", n_clusters = 6),
+    cl = design_multistage("cl", n_clusters = 6, n = 24)
+  )
+  for (i in seq_along(designs)) {
+    key <- names(designs)[i]
+    s <- draw(d, designs[[i]], seed = 2, weights = TRUE)
+    want <- ht_total(s, "y")
+    want_jk <- ht_total(s, "y", variance = "jackknife")
+    renamed <- s
+    names(renamed)[names(renamed) == key] <- "renamed"
+    recoded <- s
+    recoded[[key]] <- rev(recoded[[key]])
+    for (e in list(renamed, recoded)) {
+      got <- ht_total(e, "y")
+      expect_equal(got$se, want$se, label = key)
+      expect_equal(got$df, want$df, label = key)
+      expect_equal(ht_total(e, "y", variance = "jackknife")$se, want_jk$se,
+                   label = key)
+    }
+  }
+})
+
+test_that("dropping the cluster column leaves a cluster sample's variance alone", {
+  # Without the column the jackknife used to delete rows rather than clusters
+  # and the degrees of freedom fell to 0, which removed the interval.
+  d <- var_pop()
+  s <- draw(d, design_cluster("cl", n_clusters = 6), seed = 1, weights = TRUE)
+  gone <- s
+  gone$cl <- NULL
+  got <- ht_total(gone, "y")
+  expect_equal(got$df, 5)
+  expect_equal(got$ci, ht_total(s, "y")$ci)
+  jk <- ht_total(gone, "y", variance = "jackknife")
+  expect_match(jk$note, "Jackknife over 6 primary")
+  expect_equal(jk$se, ht_total(s, "y", variance = "jackknife")$se)
+})
+
+test_that("a variance that overflows is reported as missing, with no success note", {
+  d <- var_pop()
+  s <- draw(d, design_simple(n = 30), seed = 1, weights = TRUE)
+  huge <- rep(c(1e300, -1e300), 15)
+  r <- ht_total(s, huge)
+  expect_true(is.na(r$se))
+  expect_equal(r$method, "none")
+  expect_match(r$note, "overflowed")
+  expect_false(grepl("Jackknife over", r$note))
+})

@@ -5,7 +5,11 @@
 # (`drawn_population`) and every frame row's inclusion probability at draw
 # time (`drawn_pi`). It also adds a `.row` column holding each sampled row's
 # frame row. Everything that estimates from a sample reads that state through
-# drawn_state(), which matches rows through `.row` rather than by position.
+# drawn_state(), which matches rows through `.row` rather than by position,
+# checks `.prob` against the probabilities recorded at draw time, and checks
+# that the design still gives the frame those probabilities. Design keys
+# (strata, clusters, time) are read from the frame's copy of each sampled row,
+# never from the sample's own columns, which the caller can rename or edit.
 
 #' Copy a data frame column by column
 #'
@@ -59,7 +63,7 @@ stop_not_drawn <- function(reason = NULL, arg = "sample") {
 #' Up to five values, for a message
 #' @noRd
 format_rows <- function(x) {
-  x <- sort(unique(x))
+  x <- sort(unique(x), na.last = TRUE)
   paste0(paste(utils::head(x, 5L), collapse = ", "),
          if (length(x) > 5L) ", ..." else "")
 }
@@ -67,15 +71,27 @@ format_rows <- function(x) {
 #' The design, frame and frame rows behind a weighted sample
 #'
 #' Returns `design`, `pop` (the frame as it was at draw time), `rows` (the
-#' frame row of each sample row, in the sample's current order) and `pi_all`
+#' frame row of each sample row, in the sample's current order), `pi_all`
 #' (every frame row's inclusion probability at draw time, `NULL` for a sample
-#' saved by drawn 0.2.0).
+#' saved by drawn 0.2.0) and `units` (`pop[rows, ]`, the frame's copy of each
+#' sample row).
 #'
 #' `rows` comes from the `.row` column, so reordering a sample, by `[`,
 #' dplyr::arrange() or data.table::setorder(), changes nothing. A subset, a
 #' sample bound to itself or another sample, or a join that repeats rows does
 #' not match the rows that were drawn and is refused. A zero-row sample passes;
 #' callers decide what to do with it.
+#'
+#' Strata, clusters, time stamps and every other design key are read from
+#' `units`, so renaming, recoding or dropping one of those columns in the
+#' sample changes nothing. `y` and `by` come from the sample.
+#'
+#' A sample with `drawn_pi` is also refused when its `.prob` column no longer
+#' holds the probabilities recorded at draw time, and when the design, applied
+#' to the stored frame in this session, gives the frame other probabilities
+#' than it did then. The joint probabilities and variance are recomputed in
+#' this session, so they would otherwise describe another design. Samples saved
+#' by drawn 0.2.0 get neither check: they record no probabilities to compare.
 #'
 #' @noRd
 drawn_state <- function(sample, arg = "sample") {
@@ -102,11 +118,117 @@ drawn_state <- function(sample, arg = "sample") {
         "from the sample as draw() returned it, and use `by` for groups."),
         arg)
     }
-    return(list(design = design, pop = pop, rows = drawn, pi_all = NULL))
+    return(list(design = design, pop = pop, rows = drawn, pi_all = NULL,
+                units = pop[drawn, , drop = FALSE]))
   }
 
-  list(design = design, pop = pop,
-       rows = sample_rows(sample, drawn, nrow(pop), arg), pi_all = pi_all)
+  rows <- sample_rows(sample, drawn, nrow(pop), arg)
+  check_prob(sample, pi_all[rows], arg)
+  check_drift(design, pop, pi_all, arg)
+  list(design = design, pop = pop, rows = rows, pi_all = pi_all,
+       units = pop[rows, , drop = FALSE])
+}
+
+#' Do two vectors of probabilities agree, element by element?
+#'
+#' To a relative tolerance of `sqrt(.Machine$double.eps)`, the one
+#' `all.equal()` uses. Zeros must match exactly, and so must `NA`s.
+#'
+#' @noRd
+same_prob <- function(a, b) {
+  both_na <- is.na(a) & is.na(b)
+  close <- abs(a - b) <= sqrt(.Machine$double.eps) * pmax(abs(a), abs(b))
+  both_na | (!is.na(close) & close)
+}
+
+#' Refuse a `.prob` column that is not the one draw() set
+#'
+#' ht_total() and ht_mean() divide by `.prob`, and as_svydesign() gives it to
+#' `survey` as the probabilities of a PPS design. A value changed after the
+#' draw changes those estimates while the joint probabilities and the variance
+#' still follow the design. `expected` is the draw-time probability of each
+#' sample row, or `NULL` for a sample saved by drawn 0.2.0, which records none;
+#' then only the column's type and range are checked.
+#'
+#' @noRd
+check_prob <- function(sample, expected = NULL, arg = "sample") {
+  fix <- paste0(" `.prob` holds the design's inclusion probabilities and ",
+                "must stay as draw() set it. Put adjusted weights in ",
+                "`.weight` and estimate from them with as_svydesign().")
+  p <- sample[[".prob"]]
+  if (is.null(p)) {
+    stop_not_drawn(paste0("has no `.prob` column, so it was removed after ",
+                          "draw().", fix), arg)
+  }
+  if (!is.numeric(p)) {
+    stop_not_drawn(paste0("has a ", class(p)[1], " `.prob` column, so it ",
+                          "was changed after draw().", fix), arg)
+  }
+  # A probability of 1 can carry rounding error from a sum, so the upper
+  # bound allows for it.
+  bad <- is.na(p) | p <= 0 | p > 1 + 1e-9
+  if (any(bad)) {
+    vals <- unique(signif(p[bad], 4))
+    stop_not_drawn(paste0(
+      "has `.prob` values that are not probabilities in (0, 1] in ",
+      sum(bad), " row(s): ", paste(utils::head(vals, 5L), collapse = ", "),
+      if (length(vals) > 5L) ", ...", ". `.prob` was changed after draw().",
+      fix), arg)
+  }
+  if (!is.null(expected)) {
+    off <- !same_prob(p, expected)
+    if (any(off)) {
+      stop_not_drawn(paste0(
+        "has `.prob` values in ", sum(off), " row(s) that differ from the ",
+        "inclusion probabilities recorded when it was drawn, so `.prob` was ",
+        "changed after draw().", fix), arg)
+    }
+  }
+  invisible(p)
+}
+
+#' Refuse a sample whose design gives its frame other probabilities now
+#'
+#' The variance, the design's degrees of freedom and the `survey` mapping are
+#' all recomputed from the design and the stored frame in the current session.
+#' If the design no longer gives the frame the probabilities it gave at draw
+#' time, those figures describe another design. A spatial design decides which
+#' rows lie inside its region under the current [sf::sf_use_s2()], so turning
+#' spherical geometry on or off between drawing and estimating is enough.
+#' Reading a sample saved with saveRDS() into a new session, where s2 is on
+#' again, does the same.
+#'
+#' @noRd
+check_drift <- function(design, pop, pi_all, arg = "sample") {
+  now <- exact_inclusion(design, pop)
+  differ <- if (length(now) != length(pi_all)) {
+    rep(TRUE, max(length(now), length(pi_all)))
+  } else {
+    !same_prob(now, pi_all)
+  }
+  if (!any(differ)) return(invisible(NULL))
+
+  fix <- if (uses_s2(design)) {
+    paste0("sf::sf_use_s2() decides which rows of a spatial design fall ",
+           "inside `region`, and it is ", isTRUE(sf::sf_use_s2()), " now. ",
+           "Set it to the value it had when the sample was drawn, then ",
+           "estimate.")
+  } else {
+    paste0("Estimate in a session set up as the one the sample was drawn in, ",
+           "with the same version of drawn, or draw the sample again.")
+  }
+  stop_not_drawn(paste0(
+    "has a design that gives ", sum(differ), " of its ", length(differ),
+    " frame rows a different inclusion probability in this session or this ",
+    "version of drawn than when the sample was drawn, so its standard errors ",
+    "would describe another design. ", fix), arg)
+}
+
+#' Does a design decide membership with `sf`, directly or through `rest`?
+#' @noRd
+uses_s2 <- function(design) {
+  inherits(design, "drawn_design_spatial") ||
+    (inherits(design, "drawn_design_certainty") && uses_s2(design$rest))
 }
 
 #' Frame rows from the `.row` column, checked against the rows drawn

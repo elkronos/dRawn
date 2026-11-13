@@ -80,6 +80,22 @@ test_that("by accepts several columns and validates them", {
   two <- ht_total(s, "y", by = c("site", "region"))
   expect_true(all(c("site", "region") %in% names(two)))
   expect_equal(sum(two$total), ht_total(s, "y")$total)
-  expect_error(ht_total(s, "y", by = "nope"), "`by` must name")
+  expect_error(ht_total(s, "y", by = "nope"),
+               "`by` names `nope`, which `sample` does not have.", fixed = TRUE)
+  expect_error(ht_total(s, "y", by = 1), "`by` must name")
   expect_output(print(two), "by domain")
+})
+
+test_that("a recoded stratum column does not change domain variances", {
+  d <- dom_pop()
+  s <- draw(d, design_stratified("site", n = 80, min_per_stratum = 2), seed = 4,
+            weights = TRUE)
+  recoded <- s
+  recoded$site <- "z"
+  for (v in c("analytic", "jackknife")) {
+    want <- ht_total(s, "y", by = "region", variance = v)
+    got <- ht_total(recoded, "y", by = "region", variance = v)
+    expect_equal(got$se, want$se, label = v)
+    expect_equal(attr(got, "df"), attr(want, "df"), label = v)
+  }
 })

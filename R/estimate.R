@@ -48,7 +48,9 @@
 #' the confidence interval's degrees of freedom and how `by` estimates domain
 #' means from the whole sample rather than a subset of it.
 #'
-#' @param sample A data frame returned by [draw()] with `weights = TRUE`.
+#' @param sample A data frame returned by [draw()] with `weights = TRUE`. It is
+#'   read as [ht_total()] reads it: `.prob` for the probabilities, and the
+#'   stored frame for the design's columns. See "Which columns are read" there.
 #' @param y The variable to average: a column name, or a numeric vector as long
 #'   as `sample`.
 #' @param estimator `"hajek"` or `"ht"`. See above.
@@ -114,6 +116,7 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
     return(estimate_by(parts, by, variance, level, df, what = "mean",
                        estimator = estimator))
   }
+  warn_grouped(sample, "ht_mean")
 
   pi_i <- parts$pi
   yv <- parts$y
@@ -142,9 +145,13 @@ ht_mean <- function(sample, y, estimator = c("hajek", "ht"),
 #' @noRd
 estimate_by <- function(parts, by, variance, level, df, what,
                         estimator = "hajek") {
-  if (!is.character(by) || !length(by) || anyNA(by) ||
-      !all(by %in% names(parts$sample))) {
+  if (!is.character(by) || !length(by) || anyNA(by)) {
     stop("`by` must name one or more columns of `sample`.", call. = FALSE)
+  }
+  absent <- setdiff(by, names(parts$sample))
+  if (length(absent)) {
+    stop("`by` names ", paste0("`", absent, "`", collapse = ", "), ", which ",
+         "`sample` does not have.", call. = FALSE)
   }
   check_key_columns(parts$sample, by, "by")
   if (any(vapply(parts$sample[by], anyNA, logical(1)))) {
@@ -159,7 +166,7 @@ estimate_by <- function(parts, by, variance, level, df, what,
   levels_in <- sort(unique(key))
   pi_i <- parts$pi
   yv <- parts$y
-  df_use <- df %||% design_df(parts$design, parts$sample, parts$pop,
+  df_use <- df %||% design_df(parts$design, parts$units, parts$pop,
                               parts$rows)
 
   rows <- lapply(levels_in, function(d) {
@@ -180,7 +187,7 @@ estimate_by <- function(parts, by, variance, level, df, what,
       est <- sum(ind * yv / pi_i) / denom
       z <- if (estimator == "hajek") ind * (yv - est) / denom else ind * yv / denom
     }
-    v <- ht_variance_dispatch(parts$design, parts$sample, parts$pop,
+    v <- ht_variance_dispatch(parts$design, parts$units, parts$pop,
                               parts$rows, z, pi_i, variance)
     ci <- interval(est, v$variance, level, df_use,
                    logit = what == "mean" && parts$binary)
@@ -323,11 +330,69 @@ ht_prepare <- function(sample, y, level, df = NULL) {
     stop("`y` must be a numeric column name or a numeric vector as long as ",
          "`sample`.", call. = FALSE)
   }
-  if (anyNA(yv)) {
-    stop(sum(is.na(yv)), " value(s) of `y` are missing.", call. = FALSE)
+  missing_y <- is.na(yv) & !is.nan(yv)
+  if (any(missing_y)) {
+    stop(sum(missing_y), " value(s) of `y` are missing.", call. = FALSE)
   }
-  list(design = state$design, rows = state$rows, pop = state$pop, y = yv,
-       pi = sample$.prob, sample = sample, binary = all(yv == 0 | yv == 1))
+  if (!all(is.finite(yv))) {
+    bad <- which(!is.finite(yv))
+    stop("`y` is ", paste(unique(as.character(yv[bad])), collapse = " or "),
+         " in ", length(bad), " row(s) of `sample`: ", format_rows(bad),
+         ". A total or mean needs a finite `y` for every sampled row.",
+         call. = FALSE)
+  }
+  # A sample saved by drawn 0.2.0 records no probabilities for drawn_state()
+  # to compare `.prob` with, so only its type and range are checked.
+  if (is.null(state$pi_all)) check_prob(sample)
+  warn_weight_edited(sample)
+  list(design = state$design, rows = state$rows, pop = state$pop,
+       units = state$units, y = yv, pi = sample$.prob, sample = sample,
+       binary = all(yv == 0 | yv == 1))
+}
+
+#' Warn when `.weight` is no longer `1 / .prob`
+#'
+#' ht_total() and ht_mean() estimate from the design probabilities in `.prob`,
+#' and as_svydesign() hands `survey` the `.weight` column. After a nonresponse
+#' adjustment or trimming written into `.weight`, the two give different
+#' answers, and the reason should be said once rather than found by comparing
+#' them.
+#'
+#' @noRd
+warn_weight_edited <- function(sample) {
+  w <- sample[[".weight"]]
+  if (is.null(w) || !nrow(sample)) return(invisible(NULL))
+  design_w <- 1 / sample$.prob
+  edited <- if (is.numeric(w)) sum(!same_prob(w, design_w)) else nrow(sample)
+  if (edited == 0L) return(invisible(NULL))
+  warn_drawn(paste0(
+    "`sample` has `.weight` values that differ from 1 / `.prob` in ", edited,
+    " row(s). ht_total() and ht_mean() use the design probabilities in ",
+    "`.prob` and ignore `.weight`; estimate from adjusted weights with ",
+    "as_svydesign()."), "drawn_weight_edited")
+}
+
+#' Warn that dplyr groups play no part in an estimate
+#'
+#' ht_total() and ht_mean() estimate over the whole sample, and so would a
+#' grouped sample without this: the groups are ignored and one overall figure
+#' comes back where the caller may expect one per group.
+#'
+#' @noRd
+warn_grouped <- function(sample, fun) {
+  if (!inherits(sample, "grouped_df")) return(invisible(NULL))
+  vars <- setdiff(names(attr(sample, "groups", exact = TRUE)), ".rows")
+  hint <- if (length(vars)) {
+    paste0("`by = ", if (length(vars) > 1L) "c(",
+           paste0("\"", vars, "\"", collapse = ", "),
+           if (length(vars) > 1L) ")", "`")
+  } else {
+    "`by`"
+  }
+  warn_drawn(paste0(
+    "`sample` is grouped with dplyr::group_by(), which ", fun, "() ignores, ",
+    "so this is one estimate over the whole sample. Use ", hint, " for an ",
+    "estimate per group."), "drawn_grouped_df")
 }
 
 #' A confidence interval from an estimate, a variance and degrees of freedom

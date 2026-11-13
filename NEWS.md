@@ -26,6 +26,30 @@
   units, and in one example a total a third too high. It is now refused like
   any other with-replacement design. Drawing it without weights is still
   allowed.
+* **Renaming, recoding or dropping a design column in a sample changed its
+  standard errors.** The degrees of freedom, the jackknife, `as_svydesign()`
+  and `sample_summary()` read strata and cluster labels from the sample's
+  columns, while the analytic variance read them from the frame. Dropping a
+  cluster sample's cluster column set the degrees of freedom to 0, which
+  removed the interval, and made the jackknife delete rows instead of
+  clusters, 61% low in one example. Recoding stratum labels broke the
+  jackknife and `as_svydesign()`, or gave them the wrong strata. Every path
+  now reads design columns from the copy of the frame stored with the sample,
+  so only `y` and `by` come from the sample's own columns, and
+  `as_svydesign()` passes the cluster labels to `survey` in a `.cluster`
+  column.
+* **A spatial sample analysed under another `sf::sf_use_s2()` setting got
+  the wrong standard error.** Which rows lie inside the region was worked out
+  again in the current session. A sample drawn under `sf::sf_use_s2(FALSE)`,
+  the documented workaround for a region that crosses the antimeridian, and
+  analysed after switching back or after `readRDS()` in a new session got
+  standard errors for a different region: 5.7 times too large in one example,
+  and 0 with a zero-width interval in another. The point estimate was not
+  affected. `ht_total()`, `ht_mean()`, `as_svydesign()` and
+  `sample_summary()` now check that the design still gives the frame the
+  inclusion probabilities it gave at draw time, and refuse the sample when it
+  does not, naming `sf::sf_use_s2()` for a spatial design. `?design_spatial`
+  says the setting must be the same at draw time and after.
 
 ## Refusals and clearer errors
 
@@ -38,6 +62,25 @@
   `(n / N) / (1 - (1 - 1 / N)^n)`, about 5% at `n = N / 10`, 58% at `n = N`
   and more beyond, applied within each stratum, and both now say so and give
   the per-stratum Hansen-Hurwitz form.
+* `ht_total()`, `ht_mean()`, `as_svydesign()` and `sample_summary()` refuse a
+  sample whose `.prob` column was removed, is not numeric, holds a value
+  outside (0, 1], or differs from the probabilities recorded at draw time. A
+  removed `.prob` gave a total of 0, and a missing value gave `NA` with a
+  note saying the jackknife had run. The message says that adjusted weights
+  belong in `.weight`.
+* `ht_total()` and `ht_mean()` refuse an infinite or `NaN` `y`, with the
+  count and the rows, instead of returning an infinite total or standard
+  error. A variance that overflows is reported as missing, and the note no
+  longer says the jackknife ran when it gave no figure.
+* `ht_total()` and `ht_mean()` warn, with class `drawn_weight_edited`, when
+  `.weight` is no longer `1 / .prob`. They use the design probabilities in
+  `.prob`, while `as_svydesign()` hands `.weight` to `survey`, so after a
+  nonresponse adjustment the two gave different totals without a word.
+  `?ht_total` and `?as_svydesign` say which column each uses.
+* `ht_total()` and `ht_mean()` warn, with class `drawn_grouped_df`, when the
+  sample is grouped with `dplyr::group_by()`, which they ignore, and give the
+  `by` that estimates per group.
+* A `by` column that the sample does not have is named in the error.
 
 ## Behaviour changes
 

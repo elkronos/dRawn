@@ -54,6 +54,33 @@ edges still bow along geodesics.
 \code{\link[=draw]{draw()}} warns whenever any edge of \code{region} spans more than 180 degrees of
 longitude. If you hit it, either split the region at the antimeridian into two
 polygons, or switch to planar interpretation with \code{sf::sf_use_s2(FALSE)}.
+Splitting works under the default setting. Switching has to happen before
+\code{\link[=draw]{draw()}} and stay in force for every estimate from the sample; see the next
+section.
+}
+
+\section{The s2 setting at draw time and after}{
+
+Which rows fall inside \code{region} depends on \code{\link[sf:s2]{sf::sf_use_s2()}}. With spherical
+geometry the edges of a longitude/latitude region are great-circle arcs, and
+without it they are straight lines in longitude and latitude, so rows near an
+edge can be inside under one setting and outside under the other. Use the
+same setting when you draw a sample and whenever you analyse it.
+
+\code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=as_svydesign]{as_svydesign()}} and \code{\link[=sample_summary]{sample_summary()}} find the
+region's rows again each time they run, because the variance, the design
+effect and \code{survey}'s population count all depend on them. They compare the
+result with the inclusion probabilities stored at draw time and refuse the
+sample when the two differ, naming \code{sf::sf_use_s2()}. The point estimate
+would not have moved, since it uses the stored \code{.prob}, but the standard
+error would.
+
+\code{sf_use_s2()} is a session setting, and a new R session starts with it
+\code{TRUE} unless the \verb{_SF_USE_S2} environment variable says otherwise. A sample
+drawn under \code{sf::sf_use_s2(FALSE)} and saved with \code{\link[=saveRDS]{saveRDS()}} needs
+\code{sf::sf_use_s2(FALSE)} again after \code{\link[=readRDS]{readRDS()}}.
+\code{\link[=inclusion_prob]{inclusion_prob()}} and \code{\link[=joint_prob]{joint_prob()}} on the frame follow the current
+setting too.
 }
 
 \examples{

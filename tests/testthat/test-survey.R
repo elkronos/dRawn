@@ -273,3 +273,43 @@ test_that("as_svydesign says what dropped a sample's design", {
   expect_error(as_svydesign(merged), "merge()", fixed = TRUE)
   expect_error(as_svydesign(s[s$site == "a", ]), "rows that were drawn")
 })
+
+test_that("survey follows `.weight`, while ht_total keeps to `.prob`", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_stratified("site", n = 60), seed = 1, weights = TRUE)
+  w <- s
+  w$.weight <- w$.weight * 1.1
+  theirs <- survey::svytotal(~spend, as_svydesign(w))
+  expect_equal(as.numeric(theirs), 1.1 * ht_total(s, "spend")$total)
+  expect_warning(ours <- ht_total(w, "spend"), class = "drawn_weight_edited")
+  expect_equal(ours$total, ht_total(s, "spend")$total)
+
+  p <- s
+  p$.prob <- p$.prob / 2
+  expect_error(as_svydesign(p), "`.prob` was changed after draw()",
+               fixed = TRUE)
+})
+
+test_that("survey gets the strata and clusters drawn, whatever the sample says", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  designs <- list(
+    site = design_stratified("site", n = 60),
+    cl = design_cluster("cl", n_clusters = 8),
+    cl = design_multistage("cl", n_clusters = 8, n = 40)
+  )
+  for (i in seq_along(designs)) {
+    key <- names(designs)[i]
+    s <- draw(d, designs[[i]], seed = 1, weights = TRUE)
+    want <- ht_total(s, "spend")$se
+    renamed <- s
+    names(renamed)[names(renamed) == key] <- "renamed"
+    recoded <- s
+    recoded[[key]] <- rev(recoded[[key]])
+    for (e in list(renamed, recoded)) {
+      se <- as.numeric(survey::SE(survey::svytotal(~spend, as_svydesign(e))))
+      expect_equal(se, want, tolerance = 1e-8, label = key)
+    }
+  }
+})

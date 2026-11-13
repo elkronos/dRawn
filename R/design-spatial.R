@@ -28,6 +28,31 @@
 #' [draw()] warns whenever any edge of `region` spans more than 180 degrees of
 #' longitude. If you hit it, either split the region at the antimeridian into two
 #' polygons, or switch to planar interpretation with `sf::sf_use_s2(FALSE)`.
+#' Splitting works under the default setting. Switching has to happen before
+#' [draw()] and stay in force for every estimate from the sample; see the next
+#' section.
+#'
+#' @section The s2 setting at draw time and after:
+#' Which rows fall inside `region` depends on [sf::sf_use_s2()]. With spherical
+#' geometry the edges of a longitude/latitude region are great-circle arcs, and
+#' without it they are straight lines in longitude and latitude, so rows near an
+#' edge can be inside under one setting and outside under the other. Use the
+#' same setting when you draw a sample and whenever you analyse it.
+#'
+#' [ht_total()], [ht_mean()], [as_svydesign()] and [sample_summary()] find the
+#' region's rows again each time they run, because the variance, the design
+#' effect and `survey`'s population count all depend on them. They compare the
+#' result with the inclusion probabilities stored at draw time and refuse the
+#' sample when the two differ, naming `sf::sf_use_s2()`. The point estimate
+#' would not have moved, since it uses the stored `.prob`, but the standard
+#' error would.
+#'
+#' `sf_use_s2()` is a session setting, and a new R session starts with it
+#' `TRUE` unless the `_SF_USE_S2` environment variable says otherwise. A sample
+#' drawn under `sf::sf_use_s2(FALSE)` and saved with [saveRDS()] needs
+#' `sf::sf_use_s2(FALSE)` again after [readRDS()].
+#' [inclusion_prob()] and [joint_prob()] on the frame follow the current
+#' setting too.
 #'
 #' @param coords Two column names, `c(x, y)` — longitude then latitude.
 #' @param region An `sf` or `sfc` geometry, or a list of them, which is unioned.

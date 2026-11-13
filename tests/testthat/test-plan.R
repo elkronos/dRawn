@@ -163,6 +163,21 @@ test_that("sample_summary reports on a cluster design by cluster", {
   expect_true(all(x$by_group$rate == 1))
 })
 
+test_that("sample_summary counts groups from the frame, not the sample", {
+  pop <- data.frame(id = 1:200, cl = rep(paste0("c", 1:20), each = 10),
+                    site = rep(c("a", "b"), times = c(150, 50)))
+  s <- draw(pop, design_cluster("cl", n_clusters = 4), seed = 1, weights = TRUE)
+  want <- sample_summary(s)$by_group
+  gone <- s
+  gone$cl <- NULL
+  expect_equal(sample_summary(gone)$by_group, want)
+  st <- draw(pop, design_stratified("site", n = 40), seed = 1, weights = TRUE)
+  recoded <- st
+  recoded$site <- "z"
+  expect_equal(sample_summary(recoded)$by_group,
+               sample_summary(st)$by_group)
+})
+
 test_that("sample_summary needs a sample carrying its design", {
   pop <- data.frame(id = 1:100)
   expect_error(sample_summary(draw(pop, design_simple(n = 10), seed = 1)),

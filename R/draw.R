@@ -24,6 +24,12 @@
 #' sample, and some designs have no closed form for them. [inclusion_prob()]
 #' documents which, why, and what to do instead.
 #'
+#' Keep `.prob` as it is: [ht_total()], [ht_mean()] and [as_svydesign()] refuse
+#' a sample whose `.prob` was changed. Weights adjusted after the draw, for
+#' nonresponse say, go in `.weight`, and [as_svydesign()] is the way to
+#' estimate from them; [ht_total()] and [ht_mean()] keep to `.prob` and warn
+#' when `.weight` no longer matches it.
+#'
 #' The sample also carries its design, the frame rows it came from and a copy
 #' of the frame as attributes, which is what lets [ht_total()], [ht_mean()],
 #' [sample_summary()] and [as_svydesign()] work from the sample alone.

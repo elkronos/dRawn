@@ -49,6 +49,12 @@ They come from the design applied to the population, not from the drawn
 sample, and some designs have no closed form for them. \code{\link[=inclusion_prob]{inclusion_prob()}}
 documents which, why, and what to do instead.
 
+Keep \code{.prob} as it is: \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}} and \code{\link[=as_svydesign]{as_svydesign()}} refuse
+a sample whose \code{.prob} was changed. Weights adjusted after the draw, for
+nonresponse say, go in \code{.weight}, and \code{\link[=as_svydesign]{as_svydesign()}} is the way to
+estimate from them; \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} keep to \code{.prob} and warn
+when \code{.weight} no longer matches it.
+
 The sample also carries its design, the frame rows it came from and a copy
 of the frame as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
 \code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone.

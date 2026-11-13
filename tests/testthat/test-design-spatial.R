@@ -79,3 +79,35 @@ test_that("over-drawing the region is refused", {
                     seed = 1),
                "exceeds the")
 })
+
+test_that("a sample is refused once sf_use_s2() differs from the draw", {
+  skip_if_not_installed("sf")
+  # Under spherical geometry the region's top edge, from -80 to 80 degrees of
+  # longitude at latitude 60, is a great circle that bows north past the rows
+  # at latitude 65 and 70. Under planar geometry those rows are outside.
+  grid <- expand.grid(lon = seq(-70, 70, by = 10),
+                      lat = c(-50, -20, 0, 20, 50, 65, 70))
+  grid$y <- seq_len(nrow(grid)) %% 7 + grid$lat / 10
+  des <- design_spatial(c("lon", "lat"), wide_poly(), n = 20)
+  with_s2 <- function(value, code) {
+    old <- suppressMessages(sf::sf_use_s2(value))
+    on.exit(suppressMessages(sf::sf_use_s2(old)))
+    suppressMessages(code)
+  }
+
+  s <- with_s2(FALSE, draw(grid, des, seed = 1, weights = TRUE))
+  expect_equal(unique(s$.prob), 20 / 75)
+  planar <- with_s2(FALSE, ht_total(s, "y"))
+  expect_error(with_s2(TRUE, ht_total(s, "y")),
+               "gives 105 of its 105 frame rows a different inclusion probability",
+               fixed = TRUE)
+  expect_error(with_s2(TRUE, ht_mean(s, "y")),
+               "sf::sf_use_s2() decides which rows of a spatial design fall",
+               fixed = TRUE)
+  expect_error(with_s2(TRUE, sample_summary(s)), "it is TRUE now", fixed = TRUE)
+  # Back under the setting it was drawn with, nothing has changed.
+  expect_equal(with_s2(FALSE, ht_total(s, "y"))$se, planar$se)
+
+  skip_if_not_installed("survey")
+  expect_error(with_s2(TRUE, as_svydesign(s)), "sf_use_s2", fixed = TRUE)
+})

@@ -15,7 +15,9 @@ ht_mean(
 )
 }
 \arguments{
-\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}.}
+\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. It is
+read as \code{\link[=ht_total]{ht_total()}} reads it: \code{.prob} for the probabilities, and the
+stored frame for the design's columns. See "Which columns are read" there.}
 
 \item{y}{The variable to average: a column name, or a numeric vector as long
 as \code{sample}.}

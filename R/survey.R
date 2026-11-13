@@ -16,8 +16,8 @@
 #'   [design_reservoir()] \tab `ids = ~1` with `fpc` the rows the stream reached \tab identical \cr
 #'   [design_stratified()] \tab `strata` from the strata columns, `fpc` each stratum's size \tab identical \cr
 #'   [design_temporal()] \tab `strata` from the sampling intervals, `fpc` each interval's size \tab identical \cr
-#'   [design_cluster()] \tab `ids` the cluster column, `fpc` the number of clusters \tab identical \cr
-#'   [design_multistage()] \tab two stages, `ids = ~cluster + row`, `fpc` the number of clusters and each cluster's size \tab identical \cr
+#'   [design_cluster()] \tab `ids` the cluster labels, `fpc` the number of clusters \tab identical \cr
+#'   [design_multistage()] \tab two stages, `ids` the cluster labels then the rows, `fpc` the number of clusters and each cluster's size \tab identical \cr
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size \tab identical \cr
 #'   [design_certainty()] \tab the certainty rows as their own stratum, taken whole \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities \tab within about 0.2 percent \cr
@@ -55,7 +55,22 @@
 #' otherwise; [ht_total()] declines in the same situation. Draw at least two
 #' per stratum.
 #'
-#' @param sample A data frame returned by [draw()] with `weights = TRUE`.
+#' @section Weights and design columns:
+#' `survey` gets the sample's `.weight` column as its weights. Weights adjusted
+#' after the draw, for nonresponse or by trimming, and written into `.weight`
+#' are therefore estimated here, while [ht_total()] and [ht_mean()] keep to the
+#' design probabilities in `.prob` and warn that `.weight` differs. `.prob`
+#' itself must stay as [draw()] set it: it supplies the probabilities of the
+#' PPS mappings above, and a sample whose `.prob` was changed is refused.
+#'
+#' Strata, intervals, cluster labels and population counts come from the copy
+#' of the frame stored with the sample, not from the sample's own columns, and
+#' are passed in the columns `.stratum`, `.cluster`, `.fpc`, `.fpc2` and
+#' `.unit`. Renaming or recoding a design column in the sample after the draw
+#' does not change the survey design.
+#'
+#' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
+#'   "Weights and design columns".
 #' @param ... Passed to [survey::svydesign()]. Anything named here overrides
 #'   what the mapping above would have supplied, so `nest = TRUE` or a
 #'   replacement `fpc` is yours to set.
@@ -96,8 +111,12 @@ as_svydesign <- function(sample, ...) {
   # `survey` keeps the data it is given by reference, so it gets its own copy.
   # An in-place reorder of the sample afterwards would otherwise reach it.
   dat <- snapshot_frame(as.data.frame(sample))
-  parts <- survey_parts(design, dat, pop, rows = state$rows)
+  parts <- survey_parts(design, dat, state$units, pop, rows = state$rows)
   dat$.fpc <- parts$fpc
+  # Cluster labels come from the frame, so a cluster column renamed or
+  # recoded in the sample after the draw still gives `survey` the clusters
+  # that were drawn.
+  if (!is.null(parts$cluster)) dat$.cluster <- parts$cluster
   fpc <- stats::as.formula("~.fpc")
   if (!is.null(parts$fpc2)) {
     # Two stages: clusters, then rows within them, each with its own
@@ -116,15 +135,7 @@ as_svydesign <- function(sample, ...) {
   do.call(survey::svydesign, utils::modifyList(args, list(...)))
 }
 
-#' Strata, population counts and cluster ids for one design
-#'
-#' `survey` reconstructs a variance from the design's shape, not from the
-#' inclusion probabilities, so each design has to be expressed in its own terms:
-#' a stratified design as strata, a cluster design as ids, a temporal design as
-#' strata over its intervals, and a certainty design as a stratum that was taken
-#' whole -- where `n == N` makes `survey`'s own correction zero out, matching
-#' this package's treatment of certainty rows.
-#'
+#' Refuse a certainty design whose `rest` has no place in one survey design
 #' @noRd
 refuse_nested <- function(prefix, what, why) {
   if (nzchar(prefix)) {
@@ -135,12 +146,26 @@ refuse_nested <- function(prefix, what, why) {
   invisible(NULL)
 }
 
+#' Strata, population counts and cluster ids for one design
+#'
+#' `survey` reconstructs a variance from the design's shape, not from the
+#' inclusion probabilities, so each design has to be expressed in its own terms:
+#' a stratified design as strata, a cluster design as ids, a temporal design as
+#' strata over its intervals, and a certainty design as a stratum that was taken
+#' whole -- where `n == N` makes `survey`'s own correction zero out, matching
+#' this package's treatment of certainty rows.
+#'
+#' `dat` is the sample handed to `survey`; `units` is the frame's copy of the
+#' same rows, in the same order, and is where strata, intervals and cluster
+#' labels are read. Cluster labels are returned as `cluster`, for a column of
+#' their own in `dat`.
+#'
 #' @noRd
-survey_parts <- function(design, dat, pop, rows, prefix = "") {
+survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
   one <- stats::as.formula("~1")
   by_group <- function(cols) {
     sizes <- table(group_key(pop, cols))
-    lab <- as.character(group_key(dat, cols))
+    lab <- as.character(group_key(units, cols))
     list(stratum = paste0(prefix, lab),
          fpc = as.integer(sizes[lab]), ids = one)
   }
@@ -149,7 +174,7 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
     stratified = by_group(design$strata),
     temporal = {
       sizes <- table(temporal_bucket(design, pop))
-      lab <- temporal_bucket(design, dat)
+      lab <- temporal_bucket(design, units)
       list(stratum = paste0(prefix, lab), fpc = as.integer(sizes[lab]),
            ids = one)
     },
@@ -176,14 +201,15 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
                            "kinds of sampling unit"))
       labels <- pop[[design$clusters]]
       n_clusters <- length(unique(labels[!is.na(labels)]))
+      cluster <- units[[design$clusters]]
       if (design_type(design) == "cluster") {
         return(list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
-                    ids = stats::as.formula(paste0("~", design$clusters))))
+                    ids = stats::as.formula("~.cluster"), cluster = cluster))
       }
       sizes <- table(labels[!is.na(labels)])
       list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
-           fpc2 = as.integer(sizes[as.character(dat[[design$clusters]])]),
-           ids = stats::as.formula(paste0("~", design$clusters, " + .unit")))
+           fpc2 = as.integer(sizes[as.character(cluster)]),
+           ids = stats::as.formula("~.cluster + .unit"), cluster = cluster)
     },
     reservoir = {
       # Rows past `max_items` are never read, so the population is the rows
@@ -226,8 +252,8 @@ survey_parts <- function(design, dat, pop, rows, prefix = "") {
       out$fpc[is_certain] <- length(certain_pop)
       if (any(!is_certain)) {
         rest <- survey_parts(design$rest, dat[!is_certain, , drop = FALSE],
-                             below, rows = match(rows[!is_certain],
-                                                 sp$keep[sp$rest]),
+                             units[!is_certain, , drop = FALSE], below,
+                             rows = match(rows[!is_certain], sp$keep[sp$rest]),
                              prefix = paste0(prefix, "(rest) "))
         out$stratum[!is_certain] <- rest$stratum %||%
           paste0(prefix, "(rest)")

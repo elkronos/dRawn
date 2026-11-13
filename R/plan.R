@@ -246,8 +246,11 @@ sample_summary <- function(sample) {
     NULL
   )
   by_group <- NULL
-  if (!is.null(grp_col) && all(grp_col %in% names(sample))) {
-    got <- table(group_key(sample, grp_col))
+  if (!is.null(grp_col)) {
+    # The frame's copy of the sampled rows, so a stratum or cluster column
+    # renamed or recoded in the sample after the draw still counts the
+    # groups that were drawn.
+    got <- table(group_key(state$units, grp_col))
     have <- table(group_key(pop, grp_col))
     by_group <- data.frame(
       group = group_label(names(got)),

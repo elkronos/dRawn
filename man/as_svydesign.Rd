@@ -7,7 +7,8 @@
 as_svydesign(sample, ...)
 }
 \arguments{
-\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}.}
+\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. See
+"Weights and design columns".}
 
 \item{...}{Passed to \code{\link[survey:svydesign]{survey::svydesign()}}. Anything named here overrides
 what the mapping above would have supplied, so \code{nest = TRUE} or a
@@ -35,8 +36,8 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_reservoir]{design_reservoir()}} \tab \code{ids = ~1} with \code{fpc} the rows the stream reached \tab identical \cr
 \code{\link[=design_stratified]{design_stratified()}} \tab \code{strata} from the strata columns, \code{fpc} each stratum's size \tab identical \cr
 \code{\link[=design_temporal]{design_temporal()}} \tab \code{strata} from the sampling intervals, \code{fpc} each interval's size \tab identical \cr
-\code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} the cluster column, \code{fpc} the number of clusters \tab identical \cr
-\code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids = ~cluster + row}, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
+\code{\link[=design_cluster]{design_cluster()}} \tab \code{ids} the cluster labels, \code{fpc} the number of clusters \tab identical \cr
+\code{\link[=design_multistage]{design_multistage()}} \tab two stages, \code{ids} the cluster labels then the rows, \code{fpc} the number of clusters and each cluster's size \tab identical \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size \tab identical \cr
 \code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as their own stratum, taken whole \tab as \code{rest} \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities \tab within about 0.2 percent \cr
@@ -74,6 +75,22 @@ A stratum or interval with a single sampled row makes \code{survey} stop with
 "Stratum has only one PSU" unless \code{options(survey.lonely.psu)} says
 otherwise; \code{\link[=ht_total]{ht_total()}} declines in the same situation. Draw at least two
 per stratum.
+}
+
+\section{Weights and design columns}{
+
+\code{survey} gets the sample's \code{.weight} column as its weights. Weights adjusted
+after the draw, for nonresponse or by trimming, and written into \code{.weight}
+are therefore estimated here, while \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} keep to the
+design probabilities in \code{.prob} and warn that \code{.weight} differs. \code{.prob}
+itself must stay as \code{\link[=draw]{draw()}} set it: it supplies the probabilities of the
+PPS mappings above, and a sample whose \code{.prob} was changed is refused.
+
+Strata, intervals, cluster labels and population counts come from the copy
+of the frame stored with the sample, not from the sample's own columns, and
+are passed in the columns \code{.stratum}, \code{.cluster}, \code{.fpc}, \code{.fpc2} and
+\code{.unit}. Renaming or recoding a design column in the sample after the draw
+does not change the survey design.
 }
 
 \examples{

@@ -316,3 +316,97 @@ test_that("a sample saved by drawn 0.2.0 still estimates, by position", {
   expect_equal(ht_total(old, "y")$se, ht_total(s, "y")$se)
   expect_error(ht_total(old[1:10, ], "y"), "has 10 rows but was drawn with 30")
 })
+
+test_that("a `.prob` changed or removed after the draw is refused", {
+  d <- est_pop()
+  s <- draw(d, design_simple(n = 20), seed = 3, weights = TRUE)
+
+  gone <- s
+  gone$.prob <- NULL
+  expect_error(ht_total(gone, "y"), "has no `.prob` column", fixed = TRUE)
+  missing_p <- s
+  missing_p$.prob[1] <- NA
+  expect_error(ht_total(missing_p, "y"),
+               "not probabilities in (0, 1] in 1 row(s): NA", fixed = TRUE)
+  zero <- s
+  zero$.prob[2] <- 0
+  expect_error(ht_mean(zero, "y"), "in 1 row(s): 0.", fixed = TRUE)
+  chr <- s
+  chr$.prob <- as.character(chr$.prob)
+  expect_error(ht_total(chr, "y"), "character `.prob` column", fixed = TRUE)
+
+  # Within (0, 1], but not what was drawn: the total would move while the
+  # variance still followed the design.
+  edited <- s
+  edited$.prob[1:3] <- edited$.prob[1:3] * 1.1
+  expect_error(ht_total(edited, "y"), "in 3 row(s) that differ", fixed = TRUE)
+  expect_error(ht_mean(edited, "y"), "estimate from them with as_svydesign()",
+               fixed = TRUE)
+  expect_error(sample_summary(edited), "`.prob` was changed after draw()",
+               fixed = TRUE)
+
+  # A sample saved by drawn 0.2.0 records no probabilities to compare with,
+  # but its `.prob` must still be a probability.
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  old$.prob[1] <- NA
+  expect_error(ht_total(old, "y"), "in 1 row(s): NA", fixed = TRUE)
+})
+
+test_that("a `y` that is not finite is refused with a count", {
+  d <- est_pop()
+  s <- draw(d, design_simple(n = 20), seed = 3, weights = TRUE)
+  s$y[c(2, 5)] <- c(Inf, NaN)
+  expect_error(ht_total(s, "y"),
+               "`y` is Inf or NaN in 2 row(s) of `sample`: 2, 5.", fixed = TRUE)
+  expect_error(ht_mean(s, "y", by = "site"), "finite `y`")
+  s$y[c(2, 5)] <- c(-Inf, 1)
+  expect_error(ht_mean(s, "y"), "`y` is -Inf in 1 row(s)", fixed = TRUE)
+})
+
+test_that("an edited `.weight` warns, and the estimate keeps to `.prob`", {
+  d <- est_pop()
+  s <- draw(d, design_stratified("site", n = 30), seed = 1, weights = TRUE)
+  want <- ht_total(s, "y")
+  w <- s
+  w$.weight <- w$.weight * 1.1
+  expect_warning(got <- ht_total(w, "y"), class = "drawn_weight_edited")
+  expect_equal(got$total, want$total)
+  expect_equal(got$se, want$se)
+  expect_warning(ht_mean(w, "y"), "differ from 1 / `.prob` in 30 row(s)",
+                 fixed = TRUE)
+  expect_warning(ht_total(w, "y", by = "site"), class = "drawn_weight_edited")
+  expect_warning(ht_total(w, "y"), class = "drawn_warning")
+  expect_no_warning(ht_total(s, "y"))
+})
+
+test_that("a design that gives the frame other probabilities now is refused", {
+  # Editing the stored probabilities of rows that were not drawn stands in for
+  # a sample drawn by another version of drawn, or in a session whose settings
+  # change what the design computes.
+  d <- est_pop()
+  s <- draw(d, design_simple(n = 20), seed = 3, weights = TRUE)
+  p <- attr(s, "drawn_pi")
+  p[setdiff(seq_len(nrow(d)), s$.row)[1:2]] <- 0.5
+  attr(s, "drawn_pi") <- p
+  expect_error(ht_total(s, "y"), paste0(
+    "gives 2 of its 300 frame rows a different inclusion probability in this ",
+    "session or this version of drawn"), fixed = TRUE)
+  expect_error(ht_mean(s, "y"), "draw the sample again")
+})
+
+test_that("dplyr groups are reported, not silently ignored", {
+  d <- est_pop()
+  s <- draw(d, design_stratified("site", n = 30), seed = 1, weights = TRUE)
+  # The class and `groups` attribute dplyr::group_by() gives, without dplyr.
+  g <- s
+  groups <- data.frame(site = c("a", "b", "c"))
+  groups$.rows <- unname(split(seq_len(nrow(s)), s$site))
+  attr(g, "groups") <- groups
+  class(g) <- c("grouped_df", "data.frame")
+  expect_warning(m <- ht_mean(g, "y"), "Use `by = \"site\"`", fixed = TRUE)
+  expect_equal(m$mean, ht_mean(s, "y")$mean)
+  expect_warning(ht_total(g, "y"), class = "drawn_grouped_df")
+  expect_no_warning(ht_total(g, "y", by = "site"))
+})

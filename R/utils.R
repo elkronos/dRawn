@@ -4,6 +4,21 @@
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+#' Signal a warning with a class of its own
+#'
+#' The class is `c(class, "drawn_warning", "warning", "condition")`, so a
+#' caller can muffle or catch one kind of warning with
+#' `withCallingHandlers()` or `tryCatch()` without matching on its text.
+#' `class` is named `drawn_<what>`. The warning carries no call, as the
+#' package's errors do not.
+#'
+#' @noRd
+warn_drawn <- function(message, class) {
+  cond <- structure(list(message = message, call = NULL),
+                    class = c(class, "drawn_warning", "warning", "condition"))
+  warning(cond)
+}
+
 #' Evaluate an expression under a seed without disturbing the caller's RNG
 #'
 #' Saves `.Random.seed`, seeds, evaluates, then restores the previous state on
