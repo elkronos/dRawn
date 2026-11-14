@@ -94,13 +94,14 @@ check_choice <- function(x, choices, arg) {
 
 #' A plot title: one string, or NULL for the default
 #'
-#' `main` also takes an expression, which `mtext()` draws as plotmath. `sub`
-#' is added to the line under the title as text, so it takes a string only.
+#' `main` also takes an expression, a call such as `quote(alpha^2)` or a
+#' name such as `quote(alpha)`, which `mtext()` draws as plotmath. `sub` is
+#' added to the line under the title as text, so it takes a string only.
 #'
 #' @noRd
 check_title <- function(x, arg) {
   string <- is.character(x) && length(x) == 1L && !is.na(x)
-  math <- arg == "main" && (is.expression(x) || is.call(x))
+  math <- arg == "main" && is.language(x)
   if (is.null(x) || string || math) return(x)
   stop("`", arg, "` must be a single string",
        if (arg == "main") ", an expression", " or NULL, not ",
@@ -120,13 +121,24 @@ check_palette <- function(palette) {
   if (is.character(palette) && !is.null(names(palette))) {
     palette <- as.list(palette)
   }
-  nm <- names(palette)
-  if (!is.list(palette) || is.data.frame(palette) ||
-      (length(palette) && (is.null(nm) || anyNA(nm) || !all(nzchar(nm))))) {
+  if (!is.list(palette) || is.data.frame(palette)) {
     stop("`palette` must be a named list of colours, such as ",
          "list(accent = \"darkred\"), not ",
          if (is.character(palette)) "an unnamed character vector"
          else a_class(palette), ".", call. = FALSE)
+  }
+  nm <- names(palette)
+  unnamed <- if (is.null(nm)) {
+    seq_along(palette)
+  } else {
+    which(is.na(nm) | !nzchar(nm))
+  }
+  if (length(unnamed)) {
+    stop("`palette` ", if (length(unnamed) == 1L) "entry " else "entries ",
+         paste(unnamed, collapse = ", "), " ",
+         if (length(unnamed) == 1L) "has" else "have", " no name. Name ",
+         "each entry after the colour it replaces, such as ",
+         "list(accent = \"darkred\").", call. = FALSE)
   }
   unknown <- setdiff(nm, names(base))
   if (length(unknown)) {
@@ -221,6 +233,11 @@ format_bad <- function(x, value = FALSE) {
   }
   if (is.character(x)) {
     return(paste0("`", x, "`", collapse = ", "))
+  }
+  # A function, a name or an environment has no value to show, and is.na()
+  # warns on it. is.na() of a data frame gives one answer per cell.
+  if (is.data.frame(x) || !(is.null(x) || is.atomic(x) || is.list(x))) {
+    return(a_class(x))
   }
   if (length(x) != 1L) {
     return(paste0("a length-", length(x), " ", class(x)[1]))

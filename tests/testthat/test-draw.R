@@ -256,6 +256,22 @@ test_that("messages give a class its article", {
                "not a list.", fixed = TRUE)
 })
 
+test_that("a value with no single value to show is named by its class", {
+  # A function warned from is.na(), and a data frame stopped with "the
+  # condition has length > 1".
+  expect_no_warning(
+    expect_error(design_simple(n = mean),
+                 "`n` must be a single whole number, not a function.",
+                 fixed = TRUE)
+  )
+  expect_error(design_simple(n = data.frame(n = 1:3)),
+               "`n` must be a single whole number, not a data.frame.",
+               fixed = TRUE)
+  expect_error(design_simple(n = new.env()),
+               "`n` must be a single whole number, not an environment.",
+               fixed = TRUE)
+})
+
 # ---- seeds, generators and the record of a draw -----------------------------
 
 # Run `code` under another generator, then put back the caller's random number
@@ -315,6 +331,17 @@ test_that("a seeded draw leaves the caller's generator and stream alone", {
                         inherits = FALSE))
     expect_identical(RNGkind()[[1L]], "L'Ecuyer-CMRG")
   })
+  # Putting back the "Rounding" sampler gave R's warning about it from a
+  # seeded draw. The warning muffled here is the one for choosing it.
+  suppressWarnings(
+    under_kind(list("Mersenne-Twister", "Inversion", "Rounding"), {
+      rm(".Random.seed", envir = globalenv())
+      expect_no_warning(draw(df, design_simple(n = 3), seed = 1))
+      expect_false(exists(".Random.seed", envir = globalenv(),
+                          inherits = FALSE))
+      expect_identical(RNGkind()[[3L]], "Rounding")
+    })
+  )
 })
 
 test_that("a seed outside the integer range or given as text is refused", {

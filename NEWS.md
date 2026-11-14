@@ -537,13 +537,19 @@
   naming `margin` and `level`. It stopped with "missing value where
   TRUE/FALSE needed", or returned `n = Inf`.
 * `plot()` checks `palette`, `main` and `sub` before it draws anything.
-  An entry of `palette` the plot does not use, such as `acent`, a `NULL`
-  entry, or a value that is not one colour is refused by name, and a named
-  character vector such as `c(accent = "red")` is read as a list. A colour
-  R did not know stopped the plot partway, with part of the page drawn, and
-  a bad `surface` left the margins changed for the next plot. A misspelt
-  entry was ignored, and a named vector stopped with "is.list(val) is not
-  TRUE".
+  An entry of `palette` the plot does not use, such as `acent`, an entry
+  without a name, a `NULL` entry, or a value that is not one colour is
+  refused by name, and a named character vector such as `c(accent = "red")`
+  is read as a list. A colour R did not know stopped the plot partway, with
+  part of the page drawn, and a bad `surface` left the margins changed for
+  the next plot. A misspelt entry was ignored, and a named vector stopped
+  with "is.list(val) is not TRUE". `main` takes one string, an expression,
+  or a name or call such as `quote(alpha)`. A number, which was drawn as
+  text, is refused, so write `main = "5"` for `main = 5`.
+* A message about an argument given a function, a name, an environment or
+  a data frame names its class, as in "not a function". A function or a
+  name gave a warning from `is.na()` as well, and a data frame stopped with
+  "the condition has length > 1".
 * `plot()` refuses an argument in `...` that is not a graphical parameter,
   such as `simulate`, and names it. It was passed to the panel, where base
   graphics dropped it with a warning.
@@ -557,7 +563,7 @@
   the integer range, such as `2^31`, and give the range. `set.seed()`
   stopped with "supplied seed is not a valid integer" after a coercion
   warning. A seed, count, `level` or `df` given as text reads as
-  `the string "1"` in the message, where it read as the number 1 would.
+  `the string "1"` in the message, where it read like the number 1.
   `inclusion_prob()` and `joint_prob()` check `seed` without
   `simulate = TRUE` too, where they ignored any value.
 * `draw()`, `inclusion_prob()` and `joint_prob()` given the design first and
@@ -804,7 +810,9 @@
   empty stratum or cluster was not reported. These two warnings have the
   classes `drawn_stream_truncated` and `drawn_empty_start`, and a random
   systematic start past the last row is called random, where the message
-  named `start`.
+  named `start`. A warning whose details change from draw to draw, such as
+  the empty cluster or the random start it names, is shown as the first
+  draw gave it, with the number of draws that gave one like it.
 * `inclusion_prob(simulate = TRUE)` and `joint_prob(simulate = TRUE)` time
   their first draws, and a run projected to take more than 30 seconds says
   how long, with a progress bar in an interactive session. A run of hours,

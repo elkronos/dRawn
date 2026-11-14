@@ -349,7 +349,24 @@ test_that("palette, main and sub are checked before anything is drawn", {
   expect_error(plot(d, pop, main = c("a", "b")),
                "`main` must be a single string, an expression or NULL")
   expect_error(plot(d, pop, sub = 1), "`sub` must be a single string or NULL")
+  expect_error(plot(d, pop, palette = c(accent = "red", "blue")),
+               "`palette` entry 2 has no name. Name each entry after the colour it replaces",
+               fixed = TRUE)
+  # A function has no value to show. is.na() of it warned.
+  expect_no_warning(
+    expect_error(plot(d, pop, main = mean),
+                 "`main` must be a single string, an expression or NULL, not a function.",
+                 fixed = TRUE)
+  )
+  expect_no_warning(
+    expect_error(plot(d, pop, palette = list(accent = mean)),
+                 "`palette$accent` must be one colour, a name from colors() or a code such as \"#1B6B52\", not a function.",
+                 fixed = TRUE)
+  )
   expect_identical(graphics::par(c("mar", "bg")), before)
+
+  # A name is plotmath, as a call is.
+  expect_no_condition(plot(d, pop, seed = 1, main = quote(alpha)))
 
   # A named character vector is a palette too, and an expression a title.
   shown <- NULL
@@ -359,6 +376,8 @@ test_that("palette, main and sub are checked before anything is drawn", {
   plot(d, pop, seed = 1, palette = c(accent = "red"),
        main = expression(alpha))
   expect_identical(shown, list(main = expression(alpha), accent = "red"))
+  plot(d, pop, seed = 1, main = quote(alpha))
+  expect_identical(shown$main, quote(alpha))
 })
 
 test_that("an error while drawing leaves the margins as they were", {

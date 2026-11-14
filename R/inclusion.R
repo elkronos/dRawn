@@ -278,16 +278,20 @@ drawn_ids <- function(s, key, design) {
 #' `one()` makes one draw and records it, and the draws run under `seed`.
 #' A warning of drawn's own class is muffled and counted, and each kind is
 #' given once at the end with the number of draws that raised it, rather than
-#' once per draw. A run is timed over its first five draws, or over the draws
-#' of its first two seconds when they are slower, and one projected to take
-#' more than 30 seconds says so with a message and, in an interactive
-#' session, shows a progress bar.
+#' once per draw. The first message of a kind is the one shown. When the
+#' draws worded it differently, as when it names the cluster or the start of
+#' the draw, the count is given for warnings like it, since the details shown
+#' are the first draw's alone. A run is timed over its first five draws, or
+#' over the draws of its first two seconds when they are slower, and one
+#' projected to take more than 30 seconds says so with a message and, in an
+#' interactive session, shows a progress bar.
 #'
 #' @noRd
 simulate_draws <- function(R, seed, one) {
   i <- 0L
   kinds <- character(0)
   first <- character(0)
+  varied <- logical(0)
   draws <- integer(0)
   last <- integer(0)
   record <- function(w) {
@@ -295,9 +299,12 @@ simulate_draws <- function(R, seed, one) {
     if (is.na(k)) {
       kinds <<- c(kinds, class(w)[1L])
       first <<- c(first, conditionMessage(w))
+      varied <<- c(varied, FALSE)
       draws <<- c(draws, 0L)
       last <<- c(last, 0L)
       k <- length(kinds)
+    } else if (!varied[k] && !identical(conditionMessage(w), first[k])) {
+      varied[k] <<- TRUE
     }
     if (last[k] != i) {
       draws[k] <<- draws[k] + 1L
@@ -325,8 +332,15 @@ simulate_draws <- function(R, seed, one) {
   }, drawn_warning = record))
 
   for (k in seq_along(kinds)) {
-    warn_drawn(paste0(first[k], " This happened in ", fmt_n(draws[k]),
-                      " of the ", fmt_n(R), " simulated draws."), kinds[k])
+    count <- if (varied[k]) {
+      paste0(" This is the first of these warnings. ", fmt_n(draws[k]),
+             " of the ", fmt_n(R), " simulated draws gave one like it, ",
+             "with details that differ from draw to draw.")
+    } else {
+      paste0(" This happened in ", fmt_n(draws[k]), " of the ", fmt_n(R),
+             " simulated draws.")
+    }
+    warn_drawn(paste0(first[k], count), kinds[k])
   }
   invisible(NULL)
 }

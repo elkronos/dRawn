@@ -57,7 +57,9 @@ stop_declined <- function(message) {
 #' records the generator, so restoring it restores the caller's generator
 #' too. With no `.Random.seed` to restore, the generator is set back with
 #' RNGkind(), which seeds it afresh, and the `.Random.seed` that leaves is
-#' removed, as the caller had none.
+#' removed, as the caller had none. RNGkind() warns when it sets the
+#' "Rounding" sampler, and that warning is muffled, since the caller chose
+#' that sampler and was warned then.
 #'
 #' @noRd
 with_seed <- function(seed, code) {
@@ -71,7 +73,7 @@ with_seed <- function(seed, code) {
   } else {
     old_kind <- RNGkind()
     on.exit({
-      do.call(RNGkind, as.list(old_kind))
+      suppressWarnings(do.call(RNGkind, as.list(old_kind)))
       suppressWarnings(rm(".Random.seed", envir = globalenv()))
     }, add = TRUE)
   }

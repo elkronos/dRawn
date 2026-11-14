@@ -94,7 +94,28 @@ test_that("a selected cluster the allocation leaves empty is named", {
       invokeRestart("muffleWarning")
     })
   expect_length(warned, 1L)
-  expect_match(warned, "20 of the 20 simulated draws", fixed = TRUE)
+  expect_match(warned, "This happened in 20 of the 20 simulated draws.",
+               fixed = TRUE)
+
+  # Which cluster is left empty changes from draw to draw. The message names
+  # the first draw's cluster, so its count is of warnings like it, not of
+  # draws that left that cluster empty.
+  d3 <- data.frame(id = 1:92, cl = rep(c("t1", "t2", "b1", "b2", "b3"),
+                                       c(1, 1, 30, 30, 30)))
+  des3 <- design_multistage("cl", n_clusters = 3, n = 10,
+                            allocation = "proportional")
+  warned <- character(0)
+  withCallingHandlers(
+    inclusion_prob(d3, des3, simulate = TRUE, R = 40, seed = 1),
+    drawn_empty_cluster = function(w) {
+      warned <<- c(warned, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_length(warned, 1L)
+  expect_match(warned, "selected cluster `t[12]` none of the 10 rows")
+  expect_match(warned, paste0("This is the first of these warnings\\. [0-9]+ ",
+                              "of the 40 simulated draws gave one like it, ",
+                              "with details that differ from draw to draw\\.$"))
 })
 
 test_that("with replacement, a row's probability is that of being drawn at all", {

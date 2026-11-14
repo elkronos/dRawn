@@ -76,9 +76,10 @@ drawn_pal <- function() {
 #'   run. `"map"` draws every selected row and at most `max_dots` of the
 #'   others, evenly spaced through the frame. The counts under the title
 #'   cover the whole frame.
-#' @param main Title, a single string or an expression. Defaults to a
-#'   description of the design: its constructor and the arguments that
-#'   differ from their defaults.
+#' @param main Title, a single string, or an expression, a call or a name
+#'   such as `quote(alpha)` drawn as plotmath. Defaults to a description of
+#'   the design: its constructor and the arguments that differ from their
+#'   defaults.
 #' @param palette Named list, or named character vector, of colours
 #'   overriding any of `surface`, `ink`, `secondary`, `muted`, `recessive`,
 #'   `accent`, `fill`, `rule`. Each entry is one colour, a name from

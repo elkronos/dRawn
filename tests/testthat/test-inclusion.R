@@ -475,9 +475,26 @@ test_that("a warning each draw raises is given once, with the count", {
   expect_s3_class(caught[[1L]], "drawn_empty_start")
   expect_match(conditionMessage(caught[[1L]]),
                "^The random start \\([678]\\) is past the last row \\(5\\)")
+  # The start shown is the first draw's, and the count covers every draw
+  # with a start past the last row, whichever it was. Each other draw takes
+  # one row, so the empty draws are the 400 less the rows drawn.
+  empty <- 400L - as.integer(round(sum(p) * 400))
   expect_match(conditionMessage(caught[[1L]]),
-               "This happened in [0-9]+ of the 400 simulated draws\\.$")
+               paste0("This is the first of these warnings. ", empty,
+                      " of the 400 simulated draws gave one like it, with ",
+                      "details that differ from draw to draw."),
+               fixed = TRUE)
+  expect_no_match(conditionMessage(caught[[1L]]), "This happened in",
+                  fixed = TRUE)
   expect_lt(max(abs(p - 1 / 8)), 0.05)
+
+  # A message that is the same in every draw is given with its count.
+  expect_warning(
+    inclusion_prob(short, design_systematic(interval = 8, start = 7),
+                   simulate = TRUE, R = 30, seed = 1),
+    paste("`start` (7) is past the last row (5); returning no rows.",
+          "This happened in 30 of the 30 simulated draws."),
+    fixed = TRUE, class = "drawn_empty_start")
 
   # simulate_joint() counts them the same way.
   caught <- list()
