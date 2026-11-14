@@ -273,7 +273,8 @@ quantile_cells <- function(parts, dom, probs, variance, level, df, ctx) {
   df_use <- df %||% design_df(parts$design, parts$units, parts$pop,
                               parts$rows, pi_i)
   psu <- if (is.null(dom) && variance != "none") {
-    sample_units(parts$design, parts$units, parts$pop, parts$rows)
+    sample_units(parts$design, parts$units, parts$pop, parts$rows,
+                 parts$pi)
   }
   cells <- vector("list", k * length(probs))
   for (h in seq_along(probs)) {

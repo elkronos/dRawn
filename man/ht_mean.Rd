@@ -36,9 +36,10 @@ variables" and "Categories" in \code{\link[=ht_total]{ht_total()}}.}
 
 \item{proportion}{Whether \code{y} is a proportion, which decides the shape of
 the interval. \code{NULL} decides from \code{y}: a logical \code{y}, or a column of the
-frame whose values are all 0 or 1, is a proportion. \code{TRUE} treats \code{y} as
-one, and needs it to be 0 or 1 in every sampled row; \code{FALSE} gives the
-symmetric interval. See "Proportions".}
+frame whose values are all 0 or 1, is a proportion, and a numeric vector
+or a column added after the draw is one when it is 0 or 1 in every
+sampled row. \code{TRUE} treats \code{y} as one, and needs it to be 0 or 1 in every
+sampled row; \code{FALSE} gives the symmetric interval. See "Proportions".}
 
 \item{ci_method}{The interval for a proportion: \code{"logit"}, or \code{"beta"} for
 Korn and Graubard's. A proportion of exactly 0 or 1 gets \code{"beta"} either
@@ -83,27 +84,34 @@ the sample happened to draw. A logical \code{y} is one, and so is a column of
 the frame whose values are all 0 or 1. A count that came out 0 or 1 in
 every sampled row is not: a logit interval cannot pass 1, so it would never
 cover a mean of 1.2. A numeric vector, or a column added to the sample after
-the draw, such as a 0/1 result recorded in fieldwork, gets the symmetric
-interval unless \code{proportion = TRUE} says it is a proportion.
-\code{proportion = FALSE} asks for the symmetric interval whatever \code{y} is.
+the draw, such as a 0/1 result recorded in fieldwork, has no column of the
+frame to read. It is taken for a proportion when it is 0 or 1 in every
+sampled row, and \code{note} says the choice came from the sample.
+\code{proportion = FALSE} asks for the symmetric interval whatever \code{y} is, and
+is the choice for a count.
 
 \code{ci_method = "beta"} gives the Korn and Graubard (1998) interval instead,
 a Clopper-Pearson interval at an effective sample size of \code{p(1 - p) / v},
 with \code{p} the estimate and \code{v} its variance, capped at \code{n} and then scaled
 by \code{(qt(a, n - 1) / qt(a, df))^2} for the design's degrees of freedom.
 Here \code{n} is the number of sampled rows below certainty behind the estimate
-and \code{a} the tail probability of the interval. With no rows taken with
-certainty it matches \code{survey::svyciprop(method = "beta")} whenever the cap
-does not bind. It ignores the finite population correction, so it errs
-wide when the sample is a large share of the frame.
+and \code{a} the tail probability of the interval. The scaled size is capped at
+\code{n} too, so a domain whose design has more degrees of freedom than the
+domain has rows gets no narrower an interval than Clopper-Pearson's over
+those rows. With no rows taken with certainty it matches
+\code{survey::svyciprop(method = "beta")} whenever neither cap binds. It
+ignores the finite population correction, so it errs wide when the sample
+is a large share of the frame.
 
 An estimate of exactly 0 or 1, such as no deviations found in 60 sampled
 invoices, has a variance of 0, and a logit interval around it has no
 width. It gets the beta interval whatever \code{ci_method} says, with the
 effective sample size set to \code{n}, and \code{note} says so. For 0 of 60 from a
 simple random sample, the 95\% upper bound (\code{alternative = "less"}) is
-4.87\%. When every sampled row behind the estimate was taken with
-certainty, the estimate is exact and the interval has no width.
+4.87\%. The interval needs no variance, so a design that leaves 0 degrees of
+freedom, such as a Poisson sample of one row, gets Clopper-Pearson's over
+the sampled rows. When every sampled row behind the estimate was taken
+with certainty, the estimate is exact and the interval has no width.
 }
 
 \section{When the two differ, and which to use}{

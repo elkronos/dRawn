@@ -477,6 +477,30 @@ test_that("an error inside the jackknife reaches the caller", {
   expect_error(ht_total(s, "y", variance = "jackknife"), "internal failure")
 })
 
+test_that("an error counting the frame for the jackknife reaches the caller", {
+  # The jackknife's finite population correction counts the rows the design
+  # can reach. An error there was caught and the correction dropped, so the
+  # variance came back as if the frame were infinite.
+  pop <- data.frame(id = 1:60, y = 1:60)
+  s <- draw(pop, design_reservoir(n = 40), seed = 1, weights = TRUE)
+  want <- ht_total(s, "y", variance = "jackknife")
+  expect_equal(want$variance, 60^2 * (1 - 40 / 60) * stats::var(s$y) / 40,
+               tolerance = 1e-10)
+  reach <- drawn:::reservoir_reach
+  in_fpc <- function() {
+    any(vapply(sys.calls(), function(cl) {
+      identical(cl[[1L]], quote(jackknife_fpc))
+    }, logical(1)))
+  }
+  local_mocked_bindings(reservoir_reach = function(...) {
+    if (in_fpc()) stop("internal failure")
+    reach(...)
+  })
+  expect_error(ht_total(s, "y", variance = "jackknife"), "internal failure")
+  expect_error(ht_total(s, "y", by = "id", variance = "jackknife"),
+               "internal failure")
+})
+
 test_that("a declining estimator still falls back to the jackknife", {
   pop <- data.frame(id = 1:60, y = 1:60)
   s <- draw(pop, design_simple(n = 20), seed = 1, weights = TRUE)
@@ -521,6 +545,32 @@ test_that("a simple random sample of 5,000 rows gets its analytic variance", {
   expect_equal(r$variance, 10000^2 * f * stats::var(s$y) / 5000,
                tolerance = 1e-8)
   expect_equal(ht_total(s, "y", variance = "analytic")$variance, r$variance)
+})
+
+test_that("a multistage sample of 5,000 rows gets its two-stage variance", {
+  # Past the Sen-Yates-Grundy size limit a multistage sample went to the
+  # delete-a-cluster jackknife, which has no first-stage finite population
+  # correction: with half the clusters selected it doubled the variance
+  # between them. The two-stage form needs no joint probabilities.
+  pop <- data.frame(cl = rep(sprintf("c%03d", 1:200), each = 60))
+  pop$y <- 100 + rep((1:200 * 37) %% 61, each = 60) + (1:12000 * 13) %% 21
+  s <- draw(pop, design_multistage("cl", n_clusters = 100, n = 5000),
+            seed = 1, weights = TRUE)
+  local_mocked_bindings(joint_inclusion = function(...) {
+    stop("the joint matrix was built")
+  })
+  r <- ht_total(s, "y")
+  expect_equal(r$method, "analytic")
+  expect_null(r$note)
+  N_i <- 60
+  m <- 50
+  t_i <- N_i * tapply(s$y, s$cl, mean)
+  between <- 200^2 * (1 - 100 / 200) * stats::var(t_i) / 100
+  within <- 200 / 100 *
+    sum(N_i^2 * (1 - m / N_i) * tapply(s$y, s$cl, stats::var) / m)
+  expect_equal(r$variance, between + within, tolerance = 1e-10)
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_gt(jk$variance, 1.5 * r$variance)
 })
 
 test_that("Sen-Yates-Grundy declines a sample too large to hold its matrices", {

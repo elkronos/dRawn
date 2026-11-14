@@ -213,18 +213,24 @@
 #' made of strata taken whole is then exact, with a zero-width interval. A
 #' lonely stratum whose one sampled row lies outside the domain still stops
 #' it when other units of the stratum belong to the domain, because their
-#' variation went unmeasured.
+#' variation went unmeasured. A frame row whose `by` value is missing may
+#' belong to any domain, so a lonely stratum holding one stops every domain.
 #'
 #' A domain's Hajek mean ([ht_mean()]) needs sampled rows in at least two
 #' primary sampling units, rows or clusters. Its linearised residuals sum to
 #' zero inside the unit that holds the whole domain, so with one unit every
 #' estimator gives a standard error of about 0, and `survey` does the same.
-#' Such a domain gets no standard error, with a note. Totals and the
-#' `estimator = "ht"` mean are not affected. A domain with a handful of
-#' sampled rows has a standard error that is itself unreliable, and the
-#' interval covers less often than `level` says. In one simulation of a
-#' skewed variable, a 95% interval for the mean of a domain with two or three
-#' sampled rows covered 65% of the time, and 85% with four or five.
+#' Such a domain gets no standard error, with a note. Rows taken with
+#' certainty count as one unit, since every estimator holds them fixed and
+#' `as_svydesign()` hands them to `survey` together, so a domain whose
+#' sampled rows were all taken with certainty gets no standard error either,
+#' unless every row of it that the design could reach is certain, which
+#' makes its mean exact. Totals and the `estimator = "ht"` mean are not
+#' affected. A domain with a handful of sampled rows has a standard error
+#' that is itself unreliable, and the interval covers less often than
+#' `level` says. In one simulation of a skewed variable, a 95% interval for
+#' the mean of a domain with two or three sampled rows covered 65% of the
+#' time, and 85% with four or five.
 #'
 #' A sample grouped with `dplyr::group_by()` is estimated as a whole, with a
 #' warning of class `drawn_grouped_df`; the groups play no part. Use `by`.
@@ -779,27 +785,37 @@ sub_context <- function(ctx, name) {
 #' sampled cluster and a Poisson sample of one row all reported a zero-width
 #' interval. `survey` gives the same 0.
 #'
-#' Units are counted as the jackknife deletes them, clusters or rows, over the
-#' sampled rows in `member`. The mean is exact, and a variance of 0 right,
-#' only when every unit of the domain that the design can reach was taken with
-#' certainty. That is read from the draw-time probabilities over `frame`, a
-#' logical vector marking the domain's frame rows: `TRUE` for the whole
-#' sample, `NA` when the frame cannot say. `label` names the domain in the
-#' note, `subject` replaces the opening "The domain `label`" for a domain
-#' with no label, and `psu` takes `sample_units()` worked out once for many
-#' domains. `estimate` names what is estimated, as in "A Hajek mean's
-#' linearised residuals". Returns the decline, or `NULL` when the variance
-#' can go ahead.
+#' Units are counted over the sampled rows in `member` as `sample_units()`
+#' gives them: clusters or rows, as the jackknife deletes them, with the units
+#' taken with certainty counted together as one. The jackknife holds those
+#' fixed and every other estimator gives them no variance, so a domain whose
+#' sampled rows are all certain gets a variance of 0 however many there are.
+#' The mean is exact, and a variance of 0 right, only when every unit of the
+#' domain that the design can reach was taken with certainty. That is read
+#' from the draw-time probabilities over `frame`, which marks the domain's
+#' frame rows as `domain_frame()` does: `TRUE` for the whole sample, and `NA`
+#' for a row, or for the whole frame, that the frame cannot place. `label`
+#' names the domain in the note, `subject` replaces the opening "The domain
+#' `label`" for a domain with no label, and `psu` takes `sample_units()`
+#' worked out once for many domains. `estimate` names what is estimated, as
+#' in "A Hajek mean's linearised residuals". Returns the decline, or `NULL`
+#' when the variance can go ahead.
 #'
 #' @noRd
 ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                           psu = sample_units(parts$design, parts$units,
-                                             parts$pop, parts$rows),
+                                             parts$pop, parts$rows,
+                                             parts$pi),
                           subject = if (!is.null(label)) {
                             paste0("The domain `", label, "`")
                           }, estimate = "Hajek mean") {
-  if (length(unique(psu[member])) >= 2L) return(NULL)
+  u <- psu[member]
+  if (length(unique(u)) >= 2L) return(NULL)
   if (certain_domain(parts, frame)) return(NULL)
+  if (length(u) && all(u == 0L)) {
+    return(list(variance = NA_real_, method = "none",
+                note = certain_only_note(subject, parts, frame)))
+  }
   unit <- unit_noun(parts$design)
   core <- paste0("A ", estimate, "'s linearised residuals sum to zero over ",
                  "it, so every variance estimator would give a standard ",
@@ -821,35 +837,86 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
   list(variance = NA_real_, method = "none", note = note)
 }
 
+#' Why a domain whose sampled rows are all certain gets no variance
+#'
+#' Every estimator holds those rows fixed, so each gives 0, while the mean
+#' still changes with how many of the domain's other rows a sample takes.
+#' `subject` is as `ratio_decline()` takes it, `NULL` for the whole sample.
+#' The note says the design could have drawn other rows of the domain only
+#' when the draw-time probabilities show a row below certainty that `frame`
+#' places in the domain.
+#'
+#' @noRd
+certain_only_note <- function(subject, parts, frame) {
+  whole <- is.null(subject)
+  pi_all <- parts$pi_all
+  known <- !is.null(pi_all) &&
+    any(reachable(pi_all) & !(is_certain(pi_all) %in% TRUE) & frame %in% TRUE)
+  paste0(
+    if (whole) "Every sampled row was taken with certainty" else
+      paste0(subject, " has sampled rows taken with certainty only"),
+    if (known) {
+      paste0(", and the design could have drawn other rows",
+             if (!whole) " of it", " in a different sample")
+    } else {
+      paste0(", and the frame does not show whether the design could have ",
+             "drawn others")
+    },
+    ". Every variance estimator holds certain rows fixed, so each would ",
+    "give a standard error of 0, whatever the spread of `y`. A standard ",
+    "error needs a sampled row", if (!whole) " of the domain",
+    " below certainty.")
+}
+
 #' Whether every frame row of a domain the design can reach was certain
 #'
-#' Read from the draw-time probabilities over `frame`, a logical vector
-#' marking the domain's frame rows, `TRUE` for the whole frame or `NA` when
-#' the frame cannot say. Then every such row is in every sample, and an
-#' estimate over the domain is exact. `FALSE` when the frame cannot say, and
-#' for a sample saved by drawn 0.2.0, which records no probabilities.
+#' Read from the draw-time probabilities over `frame`, which marks the
+#' domain's frame rows as `domain_frame()` does. Then every such row is in
+#' every sample, and an estimate over the domain is exact. A row the frame
+#' cannot place, or a whole frame that cannot say (`NA`), may belong to the
+#' domain and is counted in it, so a domain the frame cannot place is exact
+#' only when every row the design can reach is certain, as in a census.
+#' `FALSE` for a sample saved by drawn 0.2.0, which records no
+#' probabilities.
 #'
 #' @noRd
 certain_domain <- function(parts, frame) {
   pi_all <- parts$pi_all
-  if (is.null(pi_all) || anyNA(frame)) return(FALSE)
+  if (is.null(pi_all)) return(FALSE)
   # A conditional sample's unselected clusters have no recorded
   # probability, and were not taken with certainty.
-  reach <- reachable(pi_all) & frame
+  reach <- reachable(pi_all) & (frame | is.na(frame))
   !anyNA(pi_all[reach]) && all(is_certain(pi_all[reach]))
 }
 
-#' Each sampled row's primary sampling unit
+#' Each sampled row's primary sampling unit, as the variance sees it
 #'
 #' Clusters for a cluster or multistage design, as the jackknife deletes
 #' them, the replicates of a systematic design with several starts, and
-#' otherwise rows. Under a certainty design each row at or above the
-#' threshold is a unit of its own and the rows below it are grouped as
-#' `rest` groups them. `pop` is the frame and `rows` the sampled frame rows,
-#' which place a systematic sample's rows on its walk.
+#' otherwise rows. Under a certainty design the rows below the threshold are
+#' grouped as `rest` groups them. A unit whose every sampled row is certain,
+#' given the sampled rows' inclusion probabilities `pi`, is in every sample
+#' and adds nothing to a variance: the jackknife holds such units fixed and
+#' `as_svydesign()` hands them to `survey` as one unit. They share the code
+#' 0 here, and every other unit has a positive integer code. `pop` is the
+#' frame and `rows` the sampled frame rows, which place a systematic
+#' sample's rows on its walk.
 #'
 #' @noRd
-sample_units <- function(design, units, pop, rows) {
+sample_units <- function(design, units, pop, rows, pi) {
+  psu <- design_units(design, units, pop, rows)
+  code <- match(psu, unique(psu))
+  code[!(psu %in% psu[!is_certain(pi)])] <- 0L
+  code
+}
+
+#' Each sampled row's primary sampling unit under the design
+#'
+#' `sample_units()` without the units taken with certainty grouped. Under a
+#' certainty design each row at or above the threshold is a unit of its own.
+#'
+#' @noRd
+design_units <- function(design, units, pop, rows) {
   if (replicated(design)) {
     return(systematic_replicates(design, systematic_positions(design, pop),
                                  rows))
@@ -862,7 +929,7 @@ sample_units <- function(design, units, pop, rows) {
   out <- -seq_len(nrow(units))
   if (any(below)) {
     sp <- certainty_split(design, pop)
-    out[below] <- sample_units(design$rest, units[below, , drop = FALSE],
+    out[below] <- design_units(design$rest, units[below, , drop = FALSE],
                                sp$data[sp$rest, , drop = FALSE],
                                match(rows[below], sp$keep[sp$rest]))
   }
@@ -1312,8 +1379,10 @@ lonely_groups <- function(code, rows, k) {
 #' because the domain's `y` is 0 on every unit of it, so it is skipped. That
 #' is decided from the frame, never from the sampled rows: a stratum whose one
 #' sampled row lies outside the domain can still hold domain units that were
-#' not drawn. `domain = NA` means the frame cannot say, and every lonely
-#' stratum is refused.
+#' not drawn. A frame row marked `NA`, whose `by` value the frame does not
+#' hold, may belong to the domain, so a lonely stratum holding one is
+#' refused. `domain = NA` means the frame cannot say for any row, and every
+#' lonely stratum is refused.
 #'
 #' @noRd
 lonely_note <- function(group, rows, noun, fix, domain = NULL) {
@@ -1325,20 +1394,24 @@ lonely_note <- function(group, rows, noun, fix, domain = NULL) {
   code <- as.integer(group)
   k <- nlevels(group)
   lonely <- lonely_groups(code, rows, k)
+  unsure <- identical(domain, NA)
   if (known_domain(domain, length(code))) {
-    lonely <- lonely & tabulate(code[domain], k) > 0L
+    hold <- domain_groups(code, domain, k)
+    lonely <- lonely & hold$maybe
+    unsure <- !any(lonely & hold$sure)
   }
-  lonely_text(levels(group)[lonely], noun, fix, domain)
+  lonely_text(levels(group)[lonely], noun, fix, unsure)
 }
 
 #' The refusal of lonely groups, naming them
 #'
 #' `lonely` holds the groups' key levels, in key order. Shared by the analytic
 #' estimators and the jackknife, so the two refuse a sample in the same words
-#' and `variance = "auto"` says it once.
+#' and `variance = "auto"` says it once. `unsure` says that the frame cannot
+#' tell whether any of them holds units of the domain.
 #'
 #' @noRd
-lonely_text <- function(lonely, noun, fix, domain = NULL) {
+lonely_text <- function(lonely, noun, fix, unsure = FALSE) {
   if (!length(lonely)) return(NULL)
   shown <- group_label(utils::head(lonely, 5L))
   many <- length(lonely) > 1L
@@ -1348,7 +1421,7 @@ lonely_text <- function(lonely, noun, fix, domain = NULL) {
          if (length(lonely) > 5L) ", ..." else "",
          " ", if (many) "each have" else "has",
          " a single sampled row, so the variation within ", them,
-         if (identical(domain, NA)) {
+         if (unsure) {
            paste0(" cannot be measured. If ", if (many) "they hold" else
                     "it holds", " units of this domain, which cannot be told ",
                   "from the frame, leaving ", them, " out would understate ",
@@ -1382,9 +1455,26 @@ lonely_fix <- function(design) {
 }
 
 #' Does `domain` mark which of `n` frame rows belong to a domain?
+#'
+#' A row marked `NA` is one the frame cannot place, and may belong to it.
+#'
 #' @noRd
 known_domain <- function(domain, n) {
-  is.logical(domain) && length(domain) == n && !anyNA(domain)
+  is.logical(domain) && length(domain) == n && !identical(domain, NA)
+}
+
+#' The groups that hold units of a domain
+#'
+#' `code` is each frame row's group as a position among `k` groups, `NA` for
+#' a row in none, and `domain` marks the frame rows in the domain, as
+#' `known_domain()` accepts it. Returns `sure`, the groups with a frame row in
+#' the domain, and `maybe`, those with such a row or with a row the frame
+#' cannot place.
+#'
+#' @noRd
+domain_groups <- function(code, domain, k) {
+  sure <- tabulate(code[domain %in% TRUE], k) > 0L
+  list(sure = sure, maybe = sure | tabulate(code[is.na(domain)], k) > 0L)
 }
 
 #' Variance within the groups of `srs_groups()`, refusing a lonely group
@@ -2124,7 +2214,8 @@ jackknife_layout <- function(design, units, pop, pi_i, domain = NULL,
     c("stratum", "strata")
   }
   lonely <- lonely[order(st$levels[lonely])]
-  out$note <- lonely_text(st$labels[lonely], noun, lonely_fix(design), domain)
+  out$note <- lonely_text(st$labels[lonely], noun, lonely_fix(design),
+                          identical(domain, NA) || !any(st$sure[lonely]))
   out
 }
 
@@ -2174,12 +2265,14 @@ jackknife_refusal <- function(design) {
 #' taken with certainty within a stratum of its own, as `cluster_units()`
 #' lays them out.
 #'
-#' Returns each row's `stratum`, the `levels` listed, their `labels`, `fpc`
-#' and `in_domain`, in the same order, and `between`. The levels are integer
-#' codes in key order, and the labels the key's levels, as the analytic
-#' estimators name the same strata and intervals. `in_domain` is `FALSE` for
-#' a stratum that `domain`, a logical vector over the frame, shows to hold
-#' no unit of the domain, and `TRUE` otherwise.
+#' Returns each row's `stratum`, the `levels` listed, their `labels`, `fpc`,
+#' `in_domain` and `sure`, in the same order, and `between`. The levels are
+#' integer codes in key order, and the labels the key's levels, as the
+#' analytic estimators name the same strata and intervals. `in_domain` is
+#' `FALSE` for a stratum that `domain`, a logical vector over the frame,
+#' shows to hold no unit of the domain, and `TRUE` otherwise. `sure` is
+#' `TRUE` for a stratum with a frame row known to be in the domain, rather
+#' than one only the frame cannot place.
 #'
 #' @noRd
 jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
@@ -2235,21 +2328,23 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
     return(list(stratum = rep("all", nrow(units)), levels = "all",
                 labels = "all",
                 fpc = jackknife_fpc(design, pop, m, n_fixed, ctx),
-                in_domain = TRUE))
+                in_domain = TRUE, sure = TRUE))
   }
   lev <- unique(grp$sample[!fixed])
   N_h <- tabulate(match(grp$pop, lev), length(lev))
   n_h <- tabulate(match(grp$sample[!fixed], lev), length(lev))
   free_h <- N_h - tabulate(match(grp$sample[fixed], lev), length(lev))
-  in_domain <- if (known_domain(domain, length(grp$pop))) {
-    tabulate(match(grp$pop[domain], lev), length(lev)) > 0L
-  } else {
-    rep(TRUE, length(lev))
+  in_domain <- sure <- rep(TRUE, length(lev))
+  if (known_domain(domain, length(grp$pop))) {
+    hold <- domain_groups(match(grp$pop, lev), domain, length(lev))
+    in_domain <- hold$maybe
+    sure <- hold$sure
   }
   fpc <- ifelse(free_h > n_h, 1 - n_h / free_h, 0)
   if (!is.null(grp$between)) fpc[lev == grp$between] <- 1
   list(stratum = grp$sample, levels = lev, labels = grp$labels[lev],
-       fpc = fpc, in_domain = in_domain, between = grp$between)
+       fpc = fpc, in_domain = in_domain, sure = sure,
+       between = grp$between)
 }
 
 #' The share of primary sampling units NOT taken

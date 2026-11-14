@@ -18,27 +18,34 @@
 #' the frame whose values are all 0 or 1. A count that came out 0 or 1 in
 #' every sampled row is not: a logit interval cannot pass 1, so it would never
 #' cover a mean of 1.2. A numeric vector, or a column added to the sample after
-#' the draw, such as a 0/1 result recorded in fieldwork, gets the symmetric
-#' interval unless `proportion = TRUE` says it is a proportion.
-#' `proportion = FALSE` asks for the symmetric interval whatever `y` is.
+#' the draw, such as a 0/1 result recorded in fieldwork, has no column of the
+#' frame to read. It is taken for a proportion when it is 0 or 1 in every
+#' sampled row, and `note` says the choice came from the sample.
+#' `proportion = FALSE` asks for the symmetric interval whatever `y` is, and
+#' is the choice for a count.
 #'
 #' `ci_method = "beta"` gives the Korn and Graubard (1998) interval instead,
 #' a Clopper-Pearson interval at an effective sample size of `p(1 - p) / v`,
 #' with `p` the estimate and `v` its variance, capped at `n` and then scaled
 #' by `(qt(a, n - 1) / qt(a, df))^2` for the design's degrees of freedom.
 #' Here `n` is the number of sampled rows below certainty behind the estimate
-#' and `a` the tail probability of the interval. With no rows taken with
-#' certainty it matches `survey::svyciprop(method = "beta")` whenever the cap
-#' does not bind. It ignores the finite population correction, so it errs
-#' wide when the sample is a large share of the frame.
+#' and `a` the tail probability of the interval. The scaled size is capped at
+#' `n` too, so a domain whose design has more degrees of freedom than the
+#' domain has rows gets no narrower an interval than Clopper-Pearson's over
+#' those rows. With no rows taken with certainty it matches
+#' `survey::svyciprop(method = "beta")` whenever neither cap binds. It
+#' ignores the finite population correction, so it errs wide when the sample
+#' is a large share of the frame.
 #'
 #' An estimate of exactly 0 or 1, such as no deviations found in 60 sampled
 #' invoices, has a variance of 0, and a logit interval around it has no
 #' width. It gets the beta interval whatever `ci_method` says, with the
 #' effective sample size set to `n`, and `note` says so. For 0 of 60 from a
 #' simple random sample, the 95% upper bound (`alternative = "less"`) is
-#' 4.87%. When every sampled row behind the estimate was taken with
-#' certainty, the estimate is exact and the interval has no width.
+#' 4.87%. The interval needs no variance, so a design that leaves 0 degrees of
+#' freedom, such as a Poisson sample of one row, gets Clopper-Pearson's over
+#' the sampled rows. When every sampled row behind the estimate was taken
+#' with certainty, the estimate is exact and the interval has no width.
 #'
 #' @section When the two differ, and which to use:
 #' They coincide **exactly** whenever the design weights of the rows you drew
@@ -136,9 +143,10 @@
 #' @param variance,level,by,df,alternative,contrast As for [ht_total()].
 #' @param proportion Whether `y` is a proportion, which decides the shape of
 #'   the interval. `NULL` decides from `y`: a logical `y`, or a column of the
-#'   frame whose values are all 0 or 1, is a proportion. `TRUE` treats `y` as
-#'   one, and needs it to be 0 or 1 in every sampled row; `FALSE` gives the
-#'   symmetric interval. See "Proportions".
+#'   frame whose values are all 0 or 1, is a proportion, and a numeric vector
+#'   or a column added after the draw is one when it is 0 or 1 in every
+#'   sampled row. `TRUE` treats `y` as one, and needs it to be 0 or 1 in every
+#'   sampled row; `FALSE` gives the symmetric interval. See "Proportions".
 #' @param ci_method The interval for a proportion: `"logit"`, or `"beta"` for
 #'   Korn and Graubard's. A proportion of exactly 0 or 1 gets `"beta"` either
 #'   way. See "Proportions".
@@ -274,6 +282,9 @@ mean_setup <- function(parts, estimator, proportion, ci_method,
          "the sample.", call. = FALSE)
   }
   parts$proportion <- mean_is_proportion(parts, proportion)
+  parts$proportion_note <- if (sampled_proportion(parts, proportion)) {
+    sampled_proportion_note(parts$y_name)
+  }
   if (ci_method == "beta" && !parts$proportion) {
     stop("`ci_method = \"beta\"` gives an interval for a proportion, and ",
          "the mean of ", label, " is not one. Pass `proportion = TRUE` if ",
@@ -446,7 +457,10 @@ constant_note <- function(value, proportion, domains = NULL) {
 #' (a logical column of the frame counts too). A count that came out 0 or 1
 #' in every sampled row is not one, since a logit interval cannot pass 1 and
 #' would never cover a mean above it. A numeric vector, and a column added to
-#' the sample after the draw, are proportions only when `proportion` says so.
+#' the sample after the draw, have no frame column to read. They are
+#' proportions when every sampled value is 0 or 1, as drawn 0.2.0 read every
+#' `y`, and `sampled_proportion()` says so in a note. A single number stands
+#' for a constant and is not one.
 #'
 #' @noRd
 mean_is_proportion <- function(parts, proportion) {
@@ -470,11 +484,38 @@ mean_is_proportion <- function(parts, proportion) {
   }
   if (!binary) return(FALSE)
   if (parts$y_logical) return(TRUE)
+  if (isTRUE(parts$y_single)) return(FALSE)
   col <- parts$y_name
-  if (is.null(col)) return(FALSE)
-  # compact_sample() records which of the columns it dropped were 0/1.
-  if (!col %in% names(parts$pop)) return(col %in% parts$compact$binary)
-  binary_column(parts$pop[[col]])
+  if (!is.null(col)) {
+    if (col %in% names(parts$pop)) return(binary_column(parts$pop[[col]]))
+    # compact_sample() records which of the frame columns it dropped were 0/1.
+    if (col %in% parts$compact$dropped) return(col %in% parts$compact$binary)
+  }
+  TRUE
+}
+
+#' Whether a proportion was read from the sampled values alone
+#'
+#' True for a numeric `y` that `mean_is_proportion()` took for a proportion
+#' with no frame column to read, which `proportion` did not settle.
+#'
+#' @noRd
+sampled_proportion <- function(parts, proportion) {
+  is.null(proportion) && isTRUE(parts$proportion) && !parts$y_logical &&
+    (is.null(parts$y_name) || !(parts$y_name %in% c(names(parts$pop),
+                                                    parts$compact$dropped)))
+}
+
+#' Why a `y` outside the frame was taken for a proportion
+#'
+#' `name` is the column `y` names, `NULL` for a vector.
+#'
+#' @noRd
+sampled_proportion_note <- function(name = NULL) {
+  paste0(if (is.null(name)) "`y`" else paste0("`", name, "`"), " is not a ",
+         "column of the frame, so it was taken for a proportion because it ",
+         "is 0 or 1 in every sampled row. Pass `proportion = FALSE` for the ",
+         "symmetric interval of a count.")
 }
 
 #' Estimate a ratio of two population totals
@@ -1232,6 +1273,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
   if (any(is.finite(out$se) & (is.na(out$ci_lower) | is.na(out$ci_upper)))) {
     notes <- c(notes, df_note(df_use))
   }
+  if (proportion && !is.null(parts$proportion_note)) {
+    notes <- c(notes, parts$proportion_note)
+  }
   edge <- vapply(rows, `[[`, logical(1), "edge")
   if (any(edge)) {
     notes <- c(notes, edge_note(domains = labels[levels_in[edge]],
@@ -1337,14 +1381,19 @@ domain_keys <- function(parts, by) {
 
 #' Which frame rows the domains at positions `j` of `levels_in` hold
 #'
-#' Read from the frame's own `by` columns. Where those are missing, or
-#' disagree with the sample's values for the sampled rows, the frame cannot
-#' say and the result is `NA`.
+#' Read from the frame's own `by` columns: `TRUE` for a row in one of the
+#' domains and `FALSE` for a row outside them. A row with a `by` value
+#' missing in the frame may belong to any domain and is `NA`. Where the frame
+#' lacks a `by` column, or its values disagree with the sample's for the
+#' sampled rows, the frame cannot say for any row and the result is a single
+#' `NA`.
 #'
 #' @noRd
 domain_frame <- function(dom, j) {
   if (!dom$aligned) return(NA)
-  dom$pop_key %in% dom$levels_in[j]
+  out <- dom$pop_key %in% dom$levels_in[j]
+  out[is.na(dom$pop_key)] <- NA
+  out
 }
 
 #' Each domain's estimate, and the variable whose total has its variance
@@ -1446,7 +1495,8 @@ domain_variances <- function(parts, dom, est, variance, linearised, ctx) {
   k <- length(dom$levels_in)
   out <- vector("list", k)
   if (!is.null(linearised) && variance != "none") {
-    psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows)
+    psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows,
+                        parts$pi)
     for (j in seq_len(k)) {
       out[j] <- list(ratio_decline(parts, dom$idx[[j]], domain_frame(dom, j),
                                    dom$labels[dom$levels_in[j]], psu,
@@ -1494,8 +1544,10 @@ srs_domains <- function(parts, dom, z, ctx) {
   v <- srs_variance_by(z[keep], lay$group[keep], pos[keep], k + 1L, lay$n_g,
                        lay$N_g)[seq_len(k)]
   if (length(lay$lonely_rows)) {
-    hit <- if (dom$aligned) {
-      match(dom$pop_key[lay$lonely_rows], dom$levels_in)
+    keys <- dom$pop_key[lay$lonely_rows]
+    # A frame row with a `by` value missing may belong to any domain.
+    hit <- if (dom$aligned && !anyNA(keys)) {
+      match(keys, dom$levels_in)
     } else {
       seq_len(k)
     }
@@ -1527,7 +1579,8 @@ estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
   labels <- dom$labels[dom$levels_in[used]]
   var_out <- NULL
   if (what == "mean" && estimator == "hajek" && variance != "none") {
-    psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows)
+    psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows,
+                        parts$pi)
     notes <- unlist(lapply(seq_along(used), function(u) {
       ratio_decline(parts, dom$idx[[used[u]]], domain_frame(dom, used[u]),
                     labels[u], psu)$note
@@ -1965,6 +2018,7 @@ add_y <- function(parts, y, na_rm, label = "`y`") {
   parts$respond <- !missing_y
   parts$y_name <- v$name
   parts$y_logical <- v$logical
+  parts$y_single <- v$single
   parts
 }
 
@@ -1980,7 +2034,8 @@ finish_prepare <- function(parts) {
 #' A variable given as a column name or as a vector
 #'
 #' Returns its `values`, numeric with a logical turned to 0 and 1, whether
-#' it was `logical`, and its `name`, `NULL` for a vector. `several` says
+#' it was `logical`, its `name`, `NULL` for a vector, and whether it was a
+#' `single` number standing for every row. `several` says
 #' whether `arg` may also name several columns, which the caller reads one
 #' at a time.
 #'
@@ -2001,15 +2056,14 @@ read_variable <- function(sample, y, arg, several = FALSE) {
   }
   # A single number stands for that value in every row, so a total of 1
   # estimates the number of frame rows.
-  if (is.null(name) && is.numeric(v) && length(v) == 1L) {
-    v <- rep(v, nrow(sample))
-  }
+  single <- is.null(name) && is.numeric(v) && length(v) == 1L
+  if (single) v <- rep(v, nrow(sample))
   if (!(is.numeric(v) || is.logical(v)) || length(v) != nrow(sample)) {
     stop(variable_forms(y, arg, several, sample), call. = FALSE)
   }
   logical <- is.logical(v)
   if (logical) v <- as.numeric(v)
-  list(values = v, logical = logical, name = name)
+  list(values = v, logical = logical, name = name, single = single)
 }
 
 #' What `arg` must be, and what it was
@@ -2150,10 +2204,17 @@ warn_grouped <- function(sample, fun) {
 #' effective sample size of `p(1 - p) / v`, capped at `n` and scaled by
 #' `(qt(a, n - 1) / qt(a, df))^2`, the design's degrees of freedom against
 #' those of a simple random sample of `n`. With `a` the tail probability this
-#' is `survey::svyciprop(method = "beta")` when the cap does not bind. At an
-#' estimate of 0 or 1 the variance is 0 and says nothing, and the effective
-#' sample size is `n`. `n` counts the sampled rows below certainty behind the
-#' estimate; with none, the estimate is exact.
+#' is `survey::svyciprop(method = "beta")` when the cap does not bind. The
+#' scaled size is capped at `n` again, which binds when `df` passes `n - 1`,
+#' as a domain's can. Without it the scaling raised a domain's effective size
+#' past `n`, giving a narrower interval than Clopper-Pearson's over the
+#' domain's own rows: an upper bound of 0.155 for 0 of 20, where
+#' Clopper-Pearson gives 0.168. At an estimate of 0 or 1 the variance is 0
+#' and says nothing, and the effective sample size is `n`. That interval
+#' needs no variance, so it is given even when the design leaves fewer than
+#' 1 degree of freedom, without the scaling, which is undefined there. `n`
+#' counts the sampled rows below certainty behind the estimate; with none,
+#' the estimate is exact.
 #'
 #' @noRd
 interval <- function(est, v, level, df, logit = FALSE,
@@ -2170,23 +2231,27 @@ interval <- function(est, v, level, df, logit = FALSE,
   # A variance of 0 is an exact estimate, whatever the degrees of freedom,
   # except for a proportion of 0 or 1, whose variance is 0 because no row of
   # the other kind was drawn.
-  exact <- v == 0 && !(scale == "beta" && edge && isTRUE(n >= 1))
+  beta_edge <- scale == "beta" && edge && isTRUE(n >= 1)
+  exact <- v == 0 && !beta_edge
   if (exact) return(bound(est, est))
-  if (is.finite(df) && df < 1) return(c(NA_real_, NA_real_))
+  few_df <- is.finite(df) && df < 1
+  if (few_df && !beta_edge) return(c(NA_real_, NA_real_))
   # The tail probability on each side that has one.
   a <- if (alternative == "two.sided") (1 - level) / 2 else 1 - level
   quantile <- function(p, df) {
     if (is.finite(df)) stats::qt(p, df) else stats::qnorm(p)
   }
-  q <- quantile(1 - a, df)
   if (scale == "beta" && est >= 0 && est <= 1) {
     n_eff <- if (edge) n else min(n, est * (1 - est) / v)
-    if (n >= 2) n_eff <- n_eff * (stats::qt(a, n - 1) / quantile(a, df))^2
+    if (n >= 2 && !few_df) {
+      n_eff <- min(n, n_eff * (stats::qt(a, n - 1) / quantile(a, df))^2)
+    }
     x <- n_eff * est
     lo <- if (x <= 0) 0 else stats::qbeta(a, x, n_eff - x + 1)
     hi <- if (x >= n_eff) 1 else stats::qbeta(1 - a, x + 1, n_eff - x)
     return(bound(lo, hi))
   }
+  q <- quantile(1 - a, df)
   if (proportion && !edge) {
     # A proportion's interval on the logit scale, by the delta method, then
     # back: it cannot leave [0, 1], and near 0 or 1 it is asymmetric the way
@@ -2277,6 +2342,9 @@ finish_estimate <- function(est, var_out, parts, level, df, what, class,
   note <- var_out$note
   if (!is.na(se) && anyNA(ci$ci)) {
     note <- paste(c(note, df_note(df)), collapse = " ")
+  }
+  if (proportion && !is.null(parts$proportion_note)) {
+    note <- paste(c(note, parts$proportion_note), collapse = " ")
   }
   if (ci$edge) {
     certain <- is_certain(parts$pi)
@@ -2419,10 +2487,12 @@ print_estimate <- function(x, field, label, lines = NULL) {
   }
   print_unreachable(x$unreachable, "this estimate")
   # A standard error of 0 always has a reason worth stating: rows taken with
-  # certainty, a constant `y`, or a proportion of 0 or 1.
+  # certainty, a constant `y`, or a proportion of 0 or 1. So does a
+  # proportion's interval, whose shape can rest on the sampled values.
   if (!is.null(x$note) && (is.na(x$se) || x$se == 0 ||
                             !identical(x$method, "analytic") ||
-                            anyNA(x$ci))) {
+                            anyNA(x$ci) ||
+                            !identical(x$ci_scale %||% "linear", "linear"))) {
     cat_note(x$note)
   }
   invisible(x)

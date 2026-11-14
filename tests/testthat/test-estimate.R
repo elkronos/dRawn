@@ -494,13 +494,17 @@ test_that("whether y is a proportion is read from the frame, not the sample", {
   expect_equal(ht_mean(s, s$kids > 0)$ci_scale, "logit")
   expect_equal(ht_mean(s, "any", proportion = FALSE)$ci_scale, "linear")
 
-  # A 0/1 column added after the draw, or a numeric vector, is not one
-  # unless `proportion = TRUE` says so
+  # A 0/1 column added after the draw, or a numeric vector, has no frame
+  # column to read, so its sampled values decide and the note says so
   s$found <- as.numeric(s$kids > 0)
-  expect_equal(ht_mean(s, "found")$ci_scale, "linear")
-  expect_equal(ht_mean(s, s$found)$ci_scale, "linear")
+  expect_equal(ht_mean(s, "found")$ci_scale, "logit")
+  expect_equal(ht_mean(s, s$found)$ci_scale, "logit")
+  expect_equal(ht_mean(s, "found")$ci, ht_mean(s, "any")$ci)
   expect_equal(ht_mean(s, "found", proportion = TRUE)$ci,
                ht_mean(s, "any")$ci)
+  expect_equal(ht_mean(s, "found", proportion = FALSE)$ci_scale, "linear")
+  # A single number stands for a constant, not a proportion
+  expect_equal(ht_mean(s, 1)$ci_scale, "linear")
 
   expect_error(ht_mean(s, "kids", proportion = NA),
                "`proportion` must be NULL, TRUE or FALSE, not NA.",
@@ -512,6 +516,45 @@ test_that("whether y is a proportion is read from the frame, not the sample", {
                "Pass `proportion = TRUE`")
   expect_error(ht_mean(s, "any", ci_method = "exact"),
                "`ci_method` must be one of \"logit\" or \"beta\"")
+})
+
+test_that("a 0/1 column recorded in fieldwork keeps its logit interval", {
+  # Deviations found in 2 of 60 sampled rows, recorded after the draw. With
+  # no frame column to read, the sampled values decide, as they always did,
+  # and the note says so. The symmetric interval ran below 0 and put the
+  # upper bound at 0.078 against 0.120.
+  pop <- data.frame(id = 1:600)
+  s <- draw(pop, design_simple(n = 60), seed = 1, weights = TRUE)
+  s$dev <- as.numeric(seq_len(60) %in% c(5, 40))
+  r <- ht_mean(s, "dev")
+  expect_equal(r$ci_scale, "logit")
+  half <- stats::qt(0.975, 59) * r$se / (r$mean * (1 - r$mean))
+  expect_equal(r$ci, stats::plogis(stats::qlogis(r$mean) + c(-1, 1) * half))
+  expect_equal(round(r$ci, 4), c(0.0086, 0.1202))
+  expect_match(r$note, "`dev` is not a column of the frame, so it was taken",
+               fixed = TRUE)
+  expect_output(print(r), "taken for a proportion")
+  expect_match(ht_mean(s, s$dev)$note, "`y` is not a column of the frame",
+               fixed = TRUE)
+  s$half <- rep(c("a", "b"), 30)
+  by_half <- ht_mean(s, "dev", by = "half")
+  expect_equal(attr(by_half, "ci_scale"), "logit")
+  expect_match(attr(by_half, "notes"), "`dev` is not a column of the frame",
+               fixed = TRUE, all = FALSE)
+
+  # proportion = FALSE gives the symmetric interval, with no note
+  lin <- ht_mean(s, "dev", proportion = FALSE)
+  expect_equal(lin$ci_scale, "linear")
+  expect_lt(lin$ci[1], 0)
+  expect_null(lin$note)
+  # proportion = TRUE settles it, so there is nothing to note
+  expect_null(ht_mean(s, "dev", proportion = TRUE)$note)
+
+  # A fieldwork column of zeros gets the beta interval
+  s$none <- 0
+  z <- ht_mean(s, "none")
+  expect_equal(z$ci, c(0, 1 - 0.025^(1 / 60)))
+  expect_match(z$note, "not a column of the frame")
 })
 
 test_that("a proportion of 0 or 1 gets a beta interval and a note", {
@@ -548,6 +591,22 @@ test_that("a proportion of 0 or 1 gets a beta interval and a note", {
   expect_equal(ht_mean(cen, "deviation")$ci, c(0, 0))
 })
 
+test_that("a proportion of 0 at 0 degrees of freedom gets Clopper-Pearson", {
+  # A Poisson sample of one row leaves 0 degrees of freedom. The beta
+  # interval at an estimate of 0 needs no variance, but it was dropped, and
+  # the note said both that there was no interval and that it was a beta one.
+  pop <- data.frame(id = 1:50, w = 1:50, flag = FALSE)
+  s <- draw(pop, design_weighted("w", n = 1, method = "poisson"), seed = 2,
+            weights = TRUE)
+  expect_equal(nrow(s), 1L)
+  r <- ht_mean(s, "flag", estimator = "ht")
+  expect_equal(r$df, 0)
+  expect_equal(r$ci_scale, "beta")
+  expect_equal(r$ci, c(0, 0.975))
+  expect_match(r$note, "beta interval, with the 1 sampled row")
+  expect_false(grepl("no t interval", r$note))
+})
+
 test_that("one-sided bounds are the ends of a two-sided interval", {
   pop <- data.frame(id = 1:200, site = rep(c("a", "b"), each = 100),
                     y = 20 + (1:200 * 37) %% 101)
@@ -579,7 +638,7 @@ test_that("a constant y has a variance of exactly 0 and no design effect", {
   # Unequal weights left the residuals a rounding error from 0, which gave a
   # standard error near 1e-16 and design effects from noise.
   pop <- data.frame(id = 1:240, w = 1 + (1:240 * 7) %% 19)
-  s <- draw(pop, design_weighted("w", n = 30, method = "poisson"), seed = 4,
+  s <- draw(pop, design_weighted("w", n = 30, method = "poisson"), seed = 8,
             weights = TRUE)
   s$k <- 5
   m <- ht_mean(s, "k")

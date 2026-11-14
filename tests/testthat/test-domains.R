@@ -179,6 +179,65 @@ test_that("a Hajek domain mean inside one sampling unit has no se", {
   }
 })
 
+test_that("a Hajek domain mean of certain rows only has no se unless exact", {
+  # Every estimator holds rows taken with certainty fixed, so a domain whose
+  # sampled rows were all certain got a standard error of 0 and a zero-width
+  # interval, however many rows it had, though the design could have drawn
+  # its other rows and the mean would then have moved.
+  pop <- data.frame(id = 1:100, w = c(rep(1, 98), 400, 450))
+  pop$y <- 40 + (pop$id * 37) %% 23
+  pop$x <- ifelse(pop$id %in% c(1:6, 99, 100), "d", "other")
+  pop$big <- ifelse(pop$id %in% 99:100, "big", "small")
+  s <- draw(pop, design_weighted("w", n = 20, method = "systematic"),
+            seed = 7, weights = TRUE)
+  expect_equal(sort(s$id[s$x == "d"]), 99:100)
+  expect_true(all(s$.prob[s$x == "d"] == 1))
+  for (v in c("auto", "analytic", "jackknife")) {
+    m <- ht_mean(s, "y", by = "x", variance = v)
+    expect_true(is.na(m$se[m$x == "d"]), label = v)
+    expect_equal(m$method[m$x == "d"], "none", label = v)
+    expect_true(is.finite(m$se[m$x == "other"]), label = v)
+  }
+  expect_match(attr(m, "notes"), paste0(
+    "The domain `d` has sampled rows taken with certainty only, and the ",
+    "design could have drawn other rows of it"), fixed = TRUE, all = FALSE)
+  # The contrast that weighs it has no standard error either.
+  ct <- ht_mean(s, "y", by = "x", contrast = c(d = 1, other = -1))
+  expect_true(is.na(ct$se))
+  # A domain of the two rows the design always takes is exact.
+  b <- ht_mean(s, "y", by = "big")
+  expect_identical(b$se[b$big == "big"], 0)
+  expect_equal(b$ci_lower[b$big == "big"], mean(pop$y[99:100]))
+  # The domain total is still estimated, as for a domain of one row.
+  expect_true(all(is.finite(ht_total(s, "y", by = "x")$se)))
+
+  # Under a certainty design, two rows above the threshold are one unit too.
+  pop2 <- data.frame(id = 1:60, w = c(rep(10, 55), 200, 300, 150, 400, 500))
+  pop2$y <- 10 + (pop2$id * 13) %% 17
+  pop2$x <- ifelse(pop2$id %in% c(1:3, 56:57), "d", "other")
+  des <- design_certainty("w", 100, design_simple(n = 10))
+  cs <- draw(pop2, des, seed = 2, weights = TRUE)
+  expect_equal(sort(cs$id[cs$x == "d"]), 56:57)
+  expect_true(is.na(ht_mean(cs, "y", by = "x")$se[1]))
+  expect_true(is.finite(ht_mean(cs, "y", by = "x")$se[2]))
+
+  # A whole Poisson sample of certain rows is declined the same way.
+  pop3 <- data.frame(id = 1:30, w = c(rep(1, 28), 500, 600),
+                     y = c(1:28, 40, 70))
+  des3 <- design_weighted("w", n = 3, method = "poisson")
+  seeds <- vapply(1:100, function(i) {
+    all(draw(pop3, des3, seed = i)$id %in% 29:30)
+  }, logical(1))
+  ps <- draw(pop3, des3, seed = which(seeds)[1], weights = TRUE)
+  pm <- ht_mean(ps, "y")
+  expect_true(is.na(pm$se))
+  expect_match(pm$note, "Every sampled row was taken with certainty, and",
+               fixed = TRUE)
+  # A census stays exact.
+  cen <- draw(pop3, design_simple(n = 30), seed = 1, weights = TRUE)
+  expect_identical(ht_mean(cen, "y")$se, 0)
+})
+
 lonely_pop <- function() {
   # Neyman allocation gives stratum `b`, nearly constant in `aux`, one row of
   # 40 and takes all three rows of `c`.
@@ -226,6 +285,39 @@ test_that("a domain clear of a lonely stratum is estimated, one across not", {
   expect_true(all(is.na(u$se)))
   expect_match(attr(u, "notes"), "cannot be told from the frame",
                all = FALSE)
+})
+
+test_that("a frame row with no by value may be in any domain", {
+  # The frame's `grp` is missing for every row of the lonely stratum `b`
+  # but the one sampled. Those rows may belong to `A`, so its variance is
+  # refused as well, where it was estimated with `b` left out.
+  p <- lonely_pop()
+  des <- design_stratified("st", n = 20, allocation = "neyman",
+                           allocation_by = "aux")
+  s0 <- draw(p, des, seed = 1, weights = TRUE)
+  p$grp <- ifelse(p$st == "a", "A", "other")
+  p$grp[p$st == "b" & seq_len(nrow(p)) != s0$.row[s0$st == "b"]] <- NA
+  s <- draw(p, des, seed = 1, weights = TRUE)
+  for (v in c("auto", "analytic", "jackknife")) {
+    r <- ht_total(s, "y", by = "grp", variance = v)
+    expect_true(all(is.na(r$se)), label = v)
+    expect_match(attr(r, "notes"), "which cannot be told from the frame",
+                 all = FALSE, label = v)
+    expect_true(is.na(ht_mean(s, "y", by = "grp", variance = v)$se[1]),
+                label = v)
+  }
+  # Missing values outside the lonely stratum leave the domains it does not
+  # hold as they were: `a` is estimated and `c`, taken whole, is exact.
+  q <- lonely_pop()
+  q$g <- q$st
+  unsampled <- setdiff(which(q$st == "a"), s0$.row)
+  q$g[unsampled[1:3]] <- NA
+  t <- draw(q, des, seed = 1, weights = TRUE)
+  expect_false(anyNA(t$g))
+  r <- ht_total(t, "y", by = "g")
+  expect_equal(r$se[r$g == "a"], ht_total(s0, "y", by = "st")$se[1])
+  expect_equal(r$se[r$g == "c"], 0)
+  expect_true(is.na(r$se[r$g == "b"]))
 })
 
 test_that("a domain of intervals taken whole is exact at 0 df", {
@@ -292,10 +384,12 @@ test_that("a domain proportion of 0 gets a beta interval and a note", {
   s <- draw(pop, design_stratified("site", n = 60), seed = 1, weights = TRUE)
   r <- ht_mean(s, "late", by = "site")
   # Twenty sampled rows in each domain, against the design's 57 degrees of
-  # freedom.
-  n_eff <- 20 * (stats::qt(0.025, 19) / stats::qt(0.025, 57))^2
+  # freedom. Scaling by those degrees of freedom took the effective size to
+  # 21.9 and the upper bound to 0.155, under Clopper-Pearson's 0.168 for 0
+  # of 20. The size is capped at the domain's rows.
+  expect_equal(attr(r, "df"), 57)
   expect_equal(r$ci_lower[1:2], c(0, 0))
-  expect_equal(r$ci_upper[1:2], rep(stats::qbeta(0.975, 1, n_eff), 2))
+  expect_equal(r$ci_upper[1:2], rep(1 - 0.025^(1 / 20), 2))
   expect_true(r$ci_lower[3] > 0 && r$ci_upper[3] < 1)
   expect_match(attr(r, "notes"), "The domains `a`, `b` have a proportion of 0",
                all = FALSE)
@@ -306,7 +400,7 @@ test_that("a y constant over a domain gives its mean a variance of exactly 0", {
   pop <- data.frame(id = 1:200, site = rep(c("a", "b"), 100),
                     w = 1 + (1:200 * 7) %% 13)
   pop$y <- ifelse(pop$site == "a", 0.3, (1:200 * 11) %% 17)
-  s <- draw(pop, design_weighted("w", n = 40, method = "poisson"), seed = 2,
+  s <- draw(pop, design_weighted("w", n = 40, method = "poisson"), seed = 17,
             weights = TRUE)
   r <- ht_mean(s, "y", by = "site")
   expect_identical(r$mean[1], 0.3)

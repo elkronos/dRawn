@@ -334,18 +334,24 @@ needs them in the frame, with the same values as in the sample. A domain
 made of strata taken whole is then exact, with a zero-width interval. A
 lonely stratum whose one sampled row lies outside the domain still stops
 it when other units of the stratum belong to the domain, because their
-variation went unmeasured.
+variation went unmeasured. A frame row whose \code{by} value is missing may
+belong to any domain, so a lonely stratum holding one stops every domain.
 
 A domain's Hajek mean (\code{\link[=ht_mean]{ht_mean()}}) needs sampled rows in at least two
 primary sampling units, rows or clusters. Its linearised residuals sum to
 zero inside the unit that holds the whole domain, so with one unit every
 estimator gives a standard error of about 0, and \code{survey} does the same.
-Such a domain gets no standard error, with a note. Totals and the
-\code{estimator = "ht"} mean are not affected. A domain with a handful of
-sampled rows has a standard error that is itself unreliable, and the
-interval covers less often than \code{level} says. In one simulation of a
-skewed variable, a 95\% interval for the mean of a domain with two or three
-sampled rows covered 65\% of the time, and 85\% with four or five.
+Such a domain gets no standard error, with a note. Rows taken with
+certainty count as one unit, since every estimator holds them fixed and
+\code{as_svydesign()} hands them to \code{survey} together, so a domain whose
+sampled rows were all taken with certainty gets no standard error either,
+unless every row of it that the design could reach is certain, which
+makes its mean exact. Totals and the \code{estimator = "ht"} mean are not
+affected. A domain with a handful of sampled rows has a standard error
+that is itself unreliable, and the interval covers less often than
+\code{level} says. In one simulation of a skewed variable, a 95\% interval for
+the mean of a domain with two or three sampled rows covered 65\% of the
+time, and 85\% with four or five.
 
 A sample grouped with \code{dplyr::group_by()} is estimated as a whole, with a
 warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}.

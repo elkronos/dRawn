@@ -166,8 +166,13 @@
   of a mean sum to zero inside the one unit. `survey` gives the same 0.
   `ht_mean()` now gives such a mean no standard error, with a note, unless
   every unit of the domain was taken with certainty, which makes it exact.
-  `?ht_total` adds that intervals for domains with few sampled rows cover
-  less often than `level` says.
+  Rows taken with certainty count as one unit, as the jackknife and
+  `as_svydesign()` treat them, so a domain whose sampled rows were all
+  certain gets no standard error either while the design could have drawn
+  its other rows. In one systematic PPS example a domain sampled as its two
+  certain rows got a zero-width interval, where the domain mean's standard
+  deviation over 1,500 draws was 3.4. `?ht_total` adds that intervals for
+  domains with few sampled rows cover less often than `level` says.
 * **A systematic sample understated the variance when `interval` did not
   divide the frame.** The sample size is then random, 30 or 31 rows for 244
   rows at an interval of 8, and successive differences cannot see what that
@@ -602,22 +607,29 @@
   domains were refused with a note saying the standard error would be
   understated, which was false for them. A domain with units in the lonely
   stratum is still refused, and when the frame has no `by` columns the note
-  says the frame cannot tell.
+  says the frame cannot tell. A frame row whose `by` value is missing may
+  belong to any domain, so a lonely stratum holding one is refused for
+  every domain, with the same note.
 * `ht_mean()` decides whether `y` is a proportion, and so whether its
   interval is formed on the logit scale, from what `y` is rather than from
   the values the sample drew: a logical `y`, or a column of the frame whose
   values are all 0 or 1. A count that came out 0 or 1 in every sampled row
   got a logit interval, which cannot pass 1 and so never covered a mean of 1
   or more; it now gets the symmetric interval. A 0/1 column added to the
-  sample after the draw, or a numeric vector, gets the symmetric interval
-  unless `proportion = TRUE` says it is a proportion. `by` estimates follow
-  the same rule.
+  sample after the draw, or a numeric vector, has no frame column to read
+  and is still taken for a proportion when every sampled value is 0 or 1,
+  as before, now with a note saying so and that `proportion = FALSE` gives
+  the symmetric interval of a count. `by` estimates follow the same rule.
 * A proportion estimated at exactly 0 or 1, such as no deviations in 60
   sampled invoices, gets Korn and Graubard's beta interval, with the sampled
   rows below certainty as its effective sample size, and a note saying so.
   It got a zero-width interval of 0 to 0. For 0 in 60 from a simple random
-  sample the 95% upper bound is now 4.87%. A census, or a domain of rows
-  taken with certainty, is still exact.
+  sample the 95% upper bound is now 4.87%. A design that leaves 0 degrees
+  of freedom, such as a Poisson sample of one row, gets the Clopper-Pearson
+  interval over the sampled rows. A census, or a domain of rows taken with
+  certainty, is still exact. A domain's effective sample size for the beta
+  interval is capped at its rows below certainty, so its interval is never
+  narrower than Clopper-Pearson's over them.
 * Estimates from `ht_total()` and `ht_mean()` hold `unreachable`, the number
   of frame rows with inclusion probability 0, and print it on a line of its
   own when there are any, whether or not there is a standard error. `by`
