@@ -25,7 +25,11 @@ or \code{"2024-03-01T14:30:00Z"}, and also \code{"2024-03-01 14:30"},
 \item{from, to}{Window bounds, each a single \code{POSIXct}, \code{Date} or string
 read as \code{time} is. The window is half-open: \verb{[from, to)}. Trailing
 partial intervals are dropped. Both are checked when the design is
-built, and \code{to} must come after \code{from}.}
+built, and \code{to} must come after \code{from}. Without \code{tz}, a bound that names
+an instant (a \code{POSIXct}, or a string ending in \code{Z} or an offset) paired
+with a clock time (a \code{Date}, or a string without an offset) can fall in
+either order depending on the zone, so their order is checked when the
+design is used, in the zone of the \code{time} column.}
 
 \item{interval}{Interval width, in units of \code{unit}.}
 

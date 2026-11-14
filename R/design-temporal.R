@@ -40,7 +40,11 @@
 #' @param from,to Window bounds, each a single `POSIXct`, `Date` or string
 #'   read as `time` is. The window is half-open: `[from, to)`. Trailing
 #'   partial intervals are dropped. Both are checked when the design is
-#'   built, and `to` must come after `from`.
+#'   built, and `to` must come after `from`. Without `tz`, a bound that names
+#'   an instant (a `POSIXct`, or a string ending in `Z` or an offset) paired
+#'   with a clock time (a `Date`, or a string without an offset) can fall in
+#'   either order depending on the zone, so their order is checked when the
+#'   design is used, in the zone of the `time` column.
 #' @param interval Interval width, in units of `unit`.
 #' @param per_interval Rows to draw from each interval. Intervals holding fewer
 #'   rows contribute all of them.
@@ -79,12 +83,14 @@ design_temporal <- function(time, from, to, interval, per_interval,
                                "weeks", "months", "years"), "unit")
   na_rm <- check_flag(na_rm, "na_rm")
   # The bounds are read in `tz`, or in UTC until a column supplies the zone.
-  # Whether they parse does not depend on the zone; their order can, for a
-  # pair that mixes an offset with a clock time, so the window is checked
-  # again when it is laid out.
+  # Whether they parse does not depend on the zone. Their order does not
+  # either when both are instants or both are clock times, but it can for a
+  # pair that mixes the two, so without `tz` the order of such a pair is
+  # checked only when the window is laid out in the column's zone.
   zone <- tz %||% "UTC"
-  check_window(time_bound(from, zone, "from")$at,
-               time_bound(to, zone, "to")$at)
+  lo <- time_bound(from, zone, "from")
+  hi <- time_bound(to, zone, "to")
+  if (!is.null(tz) || lo$instant == hi$instant) check_window(lo$at, hi$at)
   # `from` and `to` are stored as given, so the design prints what was
   # written, and are read again in the zone in force when it is used.
   new_design("temporal", list(
@@ -209,7 +215,9 @@ check_zone <- function(tz) {
 #' was written as, held in UTC so that calendar steps from it are free of
 #' daylight-saving changes. A `Date` or a string without an offset keeps the
 #' clock time as written, which can differ from `at` when that time does not
-#' exist in `tz`; anything else reads its clock from `at`.
+#' exist in `tz`; anything else reads its clock from `at`. `instant` is
+#' `TRUE` for a bound that names its instant whatever the zone: a date-time,
+#' or a string ending in `Z` or an offset.
 #'
 #' @noRd
 time_bound <- function(x, tz, arg) {
@@ -233,10 +241,9 @@ time_bound <- function(x, tz, arg) {
          hint, call. = FALSE)
   }
   clock <- read$clock
-  if (is.null(clock) || is.na(clock)) {
-    clock <- lubridate::force_tz(read$at, "UTC")
-  }
-  list(at = read$at, clock = clock)
+  instant <- is.null(clock) || is.na(clock)
+  if (instant) clock <- lubridate::force_tz(read$at, "UTC")
+  list(at = read$at, clock = clock, instant = instant)
 }
 
 #' Parse timestamps to instants in a time zone

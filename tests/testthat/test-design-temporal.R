@@ -122,6 +122,36 @@ test_that("a backwards window is refused on every path, not just the draw", {
   expect_error(joint_prob(d, bad), "`to` must be after `from`")
 })
 
+test_that("an instant paired with a clock time is ordered in the data's zone", {
+  # 10:00 in New York is 15:00 UTC, after 12:00 read in UTC, and before
+  # 12:00 read in New York, the zone the window is laid out in.
+  zone <- "America/New_York"
+  d <- data.frame(ts = seq(as.POSIXct("2024-01-01 08:00", tz = zone),
+                           by = "30 min", length.out = 16))
+  from <- as.POSIXct("2024-01-01 10:00", tz = zone)
+  des <- design_temporal("ts", from = from, to = "2024-01-01 12:00",
+                         interval = 1, per_interval = 1)
+  s <- draw(d, des, seed = 1)
+  expect_identical(nrow(s), 2L)
+  expect_true(all(s$ts >= from & s$ts < from + 7200))
+  expect_equal(sum(inclusion_prob(d, des)), 2)
+
+  # A pair that runs backwards in the data's zone is refused when used.
+  back <- design_temporal("ts", from = "2024-01-01 10:00",
+                          to = as.POSIXct("2024-01-01 12:00", tz = "UTC"),
+                          interval = 1, per_interval = 1)
+  expect_error(draw(d, back, seed = 1), "`to` must be after `from`")
+  expect_error(inclusion_prob(d, back), "`to` must be after `from`")
+
+  # Bounds of one kind, or any pair under `tz`, are ordered when built.
+  expect_error(design_temporal("ts", from = from, to = from - 3600,
+                               interval = 1, per_interval = 1),
+               "`to` must be after `from`")
+  expect_error(design_temporal("ts", from = from, to = "2024-01-01 12:00",
+                               interval = 1, per_interval = 1, tz = "UTC"),
+               "`to` must be after `from`")
+})
+
 test_that("a column mixing dates with date-times keeps both", {
   # The date-only fallback fired only when nothing at all parsed, so a mixed
   # column silently lost every date-only row.

@@ -300,7 +300,8 @@ multistage_takes <- function(design, sizes) {
   # The denominator is the rows in the SELECTED clusters, not the population.
   n_alloc <- allocate(design$n, sizes, design$allocation,
                       design$min_per_cluster, cap = !design$replace,
-                      min_arg = "min_per_cluster")
+                      min_arg = "min_per_cluster",
+                      noun = c("cluster", "clusters"))
 
   if (!design$replace && sum(n_alloc) != design$n) {
     stop("`n` (", design$n, ") cannot be allocated across these ",

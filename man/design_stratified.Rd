@@ -56,9 +56,11 @@ deviations themselves, so the frame needs no such column. Those are a
 named vector, such as \code{c(north = 40, south = 15)}, when \code{strata} is one
 column, its names matched to that column's values as text; or a data
 frame holding the \code{strata} columns and a column \code{sd}, matched on the
-values themselves. Every stratum of the frame needs one, a value for a
-stratum the frame does not have is refused, and each must be finite and
-0 or more. A stratum with a standard deviation of 0 gets no share.}
+values themselves. Every stratum of the frame needs one, and each must
+be finite and 0 or more. A value for a stratum the frame does not have
+is ignored, so the same values serve a part of the frame, such as the
+\code{rest} of \code{\link[=design_certainty]{design_certainty()}} when every row of a stratum is above the
+threshold. A stratum with a standard deviation of 0 gets no share.}
 
 \item{min_per_stratum}{Minimum rows from each stratum, under an allocation
 rule. With the default of

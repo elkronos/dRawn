@@ -45,8 +45,13 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
   lower <- group_floor(min_per_stratum, sizes, cap)
   if (sum(lower) > n) {
     small <- sum(sizes < min_per_stratum)
+    where <- if (k == 1L) {
+      paste0(" rows in the one ", noun[1])
+    } else {
+      paste0(" rows across these ", k, " ", noun[2])
+    }
     stop("`", min_arg, "` = ", min_per_stratum, " needs at least ", sum(lower),
-         " rows across these ", k, " ", if (k == 1L) noun[1] else noun[2],
+         where,
          if (cap && small > 0L) {
            paste0(", with the ", small, " ",
                   if (small == 1L) noun[1] else noun[2], " smaller than ",
@@ -131,10 +136,31 @@ allocation_share <- function(allocation, sizes, spread = NULL, cost = NULL,
       }
       # A constant auxiliary variable has no spread to allocate by; fall back
       # to the shares for equal spreads rather than dividing by zero.
-      if (sum(sizes * sp) <= 0) base else base * sp
+      if (!any(sizes > 0 & sp > 0)) return(base)
+      pow2_scale(base) * pow2_scale(sp)
     },
     sizes
   )
+}
+
+#' `x` times the power of two that brings its largest value near 1
+#'
+#' Neyman shares depend only on the ratios of the spreads and of the costs.
+#' A product of spreads and costs near the limits of a double can overflow
+#' to `Inf` or underflow to 0. Scaled first, each lies between 0 and 2, so
+#' their product does neither while its ratios are within the range of a
+#' double. A power of two changes no digit of a value in that range, so a
+#' split whose products stay in range is the same to the last bit. The
+#' scaling is done in two steps because the power can exceed the largest
+#' double for a subnormal `x`.
+#'
+#' @noRd
+pow2_scale <- function(x) {
+  top <- max(x, 0)
+  if (!(top > 0) || !is.finite(top)) return(x)
+  e <- -floor(log2(top))
+  half <- trunc(e / 2)
+  x * 2^half * 2^(e - half)
 }
 
 #' Continuous allocation between a floor and a cap
@@ -253,26 +279,35 @@ bounded_split <- function(n, share, lower, upper) {
 #' The `lambda` at which `sum(pmin(pmax(lambda * share, lower), upper))` is `n`
 #'
 #' The sum is piecewise linear in `lambda` and never decreasing. A group starts
-#' to grow at `lower / share` and stops at `upper / share`, so the slope rises
-#' by `share` at the first and falls by it at the second. Walking those knots
-#' in order gives the sum at each in time that grows as `k log k`, and the
-#' level lies on the segment where the sum first reaches `n`.
+#' to grow at `lower / share` and stops at `upper / share`. Bisection over
+#' those knots finds the last one at which the sum is at most `n`, in time
+#' that grows as `k log k`, and the level lies on the segment after it, where
+#' the sum is the rows of the groups held at a bound plus `lambda` times the
+#' shares of the others. Both are summed afresh over the groups. A running
+#' sum of slopes, raised by a share at one knot and lowered by it at
+#' another, loses a small share added to a much larger one, and with shares
+#' many orders of magnitude apart its level can lie far past `n`.
 #'
 #' @noRd
 split_level <- function(n, share, lower, upper) {
-  knot <- c(lower / share, upper / share)
-  step <- c(share, -share)
-  keep <- is.finite(knot)
-  o <- order(knot[keep], method = "radix")
-  knot <- knot[keep][o]
-  step <- step[keep][o]
-  slope <- cumsum(step)
-  # The sum at the first knot, where every group is still at its floor, and
-  # at each knot after it.
-  level <- sum(lower) + cumsum(c(0, slope[-length(slope)] * diff(knot)))
-  j <- max(1L, which(level <= n))
-  if (slope[j] <= 0) return(knot[j])
-  knot[j] + (n - level[j]) / slope[j]
+  from <- lower / share
+  to <- upper / share
+  knot <- c(from, to)
+  knot <- sort(unique(knot[is.finite(knot)]), method = "radix")
+  if (!length(knot)) return(0)
+  total <- function(lambda) sum(pmin(pmax(lambda * share, lower), upper))
+  a <- 1L
+  b <- length(knot)
+  while (a < b) {
+    m <- (a + b + 1L) %/% 2L
+    if (total(knot[m]) <= n) a <- m else b <- m - 1L
+  }
+  at <- knot[a]
+  free <- from <= at & to > at
+  slope <- sum(share[free])
+  if (slope <= 0) return(at)
+  held <- sum(lower[from > at]) + sum(upper[to <= at])
+  max(at, (n - held) / slope)
 }
 
 #' Warn when a group with rows in the frame is allocated none of them
@@ -409,12 +444,17 @@ strata_frame <- function(spec, strata, arg, value = "n") {
 #' them, so a number or a date is matched exactly. Returns a data frame of
 #' the `value` columns with one row per stratum of `data`, in key order: the
 #' levels of `key`, which is `group_key(data, strata)`. A stratum of `data`
-#' with no entry, and an entry for a stratum `data` does not have, are
-#' refused by name, so a misspelt stratum cannot quietly get nothing.
+#' with no entry is refused by name, so a misspelt stratum cannot quietly
+#' get nothing. An entry for a stratum `data` does not have is refused too,
+#' unless `ignore_extra`: a count promises rows from its stratum, while a
+#' standard deviation or a cost for a stratum with no rows changes nothing,
+#' and the same values then serve a part of the frame, such as the `rest`
+#' of `design_certainty()`.
 #'
 #' @noRd
 match_strata <- function(spec, data, strata, arg, value = "n",
-                         key = group_key(data, strata)) {
+                         key = group_key(data, strata),
+                         ignore_extra = FALSE) {
   spec <- strata_frame(spec, strata, arg, value)
   both <- group_key2(spec, data, strata)
   given <- as.integer(both$x)
@@ -429,7 +469,7 @@ match_strata <- function(spec, data, strata, arg, value = "n",
          quote_labels(lost), ". Give one for every stratum.", call. = FALSE)
   }
   extra <- which(!(given %in% have))
-  if (length(extra)) {
+  if (length(extra) && !ignore_extra) {
     stop("`", arg, "` names ", length(extra), " ",
          if (length(extra) == 1L) "stratum" else "strata",
          " that `data` does not have: ",

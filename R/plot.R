@@ -376,7 +376,7 @@ design_label <- function(x) {
                       "block_length", "balanced", "scale",
                       "crs", "within", "rest", "output", "batches",
                       "na_rm"), names(p))
-  bits <- vapply(keep, function(k) paste0(k, " = ", label_param(p[[k]])),
+  bits <- vapply(keep, function(k) paste0(k, " = ", label_param(p[[k]], k)),
                  character(1))
   paste0("design_", design_type(x), "(", paste(bits, collapse = ", "), ")")
 }
@@ -386,10 +386,10 @@ design_label <- function(x) {
 #' As printed, with a vector of several values wrapped in `c()`.
 #'
 #' @noRd
-label_param <- function(v) {
-  shown <- fmt_param(v)
+label_param <- function(v, name = NULL) {
+  shown <- fmt_param(v, name)
   several <- is.atomic(v) && length(v) > 1L && length(v) <= 6L &&
-    is.null(names(v)) && !inherits(v, c("POSIXt", "Date"))
+    !is_per_stratum(v, name) && !inherits(v, c("POSIXt", "Date"))
   if (several) paste0("c(", shown, ")") else shown
 }
 

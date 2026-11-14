@@ -171,6 +171,17 @@ test_that("the design prints its parts", {
   expect_true(any(grepl("20000|20,000", out)))
 })
 
+test_that("a named threshold prints by its value alone", {
+  des <- design_certainty("value", stats::quantile(1:100, 0.9),
+                          design_simple(n = 5))
+  expect_output(print(des), "threshold  90.1\n", fixed = TRUE)
+  expect_match(design_label(des), "threshold = 90.1,", fixed = TRUE)
+  # Counts per stratum keep their names.
+  st <- design_stratified("site", allocation = c(north = 4, south = 6))
+  expect_match(design_label(st), "allocation = c(north = 4, south = 6)",
+               fixed = TRUE)
+})
+
 # ---- composition, which is where the bugs live -----------------------------
 
 test_that("the variance defers to `rest` instead of assuming a fixed size", {

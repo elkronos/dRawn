@@ -260,10 +260,10 @@
 * **`design_temporal()` with `unit = "months"` or `"years"` anchored on the
   29th to the 31st ran into the next month.** A window from 31 January had
   intervals starting on 2 March, 31 March, 1 May and 31 May, and one from 29
-  February by years started each later interval on 1 March. Months and
-  years are now added to `from` itself, and a day the month lacks moves to
-  its last day: 29 February, 31 March, 30 April, and 28 February in the
-  years between leap years.
+  February by years started its intervals on 1 March in the years between
+  leap years. Months and years are now added to `from` itself, and a day
+  the month lacks moves to its last day: 29 February, 31 March, 30 April,
+  and 28 February in the years between leap years.
 * **A `region` given as a list of parts that together cover more than half
   the globe selected the rest of the globe.** `design_spatial()` unioned the
   parts, and under spherical geometry the union of the two halves of a band
@@ -431,21 +431,25 @@
 * Neyman allocation refuses an infinite `allocation_by` value, as it refused
   a missing one. The spread of a stratum holding `Inf` came out as `NaN` and
   was read as none, so the stratum with the most extreme values was
-  allocated no rows. Finite values large enough to overflow `sd()` are
-  rescaled first and split as the same values on a smaller scale.
+  allocated no rows. Finite values large enough to overflow `sd()` split as
+  the same values on a smaller scale do, and a stratum of small values
+  beside them keeps its own spread.
 * The warning for a stratum allocated no rows says when Neyman allocation
   gave it no share because `allocation_by` is constant within it. It then
   suggests `min_per_stratum = 1`, since a larger `n` reaches such a stratum
   only once every other stratum is taken whole. `design_stratified()` with
   `n = 0` no longer warns for every stratum.
-* `design_temporal()` checks its zone and bounds when it is built. `tz`
-  must be a name from `OlsonNames()`, and `from` and `to` must each be one
-  date-time, date or string that parses, with `to` after `from`. The message
-  names the argument and gives its value. An unknown zone gave a raw CCTZ
-  error from every function that used the design, and an unparseable `from`
-  reached `inclusion_prob()` as "'to' must be a finite number". The message
-  for an unparseable timestamp in a string column lists the forms that are
-  read, and a `POSIXct` column in a zone R does not know is named.
+* `design_temporal()` checks its zone and bounds when it is built. `tz` must
+  be a name from `OlsonNames()`, and `from` and `to` must each be one
+  date-time, date or string that parses, with `to` after `from`. Without
+  `tz`, a date-time paired with a date or a string without an offset has its
+  order checked when the design is used, in the zone of the `time` column,
+  since the order can depend on that zone. The message names the argument
+  and gives its value. An unknown zone gave a raw CCTZ error from every
+  function that used the design, and an unparseable `from` reached
+  `inclusion_prob()` as "'to' must be a finite number". The message for an
+  unparseable timestamp in a string column lists the forms that are read,
+  and a `POSIXct` column in a zone R does not know is named.
 * `draw()`, `inclusion_prob()`, `joint_prob()` and `plot()` warn, with class
   `drawn_geodesic_edges`, when an edge of a longitude/latitude `region` in
   `design_spatial()` passes more than 0.1 degrees (about 11 km) from the
@@ -841,10 +845,12 @@
   forms and splits `n` in proportion to `size * sd / sqrt(cost)`, the split
   of least variance for its total cost (Cochran 1977, section 5.5). Before,
   the only way to get either was a made-up frame column with the wanted
-  spread. A stratum missing from either, or one the frame does not have, is
-  refused by name; a negative or infinite standard deviation, a cost of 0 or
-  less, and `cost` without Neyman allocation are refused when the design is
-  built.
+  spread. A stratum of the frame missing from either is refused by name,
+  and a value for a stratum the frame does not have is ignored, so the same
+  values serve the `rest` of `design_certainty()` when every row of a
+  stratum is above the threshold. A negative or infinite standard
+  deviation, a cost of 0 or less, and `cost` without Neyman allocation are
+  refused when the design is built.
 * `allocation_table()` shows, before drawing, how `design_stratified()`, on
   its own or as the `rest` of `design_certainty()`, splits `n` over the
   strata of a frame: each stratum's size, the rows drawn from it, their

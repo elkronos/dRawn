@@ -251,6 +251,11 @@ test_that("a floor larger than a stratum asks only for that stratum's rows", {
     inclusion_prob(d, design_stratified("g", n = 7, min_per_stratum = 2,
                                         replace = TRUE)),
     "needs at least 8 rows", fixed = TRUE)
+  # One stratum is named as one.
+  expect_error(
+    draw(d[d$g == "d", ], design_stratified("g", n = 3, min_per_stratum = 5),
+         seed = 1),
+    "needs at least 5 rows in the one stratum, but `n` is 3.", fixed = TRUE)
 })
 
 test_that("Neyman refuses an infinite allocation_by", {
@@ -433,6 +438,9 @@ test_that("counts are checked when the design is built", {
                "stratum `a` has 2.5", fixed = TRUE)
   expect_error(design_stratified("site", allocation = c(a = -1, b = 4)),
                "whole numbers of 0 or more")
+  expect_error(design_stratified("site", allocation = c(a = 1e10, b = 4)),
+               paste0("must be at most 2147483647, the largest integer R ",
+                      "holds; stratum `a` has 1e+10"), fixed = TRUE)
   expect_error(design_stratified("site", allocation = c(4, 6)),
                "must be named by stratum")
   expect_error(design_stratified("site", allocation = c(a = 1, a = 4)),
@@ -582,12 +590,15 @@ test_that("standard deviations and costs that miss a stratum are refused", {
   expect_error(draw(d, short, seed = 1), msg, fixed = TRUE)
   expect_error(inclusion_prob(d, short), msg, fixed = TRUE)
   expect_error(allocation_table(d, short), msg, fixed = TRUE)
-  expect_error(
-    inclusion_prob(d, design_stratified(
-      "g", n = 12, allocation = "neyman",
-      allocation_by = c(a = 1, b = 2, c = 3, cc = 4))),
-    "`allocation_by` names 1 stratum that `data` does not have: `cc`.",
-    fixed = TRUE)
+  # A value for a stratum the frame does not have changes nothing.
+  three <- design_stratified("g", n = 12, allocation = "neyman",
+                             allocation_by = c(a = 1, b = 2, c = 3),
+                             cost = c(a = 1, b = 4, c = 1))
+  four <- design_stratified("g", n = 12, allocation = "neyman",
+                            allocation_by = c(a = 1, b = 2, c = 3, cc = 4),
+                            cost = c(cc = 9, a = 1, b = 4, c = 1))
+  expect_identical(inclusion_prob(d, four), inclusion_prob(d, three))
+  expect_identical(allocation_table(d, four), allocation_table(d, three))
   expect_error(
     draw(d, design_stratified("g", n = 12, allocation = "neyman",
                               allocation_by = "v", cost = c(a = 1, c = 2)),
@@ -602,6 +613,71 @@ test_that("standard deviations and costs that miss a stratum are refused", {
   expect_match(conditionMessage(w), paste0(
     "`allocation_by` gives it a standard deviation of 0, so Neyman ",
     "allocation gives it no share"), fixed = TRUE)
+})
+
+test_that("standard deviations serve the rest of a certainty design", {
+  # Every row of `a` is above the threshold, so `rest` sees no `a`.
+  d <- data.frame(id = 1:200,
+                  g = rep(c("a", "b", "c", "d"), times = c(6, 64, 70, 60)),
+                  value = c(rep(1000, 6), seq(1, 100, length.out = 194)))
+  des <- design_certainty("value", 500, design_stratified(
+    "g", n = 20, allocation = "neyman",
+    allocation_by = c(a = 5, b = 1, c = 2, d = 3)))
+  p <- inclusion_prob(d, des)
+  expect_equal(p[1:6], rep(1, 6))
+  expect_equal(sum(p), 26)
+  s <- draw(d, des, seed = 1)
+  expect_identical(nrow(s), 26L)
+})
+
+test_that("Neyman shares far apart in size split as their ratios say", {
+  d <- data.frame(id = 1:90, g = rep(c("a", "b", "c"), each = 30))
+  ney <- function(n, ...) {
+    design_stratified("g", n = n, allocation = "neyman", ...)
+  }
+  # Spreads near the largest double, and spreads over costs whose product
+  # overflows, split as the same ratios on a plain scale do.
+  plain <- allocation_table(d, ney(12, allocation_by = c(a = 1, b = 1,
+                                                         c = 1e-307)))
+  near <- allocation_table(d, ney(12, allocation_by = c(a = 1e307,
+                                                        b = 1e307, c = 1)))
+  expect_identical(near$n, plain$n)
+  expect_identical(near$n, c(6L, 6L, 0L))
+  priced <- ney(12, allocation_by = c(a = 1e200, b = 1, c = 1),
+                cost = c(a = 1e-300, b = 1, c = 1))
+  expect_identical(allocation_table(d, priced)$n, c(12L, 0L, 0L))
+  # Spreads over costs whose product underflows split by their ratios too.
+  tiny <- ney(12, allocation_by = c(a = 1e-200, b = 2e-200, c = 1e-200),
+              cost = c(a = 1e300, b = 1e300, c = 1e300))
+  expect_identical(allocation_table(d, tiny)$n, c(3L, 6L, 3L))
+
+  # Shares 1e20 apart: the largest takes what it can, then the next.
+  spread <- c(a = 1e20, b = 1, c = 1e-20)
+  drawn_from <- function(n) {
+    s <- suppressWarnings(draw(d, ney(n, allocation_by = spread), seed = 1))
+    as.vector(table(factor(s$g, levels = c("a", "b", "c"))))
+  }
+  expect_equal(drawn_from(12), c(12, 0, 0))
+  expect_equal(drawn_from(50), c(30, 20, 0))
+  expect_equal(drawn_from(75), c(30, 30, 15))
+  expect_identical(
+    allocation_table(d, ney(12, allocation_by = c(a = 1, b = 1, c = 1),
+                            cost = c(a = 1e-40, b = 1, c = 1e40)))$n,
+    c(12L, 0L, 0L))
+})
+
+test_that("a column scale that overflows keeps the small strata's spread", {
+  # sd() overflows in `a` and `b`, not in `c`, whose values vary.
+  d <- data.frame(id = 1:90, g = rep(c("a", "b", "c"), each = 30),
+                  v = c(rep(c(0, 1e307), 30), rep(c(0, 1), 15)))
+  des <- design_stratified("g", n = 12, allocation = "neyman",
+                           allocation_by = "v")
+  tab <- allocation_table(d, des)
+  expect_equal(tab$sd, stats::sd(rep(c(0, 1), 15)) * c(1e307, 1e307, 1))
+  w <- tryCatch(draw(d, des, seed = 1), drawn_empty_stratum = function(w) w)
+  expect_match(conditionMessage(w), "1 stratum (`c`) is allocated no rows",
+               fixed = TRUE)
+  expect_no_match(conditionMessage(w), "constant", fixed = TRUE)
 })
 
 # ---- allocation_table() ----------------------------------------------------

@@ -172,7 +172,8 @@ design_type <- function(x) {
 print.drawn_design <- function(x, ...) {
   cat("<sampling design: ", design_type(x), ">\n", sep = "")
   params <- unclass(x)
-  shown <- lapply(params, function(v) if (!is.null(v)) fmt_param(v))
+  shown <- Map(function(v, nm) if (!is.null(v)) fmt_param(v, nm),
+               params, names(params))
   # A NULL that stands for a default worked out later is shown by what it
   # means. A temporal design without `tz` takes its zone from the data.
   if (inherits(x, "drawn_design_temporal") && is.null(params$tz)) {
@@ -198,17 +199,26 @@ print.drawn_design <- function(x, ...) {
   invisible(x)
 }
 
+#' Is a design parameter a value per stratum?
+#'
+#' Counts, standard deviations or costs given per stratum, as `allocation`,
+#' `allocation_by` or `cost`. Other named numbers, such as a `threshold`
+#' taken from quantile(), are shown by value alone.
+#'
 #' @noRd
-fmt_param <- function(v) {
+is_per_stratum <- function(v, name) {
+  isTRUE(name %in% c("allocation", "allocation_by", "cost")) &&
+    (is.data.frame(v) || (is.numeric(v) && !is.null(names(v))))
+}
+
+#' @noRd
+fmt_param <- function(v, name = NULL) {
   if (inherits(v, c("sf", "sfc"))) {
     return(paste0("<", class(v)[1], ">"))
   }
   if (is.function(v)) return("<function>")
   if (is_design(v)) return(design_label(v))
-  # Counts given per stratum as `allocation`.
-  if (is.data.frame(v) || (is.numeric(v) && !is.null(names(v)))) {
-    return(fmt_counts(v))
-  }
+  if (is_per_stratum(v, name)) return(fmt_counts(v))
   if (inherits(v, "POSIXt") || inherits(v, "Date")) return(format(v))
   if (is.character(v)) {
     return(paste0("\"", v, "\"", collapse = ", "))

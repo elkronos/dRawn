@@ -40,9 +40,11 @@
 #'   named vector, such as `c(north = 40, south = 15)`, when `strata` is one
 #'   column, its names matched to that column's values as text; or a data
 #'   frame holding the `strata` columns and a column `sd`, matched on the
-#'   values themselves. Every stratum of the frame needs one, a value for a
-#'   stratum the frame does not have is refused, and each must be finite and
-#'   0 or more. A stratum with a standard deviation of 0 gets no share.
+#'   values themselves. Every stratum of the frame needs one, and each must
+#'   be finite and 0 or more. A value for a stratum the frame does not have
+#'   is ignored, so the same values serve a part of the frame, such as the
+#'   `rest` of [design_certainty()] when every row of a stratum is above the
+#'   threshold. A stratum with a standard deviation of 0 gets no share.
 #' @param min_per_stratum Minimum rows from each stratum, under an allocation
 #'   rule. With the default of
 #'   `0`, a stratum smaller than about `N / n` can be allocated no rows at all;
@@ -349,13 +351,20 @@ check_stratum_counts <- function(allocation, strata) {
     stop("The counts in `allocation` must be numbers, not ",
          class(n)[1], ".", call. = FALSE)
   }
-  bad <- is.na(n) | !is.finite(n) | n < 0 | n != trunc(n) |
-    n > .Machine$integer.max
+  bad <- is.na(n) | !is.finite(n) | n < 0 | n != trunc(n)
   if (any(bad)) {
     h <- which(bad)[1]
     stop("The counts in `allocation` must be whole numbers of 0 or more; ",
          "stratum ", spec_label(spec, strata, h), " has ", format(n[h]), ".",
          call. = FALSE)
+  }
+  big <- n > .Machine$integer.max
+  if (any(big)) {
+    h <- which(big)[1]
+    stop("The counts in `allocation` must be at most ", .Machine$integer.max,
+         ", the largest integer R holds; stratum ",
+         spec_label(spec, strata, h), " has ", format(n[h]), ". Give ",
+         "that stratum a smaller count.", call. = FALSE)
   }
   if (is.data.frame(allocation)) {
     spec$n <- as.integer(n)
@@ -438,7 +447,7 @@ stratum_spread <- function(design, data, idx_by_stratum,
   col <- design$allocation_by
   if (!is.character(col)) {
     return(match_strata(col, data, design$strata, "allocation_by",
-                        value = "sd", key = key)$sd)
+                        value = "sd", key = key, ignore_extra = TRUE)$sd)
   }
   validate_data(data, required_columns = col)
   v <- data[[col]]
@@ -464,9 +473,19 @@ stratum_spread <- function(design, data, idx_by_stratum,
     }, numeric(1), USE.NAMES = FALSE)
   }
   sp <- spread(1)
-  # Values near the largest double overflow inside sd(). The shares depend
-  # only on the ratios of the spreads, so the same spreads on a smaller scale
-  # give the same allocation.
+  # Values near the largest double overflow inside sd(), which squares
+  # them. In the stratum's own largest value as the unit they do not, and
+  # the other strata keep the spreads sd() gives them.
+  big <- !is.finite(sp)
+  if (any(big)) {
+    sp[big] <- vapply(idx_by_stratum[big], function(i) {
+      unit <- max(abs(v[i]))
+      unit * stats::sd(v[i] / unit)
+    }, numeric(1), USE.NAMES = FALSE)
+  }
+  # A spread beyond the largest double needs a smaller scale for all of
+  # them. The shares depend only on the ratios of the spreads, so the same
+  # spreads on a smaller scale give the same allocation.
   if (!all(is.finite(sp))) {
     scale <- max(abs(v[used]))
     sp <- structure(spread(scale), scale = scale)
@@ -479,7 +498,7 @@ stratum_spread <- function(design, data, idx_by_stratum,
 stratum_cost <- function(design, data, key = group_key(data, design$strata)) {
   if (is.null(design$cost)) return(NULL)
   match_strata(design$cost, data, design$strata, "cost", value = "cost",
-               key = key)$cost
+               key = key, ignore_extra = TRUE)$cost
 }
 
 #' Strata, their sizes and their allocation
@@ -556,8 +575,12 @@ stratum_allocation <- function(design, data) {
              "Use replace = TRUE or lower `n`.", call. = FALSE)
       }
       if (sum(n_alloc) != design$n) {
-        stop("`n` (", design$n, ") cannot be allocated across these ",
-             length(sizes), " strata with min_per_stratum = ",
+        stop("`n` (", design$n, ") cannot be allocated ",
+             if (length(sizes) == 1L) {
+               "in the one stratum"
+             } else {
+               paste0("across these ", length(sizes), " strata")
+             }, " with min_per_stratum = ",
              design$min_per_stratum, "; the allocation totals ",
              sum(n_alloc), " row(s).", call. = FALSE)
       }
