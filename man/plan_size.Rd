@@ -63,9 +63,12 @@ proportional to \code{N_h * S_h}, or \code{N_h * S_h / sqrt(cost_h)} with a
 \code{cost} column.}
 
 \item{min_per_stratum}{The fewest rows a stratum is allocated, as in
-\code{\link[=design_stratified]{design_stratified()}}. A stratum smaller than this is taken whole. The
-default of 2 is the fewest that give each stratum a variance, which
-\code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} need from every stratum not taken whole.}
+\code{\link[=design_stratified]{design_stratified()}}, 1 or more. A stratum smaller than this is taken
+whole. The default of 2 is the fewest that give each stratum a
+variance, which \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} need from every stratum
+not taken whole. 0, the default of \code{\link[=design_stratified]{design_stratified()}}, is refused,
+since a split without a floor can leave a small stratum without rows,
+and the estimate then leaves it out.}
 }
 \value{
 A plan, a list of class \code{drawn_plan} with a \code{print()} method,
@@ -166,8 +169,13 @@ A design effect from one pilot is an estimate, and a noisy one, which
 comes out below the truth more often than above it. Round it up. \code{\link[=deff]{deff()}}
 gives \code{NA} for a pilot without a variance estimate, such as one taken with
 \code{variance = "none"}, a census, or one with a single cluster, and for one in
-which \code{y} took a single value. Such a pilot cannot supply a design effect,
-and \code{plan_size()} refuses an \code{NA}.
+which \code{y} took a single value. It is \code{NA} too for a mean from
+\code{ht_mean(na_rm = TRUE)} with \code{y} missing in some sampled rows, since the
+rows with \code{y} are a domain, whose design effect is not estimated. Such a
+pilot cannot supply a design effect, and \code{plan_size()} refuses an \code{NA}.
+It refuses an estimate from \code{survey} too, such as
+\code{survey::svymean(deff = TRUE)}, whose value is the estimate itself; pass
+\code{survey::deff()} of it instead.
 }
 
 \section{Planning a stratified sample}{
@@ -181,18 +189,21 @@ stratified mean,
 \code{deff * sum(W_h^2 * (1 / n_h - 1 / N_h) * S_h^2)} with \code{W_h = N_h / N}
 (Cochran 1977, chapter 5). For a proportion \code{S_h^2} is
 \code{N_h * p_h * (1 - p_h) / (N_h - 1)}. The plan is the smallest \code{n} whose
-variance is at most \code{(margin / z)^2}, with \code{margin / N} for a total. A
-split that leaves a stratum with no rows does not count, since the
-estimate then leaves that stratum out. The rounded split can take a row
-from one stratum as \code{n} grows, so the variance does not always fall with
-\code{n}, and the search checks each \code{n} from the first that could meet the
-margin.
+variance is at most \code{(margin / z)^2}, with \code{margin / N} for a total.
+\code{min_per_stratum} must be 1 or more, since an estimate leaves a stratum
+without rows out. Without a floor, proportional allocation gives a
+stratum of one row in a frame of 200,000 its first row at \code{n} of about
+100,000, and the plan would be that large. The rounded split can take a
+row from one stratum as \code{n} grows, so the variance does not always fall
+with \code{n}, and the search checks each \code{n} from the first that could meet
+the margin.
 
 \code{response} divides \code{n} as without strata, and the rows to draw are split
 by the same rule. The split is returned as \code{allocation}, which
 \code{\link[=design_stratified]{design_stratified()}} takes as the count for each stratum. Passing the
 plan as \code{n} instead lets the design split \code{n} again by its own rule and
-\code{min_per_stratum}, whose default there is 0.
+\code{min_per_stratum}, whose default there is 0, which can leave a small
+stratum without rows.
 }
 
 \section{Several plans at once}{

@@ -1141,13 +1141,17 @@ test_that("several means with y missing are each over their own rows", {
 test_that("a y that is not a column name or a numeric vector says so", {
   s <- draw(est_pop(), design_simple(n = 20), seed = 1, weights = TRUE)
   forms <- paste0("`y` must be one column name, several column names, or a ",
-                  "numeric vector as long as `sample`.")
+                  "numeric vector or factor as long as `sample`.")
   expect_error(ht_total(s, letters[1:20]), forms, fixed = TRUE)
   expect_error(ht_total(s, letters[1:20]), "none of them a column")
   expect_error(ht_mean(s, c("y", NA)), "some of them missing or empty")
   expect_error(ht_total(s, 1:3),
                "an integer vector of length 3, and `sample` has 20 rows")
   expect_error(ht_total(s, list(1)), forms, fixed = TRUE)
+  # A factor is one of the forms, so one of the wrong length says so.
+  expect_error(ht_mean(s, factor(c("a", "b"))), forms, fixed = TRUE)
+  expect_error(ht_mean(s, factor(c("a", "b"))),
+               "a factor vector of length 2, and `sample` has 20 rows")
   expect_error(ht_mean(s, c("y", "site")),
                "`y` names `site`, a character column, among several")
   expect_error(ht_total(s, c("y", "y")), "`y` names `y` more than once")
@@ -1262,6 +1266,14 @@ test_that("ht_quantile() follows the quantile rule and the indicator's mean", {
   p <- c(0, 0.1, 1 / 3, 0.5, 0.9, 1)
   q <- ht_quantile(sr, "y", p, variance = "none")
   expect_equal(q$quantile, unname(stats::quantile(sr$y, p, type = 1)))
+  # A p a rounding error above a share of the weight gives the value at
+  # that share, where quantile(type = 1) gives the next.
+  p70 <- seq(0, 1, 0.01)[71]
+  expect_gt(p70, 0.7)
+  sorted <- sort(sr$y)
+  expect_equal(ht_quantile(sr, "y", p70, variance = "none")$quantile,
+               sorted[21])
+  expect_equal(unname(stats::quantile(sr$y, p70, type = 1)), sorted[22])
   # F(q) and its standard error are the Hajek mean of y <= q, for a design
   # survey has no estimator for.
   sy <- draw(pop, design_systematic(interval = 7), seed = 1, weights = TRUE)
@@ -1303,6 +1315,12 @@ test_that("a quantile has coef(), vcov(), confint(), a frame and tidy()", {
   expect_equal(unname(confint(b[3:4, ], level = 0.8)),
                cbind(at$ci_lower, at$ci_upper)[3:4, ])
   expect_equal(unname(diag(vcov(b))), b$variance)
+  # The covariances between quantiles are not estimated.
+  off <- vcov(b)[row(vcov(b)) != col(vcov(b))]
+  expect_true(all(is.na(off)))
+  several <- vcov(ht_quantile(s, "y", c(0.25, 0.5, 0.75)))
+  expect_equal(is.na(several), row(several) != col(several),
+               ignore_attr = TRUE)
   expect_output(print(b), "Quantiles of `y` by domain")
   expect_output(print(ht_quantile(s, "y", c(0.25, 0.75))),
                 "Quantiles of `y`  (stratified", fixed = TRUE)
@@ -1349,7 +1367,13 @@ test_that("ht_quantile() refuses what it cannot read", {
   s$gap <- s$y
   s$gap[3] <- NA
   expect_error(ht_quantile(s, "gap"), "`y` is missing in 1 of the 40")
-  expect_error(ht_quantile(s, "site"), "a character column")
+  expect_error(ht_quantile(s, "site"),
+               "a character column of `sample`. Name a numeric column.",
+               fixed = TRUE)
+  s$big <- s$y > stats::median(s$y)
+  expect_error(ht_quantile(s, "big"),
+               "`y` names `big`, a logical column, and the quantiles")
+  expect_error(ht_quantile(s, s$big), "`y` is logical.*Use ht_mean\\(\\)")
   expect_error(ht_quantile(s, c("y", "w")), "one column name or a numeric")
   expect_error(ht_quantile(s, "y", probs = 1.5),
                "`probs` must be one or more numbers from 0 to 1")

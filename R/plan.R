@@ -45,8 +45,13 @@
 #' comes out below the truth more often than above it. Round it up. [deff()]
 #' gives `NA` for a pilot without a variance estimate, such as one taken with
 #' `variance = "none"`, a census, or one with a single cluster, and for one in
-#' which `y` took a single value. Such a pilot cannot supply a design effect,
-#' and `plan_size()` refuses an `NA`.
+#' which `y` took a single value. It is `NA` too for a mean from
+#' `ht_mean(na_rm = TRUE)` with `y` missing in some sampled rows, since the
+#' rows with `y` are a domain, whose design effect is not estimated. Such a
+#' pilot cannot supply a design effect, and `plan_size()` refuses an `NA`.
+#' It refuses an estimate from `survey` too, such as
+#' `survey::svymean(deff = TRUE)`, whose value is the estimate itself; pass
+#' `survey::deff()` of it instead.
 #'
 #' @param margin Half-width of the confidence interval you want, the
 #'   half-width the plan expects (see "Where the formula comes from"). For a
@@ -82,9 +87,12 @@
 #'   proportional to `N_h * S_h`, or `N_h * S_h / sqrt(cost_h)` with a
 #'   `cost` column.
 #' @param min_per_stratum The fewest rows a stratum is allocated, as in
-#'   [design_stratified()]. A stratum smaller than this is taken whole. The
-#'   default of 2 is the fewest that give each stratum a variance, which
-#'   [ht_total()] and [ht_mean()] need from every stratum not taken whole.
+#'   [design_stratified()], 1 or more. A stratum smaller than this is taken
+#'   whole. The default of 2 is the fewest that give each stratum a
+#'   variance, which [ht_total()] and [ht_mean()] need from every stratum
+#'   not taken whole. 0, the default of [design_stratified()], is refused,
+#'   since a split without a floor can leave a small stratum without rows,
+#'   and the estimate then leaves it out.
 #'
 #' @return A plan, a list of class `drawn_plan` with a `print()` method,
 #'   or for several plans a data frame (see "Several plans at once"). A plan
@@ -186,18 +194,21 @@
 #' `deff * sum(W_h^2 * (1 / n_h - 1 / N_h) * S_h^2)` with `W_h = N_h / N`
 #' (Cochran 1977, chapter 5). For a proportion `S_h^2` is
 #' `N_h * p_h * (1 - p_h) / (N_h - 1)`. The plan is the smallest `n` whose
-#' variance is at most `(margin / z)^2`, with `margin / N` for a total. A
-#' split that leaves a stratum with no rows does not count, since the
-#' estimate then leaves that stratum out. The rounded split can take a row
-#' from one stratum as `n` grows, so the variance does not always fall with
-#' `n`, and the search checks each `n` from the first that could meet the
-#' margin.
+#' variance is at most `(margin / z)^2`, with `margin / N` for a total.
+#' `min_per_stratum` must be 1 or more, since an estimate leaves a stratum
+#' without rows out. Without a floor, proportional allocation gives a
+#' stratum of one row in a frame of 200,000 its first row at `n` of about
+#' 100,000, and the plan would be that large. The rounded split can take a
+#' row from one stratum as `n` grows, so the variance does not always fall
+#' with `n`, and the search checks each `n` from the first that could meet
+#' the margin.
 #'
 #' `response` divides `n` as without strata, and the rows to draw are split
 #' by the same rule. The split is returned as `allocation`, which
 #' [design_stratified()] takes as the count for each stratum. Passing the
 #' plan as `n` instead lets the design split `n` again by its own rule and
-#' `min_per_stratum`, whose default there is 0.
+#' `min_per_stratum`, whose default there is 0, which can leave a small
+#' stratum without rows.
 #'
 #' @section Several plans at once:
 #' `margin`, `sd`, `p`, `deff` and `response` each take one value, or
@@ -276,7 +287,7 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
         !missing(min_per_stratum))]
     if (length(given)) {
       warn_drawn(paste0(
-        paste0("`", given, "`", collapse = " and "), " ",
+        and_list(given), " ",
         if (length(given) == 1L) "is" else "are", " not used without ",
         "`strata`, which describes the strata to split `n` over. Give a ",
         "row per stratum in `strata`, or leave ",
@@ -299,7 +310,7 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
     given <- c("sd", "p", "N")[c(!is.null(sd), !missing(p), !missing(N))]
     if (length(given)) {
       warn_drawn(paste0(
-        paste0("`", given, "`", collapse = " and "), " ",
+        and_list(given), " ",
         if (length(given) == 1L) "is" else "are", " not used with ",
         "`strata`, whose columns give each stratum's `N` and its `",
         if (target == "proportion") "p" else "sd", "`. Leave ",
@@ -310,6 +321,13 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
                                c("proportional", "equal", "neyman"),
                                "allocation")
     min_per_stratum <- check_count(min_per_stratum, "min_per_stratum")
+    if (min_per_stratum < 1L) {
+      stop("`min_per_stratum` is 0, which lets the split give a small ",
+           "stratum no rows until `n` is large, and an estimate leaves a ",
+           "stratum without rows out, so no margin holds for the frame. ",
+           "Use 1 or more, or the default of 2, which also gives each ",
+           "stratum a variance.", call. = FALSE)
+    }
     st <- plan_strata(strata, target, allocation, min_per_stratum)
     N <- st$N
   }
@@ -393,6 +411,15 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
   do.call(rbind, lapply(seq_len(k), function(i) as.data.frame(one(i))))
 }
 
+#' Argument names in backticks, joined as "`a`, `b` and `c`"
+#' @noRd
+and_list <- function(names) {
+  named <- paste0("`", names, "`")
+  if (length(named) < 2L) return(named)
+  paste(paste(utils::head(named, -1L), collapse = ", "),
+        utils::tail(named, 1L), sep = " and ")
+}
+
 #' How many plans the vector arguments of `plan_size()` ask for
 #'
 #' Each of `args` holds one value, or one per plan; one value is used for
@@ -450,8 +477,7 @@ plan_one <- function(margin, spread, p, N, level, deff, response, target,
            if (!is.finite(N)) ", or give a finite `N`", ".", call. = FALSE)
     }
 
-    # The tolerance keeps a rounding error from adding a row: 21 / 0.7 is
-    # 30.000000000000004 in floating point.
+    # The tolerance keeps a rounding error from adding a row.
     n_margin <- max(1, ceiling(n_eff - 1e-9))
     if (is.finite(N)) n_margin <- min(n_margin, floor(N))
     capped <- is.finite(N) && n_margin >= floor(N)
@@ -467,6 +493,8 @@ plan_one <- function(margin, spread, p, N, level, deff, response, target,
     n_eff <- n_margin
   }
   n_needed <- n_eff
+  # 21 / 0.7 is 30.000000000000004 in floating point, and the tolerance
+  # keeps it at 30 rows.
   n_draw <- ceiling(n_eff / response - 1e-9)
 
   # Two different situations, and only one of them is a census. `capped`
@@ -637,12 +665,16 @@ strata_variance <- function(st, n_h) {
 #' The variance of the rounded split need not fall as `n` grows, since
 #' largest-remainder rounding can give a stratum one row fewer at `n + 1`
 #' than at `n`. So the search scans upward from the first `n` that a lower
-#' bound on the variance allows. Rounding gives each stratum at most one row
-#' more than its share before rounding, and those shares never fall as `n`
-#' grows, so the variance at the shares plus one row is a lower bound that
-#' falls with `n`, and bisection finds the first `n` it allows. Every
-#' smaller `n` has a variance above `bound`, and the scan ends at the census
-#' at the latest, whose variance is 0.
+#' bound on the variance allows. Rounding gives each stratum its share
+#' before rounding, rounded down or up. A share that is a whole number gets
+#' no row more: the rows left over after rounding down add up to the
+#' fractional parts, fewer than the strata that have one, and those strata
+#' take the rows first. The shares never fall as `n` grows, so the variance
+#' at the shares rounded up is a lower bound that falls with `n`, and
+#' bisection finds the first `n` it allows. Every smaller `n` has a variance
+#' above `bound`, and the scan ends at the census at the latest, whose
+#' variance is 0. With a floor of one row or more every split in the scan
+#' gives each stratum a row.
 #'
 #' @noRd
 strata_size <- function(st, bound) {
@@ -651,7 +683,7 @@ strata_size <- function(st, bound) {
   lower <- group_floor(st$floor, st$sizes, cap = TRUE)
   floor_at <- function(n) {
     raw <- capped_shares(n, share, st$sizes, cap = TRUE, lower = lower)
-    strata_variance(st, pmin(raw + 1, st$sizes))
+    strata_variance(st, pmin(ceiling(raw), st$sizes))
   }
   lo <- sum(lower)
   hi <- st$N
@@ -673,9 +705,12 @@ strata_size <- function(st, bound) {
 #'
 #' `deff` is a number, or a result of `ht_mean()` or `ht_total()` whose own
 #' design effect is used. The estimate must be of the kind `target` plans,
-#' since a mean's design effect and a total's differ for the same sample. An
-#' `NA`, which `deff()` gives for a pilot without a variance, is refused with
-#' that reason. Any other number is left to `plan_size()`'s own check.
+#' since a mean's design effect and a total's differ for the same sample.
+#' Any other object is refused by class, also one that is a number
+#' underneath, such as an estimate from `survey`, whose value is the
+#' estimate rather than its design effect. An `NA`, which `deff()` gives for
+#' a pilot without a variance, is refused with that reason. Any other number
+#' is left to `plan_size()`'s own check.
 #'
 #' @noRd
 plan_deff <- function(deff, target) {
@@ -697,21 +732,33 @@ plan_deff <- function(deff, target) {
     }
     value <- deff[["deff"]]
     if (length(value) != 1L || is.na(value)) {
+      if (isTRUE(deff[["n_missing"]] > 0)) {
+        stop("`deff` has a design effect of NA, which ht_mean(na_rm = TRUE) ",
+             "gives when `y` is missing in some sampled rows, since the rows ",
+             "with `y` are a domain and a domain's design effect is not ",
+             "estimated. Use a pilot with `y` in every sampled row, or a ",
+             "design effect from a similar survey.", call. = FALSE)
+      }
       stop("`deff` has a design effect of NA, which a pilot with no variance ",
            "estimate or with one value of `y` gives. ", na_fix, call. = FALSE)
     }
     return(value)
   }
-  if (!is.atomic(deff)) {
-    stop("`deff` is a `", class(deff)[1], "`. Give a design effect as a ",
-         "positive number, a vector of them for several plans, or the result ",
-         "of ht_mean() or ht_total() for one variable without `by`.",
-         call. = FALSE)
+  if (is.object(deff) || !is.atomic(deff)) {
+    from_survey <- inherits(deff, c("svystat", "svrepstat"))
+    stop("`deff` is a `", class(deff)[1], "`", if (from_survey) {
+      ", whose value is the survey estimate, not its design effect"
+    }, ". Give a design effect as a positive number, a vector of them for ",
+    "several plans, or the result of ht_mean() or ht_total() for one ",
+    "variable without `by`.", if (from_survey) {
+      " survey::deff() reads the design effect out of a survey estimate."
+    }, call. = FALSE)
   }
   if (length(deff) && anyNA(deff)) {
     stop("`deff` ", if (length(deff) == 1L) "is NA" else "holds an NA",
          ", which deff() gives for a pilot with no variance estimate or with ",
-         "one value of `y`. ", na_fix, call. = FALSE)
+         "one value of `y`, and for a mean from ht_mean(na_rm = TRUE) with ",
+         "`y` missing in some rows. ", na_fix, call. = FALSE)
   }
   deff
 }
@@ -728,7 +775,7 @@ print.drawn_plan <- function(x, ...) {
         format(100 * x$response), "% response)\n", sep = "")
   }
   cat("  margin         +/- ",
-      format(x$margin, big.mark = ",", scientific = FALSE), " at ",
+      format(x$margin, big.mark = ",", scientific = 15), " at ",
       format(100 * x$level), "% confidence\n", sep = "")
   spread <- if (by_strata) {
     paste0(if (x$rule == "neyman") "Neyman" else x$rule, " allocation",

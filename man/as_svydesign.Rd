@@ -19,9 +19,9 @@ yours to set.}
 A \code{survey.design} object.
 }
 \description{
-Builds a \code{\link[survey:svydesign]{survey::svydesign()}} object from a drawn sample, so the analysis
-this package does not do — regression, calibration, analysis with
-replicate weights — can be done by the package that does.
+Builds a \code{\link[survey:svydesign]{survey::svydesign()}} object from a drawn sample, so that the
+survey package can do the analysis this package does not, such as
+regression, calibration and analysis with replicate weights.
 }
 \details{
 The two packages compute variance from different starting points. This one

@@ -99,9 +99,8 @@ sample_summary(s)
 ```
 
 **5. Estimate** a total, a mean, a proportion or a quantile, overall or by
-domain. Domain
-estimates use the whole sample, not a subset of it, which is what keeps their
-standard errors right:
+domain. Domain estimates use the whole sample, not a subset of it, which is
+what keeps their standard errors right:
 
 ```{r estimate}
 ht_mean(s, "value", by = "site")

@@ -19,7 +19,8 @@ ht_quantile(
 "Which columns are read".}
 
 \item{y}{The variable: a numeric column name of \code{sample}, or a numeric
-vector as long as \code{sample}.}
+vector as long as \code{sample}. A logical \code{y} is refused, since its
+quantiles are 0 or 1; \code{\link[=ht_mean]{ht_mean()}} estimates the share that is \code{TRUE}.}
 
 \item{probs}{The probabilities, each from 0 to 1, such as \code{0.5} for the
 median or \code{c(0.25, 0.5, 0.75)} for the quartiles.}
@@ -63,8 +64,9 @@ for each domain and probability: the \code{by} columns, \code{prob}, \code{n},
 Both have \code{coef()}, \code{vcov()}, \code{confint()}, \code{as.data.frame()} and
 \code{tidy()} methods, as described under "Working with the result" in
 \code{\link[=ht_total]{ht_total()}}. \code{confint()} at another level carries the interval for
-\code{F(q)} at that level back through the quantile rule. \code{vcov()} is
-diagonal: the covariances between quantiles are not estimated.
+\code{F(q)} at that level back through the quantile rule. \code{vcov()} holds
+the variances, and \code{NA} for the covariances between quantiles, which
+are not estimated.
 }
 \description{
 \code{ht_quantile()} estimates quantiles of \code{y}, such as the median or the
@@ -80,8 +82,15 @@ distribution function is \code{p} or more, which inverts the step function
 \code{F} without interpolating between sampled values. It is always a value
 some sampled row has. This is the rule of
 \code{survey::svyquantile(qrule = "math")}, survey's default, and with equal
-weights it is \code{stats::quantile(type = 1)}. \code{p = 0} gives the smallest
-sampled value and \code{p = 1} the largest.
+weights it is \code{stats::quantile(type = 1)}, apart from the tolerance
+below. \code{p = 0} gives the smallest sampled value and \code{p = 1} the largest.
+
+A share of the weight equal to \code{p} can come out of the sums a rounding
+error below \code{p}, so a share within 1e-9 below \code{p} counts as reaching it.
+A \code{p} that is a rounding error above a share therefore gives the value
+at that share. \code{seq(0, 1, 0.01)[71]}, which is 0.7 plus a rounding error,
+gives the 21st of 30 equally weighted values, where
+\code{stats::quantile(type = 1)} and \code{survey::svyquantile()} give the 22nd.
 }
 
 \section{Interval and standard error}{
@@ -140,6 +149,9 @@ that end and the standard error, where \code{ht_quantile()} gives \code{NA}.
 \item For a \code{p}, or an end of the interval for \code{F(q)}, below the share of the
 weight held by the smallest sampled value, survey's rule gives the
 second smallest value and \code{ht_quantile()} the smallest.
+\item For a \code{p} within 1e-9 above a share of the weight, \code{ht_quantile()}
+gives the value at that share and survey the next one, as "The quantile
+rule" describes.
 \item With \code{by}, \code{survey::svyby()} with \code{survey::svyquantile()} forms each
 interval on the degrees of freedom of the domain's own units, and
 \code{ht_quantile()} on the design's, as for every domain estimate here.

@@ -2132,10 +2132,10 @@ finish_prepare <- function(parts) {
 #' it was `logical`, its `name`, `NULL` for a vector, and whether it was a
 #' `single` number standing for every row. `several` says
 #' whether `arg` may also name several columns, which the caller reads one
-#' at a time.
+#' at a time, and `logical` whether a logical variable is accepted.
 #'
 #' @noRd
-read_variable <- function(sample, y, arg, several = FALSE) {
+read_variable <- function(sample, y, arg, several = FALSE, logical = TRUE) {
   name <- NULL
   v <- y
   if (is.character(y) && length(y) == 1L && !is.na(y)) {
@@ -2144,28 +2144,30 @@ read_variable <- function(sample, y, arg, several = FALSE) {
     }
     name <- y
     v <- sample[[y]]
-    if (!is.numeric(v) && !is.logical(v)) {
+    if (!is.numeric(v) && !(logical && is.logical(v))) {
       stop("`", arg, "` names `", y, "`, ", a_class(v), " column of ",
-           "`sample`. Name a numeric or logical column.", call. = FALSE)
+           "`sample`. Name a numeric", if (logical) " or logical",
+           " column.", call. = FALSE)
     }
   }
   # A single number stands for that value in every row, so a total of 1
   # estimates the number of frame rows.
   single <- is.null(name) && is.numeric(v) && length(v) == 1L
   if (single) v <- rep(v, nrow(sample))
-  if (!(is.numeric(v) || is.logical(v)) || length(v) != nrow(sample)) {
+  if (!(is.numeric(v) || (logical && is.logical(v))) ||
+      length(v) != nrow(sample)) {
     stop(variable_forms(y, arg, several, sample), call. = FALSE)
   }
-  logical <- is.logical(v)
-  if (logical) v <- as.numeric(v)
-  list(values = v, logical = logical, name = name, single = single)
+  was_logical <- is.logical(v)
+  if (was_logical) v <- as.numeric(v)
+  list(values = v, logical = was_logical, name = name, single = single)
 }
 
 #' What `arg` must be, and what it was
 #' @noRd
 variable_forms <- function(y, arg, several, sample) {
   forms <- if (several) {
-    "one column name, several column names, or a numeric vector"
+    "one column name, several column names, or a numeric vector or factor"
   } else {
     "one column name or a numeric vector"
   }

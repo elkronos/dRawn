@@ -731,7 +731,7 @@ ht_total(s, "value", by = "site")
 
 `drawn` draws samples and estimates totals, means, proportions, ratios and
 quantiles from them, overall or by group. It does not do regression or
-calibration — [`survey`](https://cran.r-project.org/package=survey) does both,
+calibration. [`survey`](https://cran.r-project.org/package=survey) does both,
 and `as_svydesign()` hands a sample straight over.
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE), message = FALSE}

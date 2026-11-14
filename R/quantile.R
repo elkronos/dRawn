@@ -12,8 +12,15 @@
 #' `F` without interpolating between sampled values. It is always a value
 #' some sampled row has. This is the rule of
 #' `survey::svyquantile(qrule = "math")`, survey's default, and with equal
-#' weights it is `stats::quantile(type = 1)`. `p = 0` gives the smallest
-#' sampled value and `p = 1` the largest.
+#' weights it is `stats::quantile(type = 1)`, apart from the tolerance
+#' below. `p = 0` gives the smallest sampled value and `p = 1` the largest.
+#'
+#' A share of the weight equal to `p` can come out of the sums a rounding
+#' error below `p`, so a share within 1e-9 below `p` counts as reaching it.
+#' A `p` that is a rounding error above a share therefore gives the value
+#' at that share. `seq(0, 1, 0.01)[71]`, which is 0.7 plus a rounding error,
+#' gives the 21st of 30 equally weighted values, where
+#' `stats::quantile(type = 1)` and `survey::svyquantile()` give the 22nd.
 #'
 #' @section Interval and standard error:
 #' The interval is Woodruff's (1952). At the estimate `q`, `F(q)` is a Hajek
@@ -66,6 +73,9 @@
 #' * For a `p`, or an end of the interval for `F(q)`, below the share of the
 #'   weight held by the smallest sampled value, survey's rule gives the
 #'   second smallest value and `ht_quantile()` the smallest.
+#' * For a `p` within 1e-9 above a share of the weight, `ht_quantile()`
+#'   gives the value at that share and survey the next one, as "The quantile
+#'   rule" describes.
 #' * With `by`, `survey::svyby()` with `survey::svyquantile()` forms each
 #'   interval on the degrees of freedom of the domain's own units, and
 #'   `ht_quantile()` on the design's, as for every domain estimate here.
@@ -80,7 +90,8 @@
 #'
 #' @inheritParams ht_total
 #' @param y The variable: a numeric column name of `sample`, or a numeric
-#'   vector as long as `sample`.
+#'   vector as long as `sample`. A logical `y` is refused, since its
+#'   quantiles are 0 or 1; [ht_mean()] estimates the share that is `TRUE`.
 #' @param probs The probabilities, each from 0 to 1, such as `0.5` for the
 #'   median or `c(0.25, 0.5, 0.75)` for the quartiles.
 #'
@@ -103,8 +114,9 @@
 #'   Both have `coef()`, `vcov()`, `confint()`, `as.data.frame()` and
 #'   `tidy()` methods, as described under "Working with the result" in
 #'   [ht_total()]. `confint()` at another level carries the interval for
-#'   `F(q)` at that level back through the quantile rule. `vcov()` is
-#'   diagonal: the covariances between quantiles are not estimated.
+#'   `F(q)` at that level back through the quantile rule. `vcov()` holds
+#'   the variances, and `NA` for the covariances between quantiles, which
+#'   are not estimated.
 #'
 #' @references
 #' Woodruff, R. S. (1952). Confidence intervals for medians and other
@@ -179,7 +191,24 @@ check_probs <- function(probs) {
 #'
 #' @noRd
 add_quantile_variable <- function(parts, y) {
-  v <- read_variable(parts$sample, y, "y")
+  sample <- parts$sample
+  col <- if (is.character(y) && length(y) == 1L && !is.na(y) &&
+             y %in% names(sample)) {
+    sample[[y]]
+  } else {
+    y
+  }
+  if (is.logical(col) && length(col) == nrow(sample)) {
+    what <- if (is.character(y)) {
+      paste0("names `", y, "`, a logical column")
+    } else {
+      "is logical"
+    }
+    stop("`y` ", what, ", and the quantiles of TRUE and FALSE are 0 or 1. ",
+         "Use ht_mean() for the share that is TRUE, or give a numeric `y`.",
+         call. = FALSE)
+  }
+  v <- read_variable(sample, y, "y", logical = FALSE)
   gap <- is.na(v$values) & !is.nan(v$values)
   if (any(gap)) {
     stop("`y` is missing in ", sum(gap), " of the ", length(gap), " sampled ",

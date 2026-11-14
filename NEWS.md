@@ -299,6 +299,12 @@
   number.** `21 / 0.7` is `30.000000000000004` in floating point, so 21 rows
   at 70% response gave 31 to draw where 30 bring back 21, and with `N = 30`
   the plan said the frame was too small at that response rate.
+* **`plan_size()` took an estimate from `survey` passed as `deff` for the
+  design effect.** `survey::svymean(~y, des, deff = TRUE)` is a number
+  underneath, the estimated mean, so the plan was inflated by the mean of
+  `y` without a word. `plan_size()` now refuses any object other than the
+  result of `ht_mean()` or `ht_total()` by its class, and for a `survey`
+  estimate points to `survey::deff()`.
 * **`plot(type = "probability")` on a frame larger than `max_dots` left out
   unreachable and take-all rows.** It drew and summarised an evenly spaced
   subset of the rows, so rows with probability 0 or 1 between them were
@@ -522,8 +528,10 @@
   word, and `plan_size(margin = 0.03, p = 0.2)` said only that `sd` was
   required.
 * `plan_size()` refuses a `deff` of `NA` with the reason `deff()` gives one,
-  a pilot without a variance estimate or with one value of `y`. It said only
-  that `deff` must be a positive number.
+  a pilot without a variance estimate or with one value of `y`, or a mean
+  from `ht_mean(na_rm = TRUE)` with `y` missing in some rows, whose design
+  effect, a domain's, is not estimated. It said only that `deff` must be a
+  positive number.
 * `plan_size()` plans a census when the size for an unbounded frame is too
   large for a number, and refuses it for an unbounded `N` with a message
   naming `margin` and `level`. It stopped with "missing value where
@@ -708,7 +716,8 @@
   "successive-difference approximation". The README's table of designs uses
   the same names.
 * A printed `plan_size()` shows a margin of `1e5` as `100,000`, where it
-  showed `1e+05`.
+  showed `1e+05`. A margin that would take many digits, such as `1e-300`,
+  stays in scientific notation.
 * `sample_summary()` lists every stratum of the frame, one allocated no rows
   with 0 drawn, where it listed only the strata drawn. It gives a certainty
   design the groups of its `rest`, after a `(certain)` row for the rows
@@ -1137,10 +1146,10 @@
   `ht_total(s, c("y", "w"))` stopped with a message that `y` must be a
   numeric column name, and the covariance of two estimates, which the
   standard error of their difference needs, was not available at all. A
-  `y` that is none of one column name, several column names or a numeric
-  vector as long as the sample is refused with a message that lists those
-  forms and says what `y` was, and a column that is not numeric is named
-  with its type.
+  `y` that is none of one column name, several column names, or a numeric
+  vector or factor as long as the sample is refused with a message that
+  lists those forms and says what `y` was, and a column that is not
+  numeric is named with its type.
 * `ht_quantile()` estimates medians, quartiles and other quantiles, overall
   or by domain, from the Hajek estimate of the distribution function. The
   estimate at `p` is the smallest sampled value whose estimated
@@ -1150,14 +1159,21 @@
   carried back to the scale of `y`, and the standard error is that
   interval's width over `2 t`. For the designs `as_svydesign()` maps with
   identical standard errors it equals
-  `survey::svyquantile(interval.type = "mean")`, and systematic, spread and
-  systematic PPS samples get the estimators `ht_total()` uses for them. A
-  quantile at the largest sampled value, where that variance is 0 whatever
-  `y` does, gets no standard error, with a note, where `survey` gives an
-  interval of no width. Quantiles were available only through
-  `as_svydesign()`. The result has `coef()`, `vcov()`, `confint()`,
+  `survey::svyquantile(interval.type = "mean")` except in three places, and
+  systematic, spread and systematic PPS samples get the estimators
+  `ht_total()` uses for them. For a `p` below the share of the weight held
+  by the smallest sampled value, `survey`'s rule takes the second smallest
+  value as the estimate and `ht_quantile()` the smallest. A `p` within
+  1e-9 above a share of the weight, such as `seq(0, 1, 0.01)[71]`, gives
+  the value at that share, where `survey` and `stats::quantile(type = 1)`
+  give the next. A quantile at the largest sampled value, where that
+  variance is 0 whatever `y` does, gets no standard error, with a note,
+  where `survey` gives an interval of no width. Quantiles were available
+  only through `as_svydesign()`. A logical `y` is refused with a pointer to
+  `ht_mean()`. The result has `coef()`, `vcov()`, `confint()`,
   `as.data.frame()` and `tidy()` methods, and `confint()` at another level
-  forms the Woodruff interval again.
+  forms the Woodruff interval again. `vcov()` of several quantiles has `NA`
+  for their covariances, which are not estimated.
 * `ht_total()` and `ht_mean()` take a factor or character column as `y`,
   or a factor as long as the sample, and return the estimated count or
   share of each level as a table led by a `level` column, with a
@@ -1179,10 +1195,13 @@
   expected proportion `p`, and plans a stratified sample: the smallest `n`
   whose split by `allocation` (`"proportional"`, `"equal"` or `"neyman"`,
   with an optional `cost` column for Neyman) meets the margin, with at
-  least `min_per_stratum` rows from each stratum, 2 by default. `n` is split
-  as `design_stratified()` splits it, rounding included, and the split is
-  returned as `allocation`, which `design_stratified(allocation =)` draws as
-  given. Stratification could enter a plan only through `deff` before.
+  least `min_per_stratum` rows from each stratum, 2 by default. A
+  `min_per_stratum` of 0 is refused, since without a floor a small stratum
+  gets no rows until `n` is large, and the estimate leaves it out. `n` is
+  split as `design_stratified()` splits it, rounding included, and the
+  split is returned as `allocation`, which `design_stratified(allocation =)`
+  draws as given. Stratification could enter a plan only through `deff`
+  before.
 * `deff_cluster()` gives the design effect `1 + (m - 1) * icc` of taking
   `m` rows from each cluster when rows of one cluster correlate at `icc`,
   to pass to `plan_size(deff =)` before a pilot has measured one.

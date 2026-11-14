@@ -205,6 +205,8 @@ test_that("a size too large for a number gives a census or a clear error", {
   p <- plan_size(margin = 1e-300, sd = 40, N = 240)
   expect_equal(p$n, 240)
   expect_true(p$capped)
+  # The margin prints in scientific notation rather than as 300 digits.
+  expect_output(print(p), "+/- 1e-300 at 95% confidence", fixed = TRUE)
   expect_equal(plan_size(margin = 5, sd = 40, N = 240, deff = 1e308)$n, 240)
   expect_equal(plan_size(margin = 5, sd = 1e300, N = 240)$n, 240)
   expect_equal(plan_size(margin = 5, sd = 40, N = 240, level = 1 - 1e-16)$n,
@@ -316,6 +318,36 @@ test_that("deff takes the estimate it came from, of the kind target plans", {
   expect_error(plan_size(margin = 3, sd = 10,
                          deff = ht_mean(pilot, "y", by = "cl")),
                "without `by`", fixed = TRUE)
+
+  # A mean over the rows with `y` has a standard error but no design effect.
+  pilot$ym <- pilot$y
+  pilot$ym[c(2, 5)] <- NA
+  part <- ht_mean(pilot, "ym", na_rm = TRUE)
+  expect_true(is.finite(part$se))
+  expect_true(is.na(deff(part)))
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = part),
+               "which ht_mean(na_rm = TRUE) gives when `y` is missing",
+               fixed = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = deff(part)),
+               "for a mean from ht_mean(na_rm = TRUE)", fixed = TRUE)
+
+  # A number with a class, such as a survey estimate, is refused.
+  fake <- structure(c(y = 30), class = "svystat", deff = 2)
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = fake),
+               "`deff` is a `svystat`, whose value is the survey estimate",
+               fixed = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = fake),
+               "survey::deff() reads the design effect", fixed = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10, N = 400,
+                         deff = structure(2, class = "other")),
+               "`deff` is a `other`. Give a design effect", fixed = TRUE)
+  skip_if_not_installed("survey")
+  sm <- survey::svymean(~y, as_svydesign(pilot), deff = TRUE)
+  expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = sm),
+               "`deff` is a `svystat`")
+  expect_equal(plan_size(margin = 3, sd = 10, N = 400,
+                         deff = unname(survey::deff(sm)))$deff,
+               unname(survey::deff(sm)))
 })
 
 test_that("plan_size meets the margin at a small N, where the correction bites", {
@@ -494,6 +526,9 @@ test_that("plan_size checks the strata it is given", {
                  "`sd` is not used with `strata`")
   expect_warning(plan_size(margin = 5, strata = st, N = 240),
                  class = "drawn_irrelevant_argument")
+  expect_warning(plan_size(margin = 5, strata = st, sd = 40, p = 0.3,
+                           N = 240),
+                 "`sd`, `p` and `N` are not used with `strata`", fixed = TRUE)
   expect_warning(plan_size(margin = 5, strata = transform(st, p = 0.5)),
                  "has a `p` column, which target = \"mean\" does not use")
   expect_warning(plan_size(margin = 5, sd = 40, allocation = "neyman"),
@@ -512,14 +547,33 @@ test_that("plan_size checks the strata it is given", {
   huge <- plan_size(margin = 5, allocation = "neyman",
                     strata = data.frame(g = 1:2, N = 10, sd = c(1e300, 1)))
   expect_equal(huge$allocation$n, c(10L, 2L))
-  # With no floor, a split that leaves a stratum without rows does not
-  # count. The variance is 0 at any split, and proportional allocation
-  # gives the one-row stratum its row first at 6 rows: 6 / 11 = 0.55.
-  bare <- plan_size(margin = 5, min_per_stratum = 0,
+  # A floor of one row gives the one-row stratum its row at once, and the
+  # variance is 0 at any split that reaches every stratum.
+  bare <- plan_size(margin = 5, min_per_stratum = 1,
                     strata = data.frame(g = 1:2, N = c(1, 10), sd = c(3, 0)))
-  expect_equal(bare$allocation$n, c(1L, 5L))
-  expect_output(print(bare), "assuming       proportional allocation, N 11",
+  expect_equal(bare$allocation$n, c(1L, 1L))
+  expect_output(print(bare), paste0("assuming       proportional allocation, ",
+                                    "at least 1 row per stratum, N 11"),
                 fixed = TRUE)
+})
+
+test_that("a stratified plan needs a floor of one row a stratum", {
+  # Without a floor, proportional allocation gives the one-row stratum its
+  # first row only at about half the frame, so the plan would be that size.
+  st <- data.frame(g = c("a", "b"), N = c(1, 2e5), sd = c(10, 10))
+  expect_error(plan_size(margin = 2, strata = st, min_per_stratum = 0),
+               "`min_per_stratum` is 0, which lets the split give a small")
+  expect_error(plan_size(margin = 2, strata = st, min_per_stratum = 0),
+               "Use 1 or more", fixed = TRUE)
+  one <- plan_size(margin = 2, strata = st, min_per_stratum = 1)
+  expect_equal(one$allocation$n, c(1L, one$n - 1L))
+  expect_lte(abs(one$n - plan_size(margin = 2, sd = 10, N = 2e5 + 1)$n), 2)
+  # Neyman allocation gives a stratum with no spread its floor.
+  flat <- plan_size(margin = 1, allocation = "neyman", min_per_stratum = 1,
+                    strata = data.frame(g = c("a", "b"), N = c(100, 2e5),
+                                        sd = c(0, 10)))
+  expect_equal(flat$allocation$n[1], 1L)
+  expect_lt(flat$n, 1000)
 })
 
 test_that("a frame in strata given as vectors points to `strata`", {
