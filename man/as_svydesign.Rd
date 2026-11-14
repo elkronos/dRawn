@@ -89,14 +89,14 @@ at the median, because the local mean has no finite population
 correction.
 \item \strong{Systematic.} \code{survey}, told only \code{ids = ~1}, computes the simple-random
 variance; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation, which
-can see a trend along the sort order. Neither is design-unbiased, because
-no such estimator exists for one systematic sample. Within strata,
-\code{survey} computes the stratified simple-random variance and \code{\link[=ht_total]{ht_total()}}
-adds up the strata's successive-difference approximations. With
-\code{n_starts} of 2 or more the replicates are clusters and the two agree.
-A replicated sample with a start that drew no rows, which happens only
-when \code{n_starts * interval} exceeds the rows walked, is refused, because
-\code{survey} would count one replicate fewer.
+can see a trend along the sort order. Neither is design-unbiased, and at
+a step of 2 rows or more no such estimator exists for one systematic
+sample. Within strata, \code{survey} computes the stratified simple-random
+variance and \code{\link[=ht_total]{ht_total()}} adds up the strata's successive-difference
+approximations. With \code{n_starts} of 2 or more the replicates are clusters
+and the two agree. A replicated sample with a start that drew no rows,
+which happens only when \code{n_starts * interval} exceeds the rows walked, is
+refused, because \code{survey} would count one replicate fewer.
 }
 
 Units taken with certainty are in every sample and add nothing to the

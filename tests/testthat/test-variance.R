@@ -123,6 +123,30 @@ test_that("systematic sampling reports a successive-difference variance and says
   expect_true(all(is.finite(r$ci)))
 })
 
+test_that("a systematic step under 2 rows is not said to lack an unbiased variance", {
+  d <- data.frame(id = 1:100, y = (1:100) %% 7)
+  # Every pair of rows can be drawn together once n is above half of N.
+  pairs <- joint_prob(d, design_systematic(n = 51))
+  expect_true(all(pairs > 0))
+  expect_true(any(joint_prob(d, design_systematic(n = 50)) == 0))
+
+  s <- draw(d, design_systematic(n = 70), seed = 1, weights = TRUE)
+  r <- ht_total(s, "y")
+  expect_equal(r$method, "successive difference")
+  expect_match(r$note, "^This is the successive-difference approximation")
+  s <- draw(d, design_systematic(n = 50), seed = 1, weights = TRUE)
+  expect_match(ht_total(s, "y")$note, "no design-unbiased variance")
+
+  d$h <- rep(c("a", "b"), each = 50)
+  within <- design_systematic(order_by = "id")
+  s <- draw(d, design_stratified("h", n = 60, within = within), seed = 1,
+            weights = TRUE)
+  expect_match(ht_total(s, "y")$note, "^This is the sum over strata")
+  s <- draw(d, design_stratified("h", n = 40, within = within), seed = 1,
+            weights = TRUE)
+  expect_match(ht_total(s, "y")$note, "no design-unbiased variance")
+})
+
 test_that("the print method shows the interval, or the reason there isn't one", {
   d <- var_pop()
   out <- capture.output(print(ht_total(draw(d, design_simple(n = 30), seed = 1,

@@ -143,13 +143,14 @@ whole. Strata draw their starts in key order. Every row has probability
 allocation, \code{\link[=allocation_table]{allocation_table()}} and the weights are the same; what
 changes is which rows can be drawn together. Two rows of one stratum have
 the joint probability of the systematic design there, which is 0 for
-rows less than a step apart, and two rows of different strata the product
-of their probabilities. Rows whose \code{x} is missing are refused, or with
-the \code{na_rm = TRUE} of the systematic design left out of their stratum
-before it is allocated.
+rows at most \code{N_h / n_h - 1} rows apart, and two rows of different strata
+the product of their probabilities. Rows whose \code{x} is missing are refused,
+or with the \code{na_rm = TRUE} of the systematic design left out of their
+stratum before it is allocated.
 
-Each stratum has one random start, so no design-unbiased variance exists,
-as for \code{\link[=design_systematic]{design_systematic()}} on its own. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}}
+Each stratum has one random start, so when any stratum is walked at a
+step of 2 rows or more no design-unbiased variance exists, as for
+\code{\link[=design_systematic]{design_systematic()}} on its own. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}}
 add up the strata's successive-difference approximations,
 \code{(1 - n_h / N_h) * n_h / (2 * (n_h - 1)) * sum(diff(y / pi)^2)} over each
 stratum's sampled rows in the order it was walked (Wolter 2007), with

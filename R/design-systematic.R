@@ -50,10 +50,14 @@
 #'   variance (see "Variance"). Needs `interval`, and a random `start`.
 #'
 #' @section Variance:
-#' A systematic sample has a single random start, so no design-unbiased
+#' A systematic sample has a single random start. At a step of 2 rows or
+#' more, which is every `interval` above 1 and every `n` up to half the rows
+#' walked, neighbouring rows are never drawn together, so no design-unbiased
 #' variance estimator exists. [ht_total()] uses the successive-difference
 #' approximation (Wolter 2007), which compares neighbouring sampled rows in
-#' the order the design walked. Sorting on a variable related to what you
+#' the order the design walked. With `n` above half the rows walked, every
+#' pair of rows can be drawn together (see [joint_prob()]), and [ht_total()]
+#' uses the same approximation. Sorting on a variable related to what you
 #' measure (`order_by`) is what makes systematic sampling efficient, and this
 #' estimator is the one that can see it; see [ht_total()] for its limits.
 #' When `interval` does not divide the number of rows walked, the sample size
@@ -66,11 +70,13 @@
 #' The sample's total is their mean, and [ht_total()] uses the random group
 #' variance (Wolter 2007), `(1 - 1 / k) * var(t_r) / m`, on `m - 1` degrees
 #' of freedom. It is design-unbiased whether or not `m * k` divides the rows
-#' walked, a replicate that drew no rows counting with a total of 0, and
+#' walked, a replicate that drew no rows counting with a total of 0.
 #' [as_svydesign()] gives the same standard error with each replicate as a
-#' primary sampling unit. The price is precision: `m` starts spread the
-#' sample over the walk less evenly than one start at `interval` does, and
-#' few replicates give few degrees of freedom and a wide interval.
+#' primary sampling unit, and refuses a sample with a replicate that drew no
+#' rows, which `survey` would leave out of its count of replicates. The price
+#' is precision: `m` starts spread the sample over the walk less evenly than
+#' one start at `interval` does, and few replicates give few degrees of
+#' freedom and a wide interval.
 #'
 #' Within strata, as `design_stratified(within = design_systematic())`, each
 #' stratum has a start of its own and the variance is the sum of the

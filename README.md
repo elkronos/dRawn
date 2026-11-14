@@ -104,7 +104,7 @@ sample_summary(s)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
 #>   effective n        60  (Kish, from the weights alone)
-#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-13
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-14
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate
@@ -137,20 +137,20 @@ survey::svyglm(value ~ site, des)
 
 ## The designs
 
-| Design                | Selects                                                                         | Size                                | Variance `method`                                                                 |
-|-----------------------|---------------------------------------------------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------|
-| `design_simple()`     | rows uniformly at random                                                        | `n`                                 | analytic                                                                          |
-| `design_stratified()` | a share of each stratum: proportional, equal or Neyman                          | `n` total                           | analytic                                                                          |
-| `design_systematic()` | every *k*-th row from one or several random starts, or `n` rows at an even step | `interval` or `n`                   | successive difference (an approximation); analytic with `n_starts`                |
-| `design_cluster()`    | whole clusters                                                                  | `n_clusters`                        | analytic                                                                          |
-| `design_multistage()` | clusters, at random or in proportion to size, then rows within them             | `n_clusters`, `n`                   | analytic, two-stage; deville (an approximation) for the clusters with `size`      |
-| `design_weighted()`   | probability proportional to size, within strata if asked                        | `n` total                           | analytic (Poisson); deville (an approximation) for systematic, summed over strata |
-| `design_certainty()`  | everything above a threshold, plus any design below it                          | rows above the threshold + `rest`’s | `rest`’s own                                                                      |
-| `design_spread()`     | a sample spread evenly over a map or covariates                                 | `n`                                 | local mean (an approximation)                                                     |
-| `design_temporal()`   | a fixed number per time interval                                                | `per_interval`                      | analytic                                                                          |
-| `design_spatial()`    | a simple random sample inside a region                                          | `n`                                 | analytic                                                                          |
-| `design_reservoir()`  | a fixed-size sample from a stream, in one pass                                  | `n`                                 | analytic                                                                          |
-| `design_bootstrap()`  | resampled replicates, simple or block                                           | `n_replicates`                      | not a survey design                                                               |
+| Design                | Selects                                                                                           | Size                                | Variance `method`                                                                 |
+|-----------------------|---------------------------------------------------------------------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------|
+| `design_simple()`     | rows uniformly at random                                                                          | `n`                                 | analytic                                                                          |
+| `design_stratified()` | a share of each stratum: proportional, equal or Neyman, at random or with `within` systematically | `n` total                           | analytic; successive difference (an approximation) with `within`                  |
+| `design_systematic()` | every *k*-th row from one or several random starts, or `n` rows at an even step                   | `interval` or `n`                   | successive difference (an approximation); analytic with `n_starts`                |
+| `design_cluster()`    | whole clusters                                                                                    | `n_clusters`                        | analytic                                                                          |
+| `design_multistage()` | clusters, at random or in proportion to size, then rows within them                               | `n_clusters`, `n`                   | analytic, two-stage; deville (an approximation) for the clusters with `size`      |
+| `design_weighted()`   | probability proportional to size, within strata if asked                                          | `n` total                           | analytic (Poisson); deville (an approximation) for systematic, summed over strata |
+| `design_certainty()`  | everything above a threshold, plus any design below it                                            | rows above the threshold + `rest`’s | `rest`’s own                                                                      |
+| `design_spread()`     | a sample spread evenly over a map or covariates                                                   | `n`                                 | local mean (an approximation)                                                     |
+| `design_temporal()`   | a fixed number per time interval                                                                  | `per_interval`                      | analytic                                                                          |
+| `design_spatial()`    | a simple random sample inside a region                                                            | `n`                                 | analytic                                                                          |
+| `design_reservoir()`  | a fixed-size sample from a stream, in one pass                                                    | `n`                                 | analytic                                                                          |
+| `design_bootstrap()`  | resampled replicates, simple or block                                                             | `n_replicates`                      | not a survey design                                                               |
 
 Every estimate says in `method` which estimator produced its variance,
 under the names in this table, which are also the ones a printed

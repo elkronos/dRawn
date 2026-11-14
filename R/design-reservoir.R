@@ -31,17 +31,21 @@
 #' A function is called once for each item, and whatever it returns is that
 #' item, a data frame included, so a function that returns blocks of rows
 #' gives a sample of whole blocks. With `batches = TRUE` the rows are the
-#' items instead: each call returns a data frame of rows, every batch with
-#' the same columns in the same order, and [draw()] returns `n` of those rows
-#' as one data frame, bound with [rbind()] in the order they arrived. Cutting
-#' the same rows into batches of other sizes gives the same sample for a
-#' seed. Between batches it keeps at most `max(2 * n, 1024)` rows, some of
-#' them already dropped from the sample, besides the batch being read.
+#' items instead: each call returns a data frame of rows, every batch with the
+#' same columns in the same order, and [draw()] returns `n` of those rows as
+#' one data frame, bound with [rbind()] in the order they arrived. [draw()]
+#' compares only the column names. A column whose type differs between
+#' batches, such as one that [read.csv()] reads as logical in a batch where it
+#' is empty, takes the type [rbind()] gives the sampled rows. Cutting the same
+#' rows into batches of other sizes gives the same sample for a seed. Between
+#' batches it keeps at most `max(2 * n, 1024)` rows, some of them already
+#' dropped from the sample, besides the batch being read.
 #'
 #' @section What is read:
-#' A connection that is not open is opened, read to its end and closed, as
-#' [read.csv()] does, so it cannot be drawn from twice. A connection that is
-#' already open is read from where it stands and left open.
+#' A connection that is not open is opened, read to its end (or to one line
+#' past a finite `max_items`) and closed, as [read.csv()] does, so it cannot
+#' be drawn from twice. A connection that is already open is read from where
+#' it stands and left open.
 #'
 #' With a finite `max_items`, [draw()] reads one item past the cap, because
 #' only that read tells a stream of exactly `max_items` items from a longer
@@ -503,9 +507,11 @@ as_stream <- function(x, batches = FALSE, block = 10000L) {
     }
     # The line read past `max_items` goes back onto a connection the caller
     # opened, so their next read starts with it. Only a text-mode connection
-    # takes lines back, and one opened here is closed anyway.
+    # takes lines back, and one opened here is closed anyway. When a full
+    # block ends at the cap, the next block is that one line and `k` is 0,
+    # where `lines[-seq_len(k)]` would be empty.
     give_back <- if (!opened_here && identical(summary(x)$text, "text")) {
-      function(lines, k) pushBack(lines[-seq_len(k)], x)
+      function(lines, k) pushBack(lines[seq_along(lines) > k], x)
     }
     return(list(read = read, close = if (opened_here) x,
                 give_back = give_back))

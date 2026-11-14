@@ -801,6 +801,13 @@
   how long, with a progress bar in an interactive session. A run of hours,
   such as the default `R` for `design_spread()` on 10,000 rows, gave no
   sign of progress.
+* The note of a successive-difference variance says that systematic
+  sampling has no design-unbiased variance estimator only when the walk has
+  a step of 2 rows or more. `design_systematic(n =)` with `n` above half the
+  rows walked, and `design_stratified(within = design_systematic())` with
+  every stratum taking more than half its rows, have a step under 2 rows,
+  at which every pair of rows can be drawn together. The variance is the
+  same successive-difference approximation.
 
 ## New
 
@@ -1244,8 +1251,10 @@
   with "missing value where TRUE/FALSE needed".
 * `design_reservoir()` reads a connection 10,000 lines at a time and works
   out Algorithm L's swaps within each block, where it called `readLines()`
-  once per line. 500,000 lines took 2.5 seconds and now take 0.1, with the
-  same sample for a seed.
+  once per line. Drawing `n = 100` from 500,000 lines took 1.2 seconds and
+  now takes 0.1, with the same sample for a seed. A larger `n` gains less,
+  because it makes more swaps and each costs what it did; `n = 20000` went
+  from 2.0 seconds to 0.8.
 
 ## Handing off to survey
 
@@ -1346,7 +1355,9 @@
   before drawing. It said that items past `max_items` were never read; one
   is read, to tell a longer stream from one of exactly `max_items`, and a
   function is called once past the cap. A connection that is not open is
-  opened, read and closed, as `read.csv()` does.
+  opened, read and closed, as `read.csv()` does. Under `batches = TRUE` only
+  the column names of each batch are compared, and a column whose type
+  differs between batches takes the type `rbind()` gives the sampled rows.
 * `?design_systematic`, `?inclusion_prob` and `?joint_prob` say that a
   fixed `start` makes the design deterministic, so `inclusion_prob()`,
   `sampling_weight()`, `joint_prob()`, `draw(weights = TRUE)` and the
@@ -1411,6 +1422,19 @@
   Grafström, Lundström and Schelin (2012) by its DOI. The README's table of
   designs gives the size of a `design_certainty()` sample as the rows above
   the threshold plus `rest`'s, where it said `rest`'s own.
+* `?joint_prob`, `?design_systematic`, `?ht_total`, `?as_svydesign`,
+  `?design_stratified` and the estimation article say that a systematic
+  sample has no design-unbiased variance estimator at a step of 2 rows or
+  more, where neighbouring rows are never drawn together. With `n` above
+  half the rows walked, every pair of rows has a positive joint
+  probability. `?design_stratified` gave two rows of a stratum less than a
+  step apart a joint probability of 0; that holds for rows at most
+  `N_h / n_h - 1` apart, and at a step of 3.33 rows two rows 3 apart are
+  drawn together one time in five. `?design_systematic` says that
+  `as_svydesign()` refuses a replicated sample with a replicate that drew
+  no rows. The estimation article no longer uses one letter for both a row
+  and the interval, and the README's table of designs gives the
+  successive-difference variance of `design_stratified(within =)`.
 
 # drawn 0.2.0
 

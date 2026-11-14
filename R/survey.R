@@ -68,14 +68,14 @@
 #'   correction.
 #' * **Systematic.** `survey`, told only `ids = ~1`, computes the simple-random
 #'   variance; [ht_total()] uses the successive-difference approximation, which
-#'   can see a trend along the sort order. Neither is design-unbiased, because
-#'   no such estimator exists for one systematic sample. Within strata,
-#'   `survey` computes the stratified simple-random variance and [ht_total()]
-#'   adds up the strata's successive-difference approximations. With
-#'   `n_starts` of 2 or more the replicates are clusters and the two agree.
-#'   A replicated sample with a start that drew no rows, which happens only
-#'   when `n_starts * interval` exceeds the rows walked, is refused, because
-#'   `survey` would count one replicate fewer.
+#'   can see a trend along the sort order. Neither is design-unbiased, and at
+#'   a step of 2 rows or more no such estimator exists for one systematic
+#'   sample. Within strata, `survey` computes the stratified simple-random
+#'   variance and [ht_total()] adds up the strata's successive-difference
+#'   approximations. With `n_starts` of 2 or more the replicates are clusters
+#'   and the two agree. A replicated sample with a start that drew no rows,
+#'   which happens only when `n_starts * interval` exceeds the rows walked, is
+#'   refused, because `survey` would count one replicate fewer.
 #'
 #' Units taken with certainty are in every sample and add nothing to the
 #' variance: the rows above a [design_certainty()] threshold, strata and

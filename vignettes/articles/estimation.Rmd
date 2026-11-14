@@ -146,9 +146,10 @@ standard approximations for high-entropy designs. It equals
 
 ### Systematic sampling: successive differences
 
-A systematic sample has one random start. Most pairs of rows can never be drawn
-together ($\pi_{kl} = 0$), so no design-unbiased variance estimator exists at
-all. The successive-difference estimator compares each sampled row with its
+A systematic sample has one random start. At an interval of 2 or more,
+neighbouring rows and many other pairs can never be drawn together
+($\pi_{kl} = 0$), so no design-unbiased variance estimator exists at all.
+The successive-difference estimator compares each sampled row with its
 neighbour in the order the design walked (Wolter 2007):
 
 $$\hat V = (1 - f)\, \frac{n}{2(n-1)} \sum_{j=2}^{n}
@@ -204,18 +205,18 @@ $6k / (n(k + 1))$, about $6/n$, for $n$ rows at interval $k$.
 ### Several starts: random groups
 
 `design_systematic(interval = k, n_starts = m)` draws $m$ different starts
-from $1, \dots, mk$ and walks each at a step of $mk$. Every row keeps
-$\pi_k = 1/k$, and two rows in different residue classes modulo $mk$ can now
-be drawn together, with $\pi_{kl} = (m-1)/(k(mk-1))$. Each start gives a
-replicate whose own total $\hat t_r$ estimates $t$, the sample's total is
-their mean $\bar t$, and
+from $1, \dots, mk$ and walks each at a step of $mk$. Every row keeps its
+probability of $1/k$, and two rows $i$ and $j$ in different residue classes
+modulo $mk$ can now be drawn together, with $\pi_{ij} = (m-1)/(k(mk-1))$.
+Each start gives a replicate whose own total $\hat t_r$ estimates $t$, the
+sample's total is their mean $\bar t$, and
 
 $$\hat V = \left(1 - \frac1k\right) \frac{1}{m(m-1)}
 \sum_{r=1}^{m} \left(\hat t_r - \bar t\right)^2$$
 
 is the random group estimator (Wolter 2007), unbiased on $m - 1$ degrees of
 freedom. It equals the Horvitz-Thompson variance estimator over the exact
-$\pi_{kl}$, so `method` is `"analytic"`. The price is a step $m$ times as
+$\pi_{ij}$, so `method` is `"analytic"`. The price is a step $m$ times as
 long, so each replicate follows a sorted frame less closely, and few degrees
 of freedom: with four starts a 95% interval uses $t_3$.
 

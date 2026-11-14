@@ -110,13 +110,14 @@
 #' allocation, [allocation_table()] and the weights are the same; what
 #' changes is which rows can be drawn together. Two rows of one stratum have
 #' the joint probability of the systematic design there, which is 0 for
-#' rows less than a step apart, and two rows of different strata the product
-#' of their probabilities. Rows whose `x` is missing are refused, or with
-#' the `na_rm = TRUE` of the systematic design left out of their stratum
-#' before it is allocated.
+#' rows at most `N_h / n_h - 1` rows apart, and two rows of different strata
+#' the product of their probabilities. Rows whose `x` is missing are refused,
+#' or with the `na_rm = TRUE` of the systematic design left out of their
+#' stratum before it is allocated.
 #'
-#' Each stratum has one random start, so no design-unbiased variance exists,
-#' as for [design_systematic()] on its own. [ht_total()] and [ht_mean()]
+#' Each stratum has one random start, so when any stratum is walked at a
+#' step of 2 rows or more no design-unbiased variance exists, as for
+#' [design_systematic()] on its own. [ht_total()] and [ht_mean()]
 #' add up the strata's successive-difference approximations,
 #' `(1 - n_h / N_h) * n_h / (2 * (n_h - 1)) * sum(diff(y / pi)^2)` over each
 #' stratum's sampled rows in the order it was walked (Wolter 2007), with

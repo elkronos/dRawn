@@ -260,6 +260,28 @@ test_that("the line read past max_items goes back onto an open connection", {
   expect_identical(readLines(bin, n = 1), "7")
 })
 
+test_that("a block ending exactly at max_items gives its next line back", {
+  tf <- tempfile()
+  on.exit(unlink(tf), add = TRUE)
+  writeLines(as.character(1:10005), tf)
+
+  # The first block of 10,000 lines ends at the cap, so the line read past it
+  # is a block of its own, none of whose lines is within the cap.
+  con <- file(tf, "r")
+  on.exit(close(con), add = TRUE, after = FALSE)
+  expect_warning(draw(con, design_reservoir(n = 3, max_items = 10000),
+                      seed = 1), "may have held more")
+  expect_identical(readLines(con, n = 1), "10001")
+
+  tc <- textConnection(as.character(1:30))
+  on.exit(close(tc), add = TRUE, after = FALSE)
+  stream <- as_stream(tc, block = 7L)
+  got <- with_seed(1, reservoir_blocks(stream$read, n = 3, max_items = 14,
+                                       give_back = stream$give_back))
+  expect_true(got$truncated)
+  expect_identical(readLines(tc, n = 1), "15")
+})
+
 # A generator that returns its arguments one per call, then NULL.
 calls <- function(...) {
   out <- list(...)

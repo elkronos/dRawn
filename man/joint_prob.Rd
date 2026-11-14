@@ -58,18 +58,23 @@ independent across groups or a simple random sample within them:
 \code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero}; with \code{n}, the overlap of the two rows' stretches, from 0 to \code{n / N}; with \code{n_starts = m}, \code{1/interval} for rows sharing a residue class modulo \code{m * interval}, otherwise \code{m(m-1) / (mk(mk-1))} with \code{k} the interval \cr
 }
 
-Systematic sampling is the awkward one. Most pairs can never co-occur, so
-their joint probability is genuinely 0 and no design-unbiased variance
-estimator exists; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation
-instead, and says so. Its residue classes follow the order the design walks,
-so \code{order_by} changes which pairs can co-occur. Given \code{n}, the design walks
-at a step of \code{N / n} rows from a start \code{u} uniform on (0, 1), each row
+Systematic sampling is the awkward one. At a step of 2 rows or more, which
+is every \code{interval} above 1 and every \code{n} up to half the rows walked,
+neighbouring rows and many other pairs can never co-occur, so their joint
+probability is genuinely 0 and no design-unbiased variance estimator
+exists; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation instead,
+and says so. Its residue classes follow the order the design walks, so
+\code{order_by} changes which pairs can co-occur. Given \code{n}, the design walks at
+a step of \code{N / n} rows from a start \code{u} uniform on (0, 1), each row
 covering a stretch of length \code{n / N}, and a pair is drawn together when \code{u}
-falls where both stretches, moved into (0, 1), overlap. With a fixed
-\code{start} the design is deterministic, and it is refused as in
-\code{\link[=inclusion_prob]{inclusion_prob()}}. With several starts (\code{n_starts}), rows in different
-residue classes can be drawn together too, which is what gives a
-replicated sample its unbiased variance. Within the strata of
+falls where both stretches, moved into (0, 1), overlap. With \code{n} above
+\code{N / 2} the stretches are longer than 1/2, any two of them overlap, and
+every pair has a positive joint probability; \code{\link[=ht_total]{ht_total()}} uses the
+successive-difference approximation there too. With a fixed \code{start} the
+design is deterministic, and it is refused as in \code{\link[=inclusion_prob]{inclusion_prob()}}. With
+several starts (\code{n_starts}), rows in different residue classes can be drawn
+together too, which is what gives a replicated sample its unbiased
+variance. Within the strata of
 \code{design_stratified(within = design_systematic())}, pairs in one stratum
 get the overlap of their stretches, as with \code{n}, and pairs in two strata
 the product of their probabilities.

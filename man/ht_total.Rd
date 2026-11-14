@@ -151,11 +151,13 @@ contribution is scaled by its own \code{1 - pi}, so rows near certainty stop
 adding variance they do not have. With \code{strata} it is added up over
 the strata. \code{\link[=design_multistage]{design_multistage()}} with \code{size} applies it to the
 estimated totals of the clusters, and adds the variance within them.}
-\item{\code{"successive difference"}}{\code{\link[=design_systematic]{design_systematic()}}. No
-design-unbiased estimator exists — the design has one random start, and
-most pairs of rows can never be drawn together — so this uses the
-successive-difference approximation, which compares each sampled row with
-its neighbour in the order the design walked (Wolter 2007). It removes a
+\item{\code{"successive difference"}}{\code{\link[=design_systematic]{design_systematic()}}. The design has
+one random start, and at a step of 2 rows or more neighbouring rows are
+never drawn together, so no design-unbiased estimator exists. This uses
+the successive-difference approximation, which compares each sampled
+row with its neighbour in the order the design walked (Wolter 2007), at
+every step, including a step under 2 rows, where every pair of rows can
+be drawn together. It removes a
 trend along that order rather than counting it as noise, which is why it
 beats treating the sample as simple random: on a frame sorted by a
 variable related to \code{y}, the simple random formula overstated the

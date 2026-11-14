@@ -39,11 +39,13 @@
 #'     adding variance they do not have. With `strata` it is added up over
 #'     the strata. [design_multistage()] with `size` applies it to the
 #'     estimated totals of the clusters, and adds the variance within them.}
-#'   \item{`"successive difference"`}{[design_systematic()]. No
-#'     design-unbiased estimator exists — the design has one random start, and
-#'     most pairs of rows can never be drawn together — so this uses the
-#'     successive-difference approximation, which compares each sampled row with
-#'     its neighbour in the order the design walked (Wolter 2007). It removes a
+#'   \item{`"successive difference"`}{[design_systematic()]. The design has
+#'     one random start, and at a step of 2 rows or more neighbouring rows are
+#'     never drawn together, so no design-unbiased estimator exists. This uses
+#'     the successive-difference approximation, which compares each sampled
+#'     row with its neighbour in the order the design walked (Wolter 2007), at
+#'     every step, including a step under 2 rows, where every pair of rows can
+#'     be drawn together. It removes a
 #'     trend along that order rather than counting it as noise, which is why it
 #'     beats treating the sample as simple random: on a frame sorted by a
 #'     variable related to `y`, the simple random formula overstated the
@@ -1551,11 +1553,17 @@ walk_strata_variance <- function(design, data, rows, y, pi_i, domain = NULL,
   m <- tabulate(h, k)
   f <- as.numeric(g$n_g) / as.numeric(g$N_g)
   use <- m >= 2L
+  # A stratum walked at a step of 2 rows or more has pairs that are never
+  # drawn together.
+  lead <- if (any(g$n_g > 0 & g$N_g >= 2 * g$n_g)) {
+    paste0("Systematic sampling within strata has no design-unbiased ",
+           "variance estimator; this is ")
+  } else {
+    "This is "
+  }
   list(variance = sum(((1 - f) * m / (2 * (m - 1)) * ss)[use]),
        method = "successive difference",
-       note = paste0("Systematic sampling within strata has no ",
-                     "design-unbiased variance estimator; this is the sum ",
-                     "over strata of the successive-difference ",
+       note = paste0(lead, "the sum over strata of the successive-difference ",
                      "approximation. It would be understated if a stratum ",
                      "cycled with a period matching its step, or if a ",
                      "smooth trend along the sort order swamped all other ",
@@ -1978,10 +1986,16 @@ ht_variance.drawn_design_systematic <- function(design, data, rows, y, pi_i,
   f <- 1 / k
   v <- (1 - f) * n / (2 * (n - 1)) * sum(diff(u)^2)
   if (r > 0) v <- v + mean(u)^2 * (r / k) * (1 - r / k)
+  # Below a step of 2 rows any two rows can be drawn together, so a
+  # design-unbiased estimator exists there.
+  lead <- if (k >= 2) {
+    "Systematic sampling has no design-unbiased variance estimator; this is "
+  } else {
+    "This is "
+  }
   list(variance = v,
        method = "successive difference",
-       note = paste0("Systematic sampling has no design-unbiased variance ",
-                     "estimator; this is the successive-difference ",
+       note = paste0(lead, "the successive-difference ",
                      "approximation. It would be understated if the frame ",
                      "cycled with a period matching ", period, ", or if a ",
                      "smooth trend along the sort order swamped all other ",

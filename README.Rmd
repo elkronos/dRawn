@@ -119,7 +119,7 @@ survey::svyglm(value ~ site, des)
 | Design | Selects | Size | Variance `method` |
 |---|---|---|---|
 | `design_simple()` | rows uniformly at random | `n` | analytic |
-| `design_stratified()` | a share of each stratum: proportional, equal or Neyman | `n` total | analytic |
+| `design_stratified()` | a share of each stratum: proportional, equal or Neyman, at random or with `within` systematically | `n` total | analytic; successive difference (an approximation) with `within` |
 | `design_systematic()` | every *k*-th row from one or several random starts, or `n` rows at an even step | `interval` or `n` | successive difference (an approximation); analytic with `n_starts` |
 | `design_cluster()` | whole clusters | `n_clusters` | analytic |
 | `design_multistage()` | clusters, at random or in proportion to size, then rows within them | `n_clusters`, `n` | analytic, two-stage; deville (an approximation) for the clusters with `size` |

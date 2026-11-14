@@ -60,19 +60,23 @@ for a seed as reading it line by line.
 A function is called once for each item, and whatever it returns is that
 item, a data frame included, so a function that returns blocks of rows
 gives a sample of whole blocks. With \code{batches = TRUE} the rows are the
-items instead: each call returns a data frame of rows, every batch with
-the same columns in the same order, and \code{\link[=draw]{draw()}} returns \code{n} of those rows
-as one data frame, bound with \code{\link[=rbind]{rbind()}} in the order they arrived. Cutting
-the same rows into batches of other sizes gives the same sample for a
-seed. Between batches it keeps at most \code{max(2 * n, 1024)} rows, some of
-them already dropped from the sample, besides the batch being read.
+items instead: each call returns a data frame of rows, every batch with the
+same columns in the same order, and \code{\link[=draw]{draw()}} returns \code{n} of those rows as
+one data frame, bound with \code{\link[=rbind]{rbind()}} in the order they arrived. \code{\link[=draw]{draw()}}
+compares only the column names. A column whose type differs between
+batches, such as one that \code{\link[=read.csv]{read.csv()}} reads as logical in a batch where it
+is empty, takes the type \code{\link[=rbind]{rbind()}} gives the sampled rows. Cutting the same
+rows into batches of other sizes gives the same sample for a seed. Between
+batches it keeps at most \code{max(2 * n, 1024)} rows, some of them already
+dropped from the sample, besides the batch being read.
 }
 
 \section{What is read}{
 
-A connection that is not open is opened, read to its end and closed, as
-\code{\link[=read.csv]{read.csv()}} does, so it cannot be drawn from twice. A connection that is
-already open is read from where it stands and left open.
+A connection that is not open is opened, read to its end (or to one line
+past a finite \code{max_items}) and closed, as \code{\link[=read.csv]{read.csv()}} does, so it cannot
+be drawn from twice. A connection that is already open is read from where
+it stands and left open.
 
 With a finite \code{max_items}, \code{\link[=draw]{draw()}} reads one item past the cap, because
 only that read tells a stream of exactly \code{max_items} items from a longer
