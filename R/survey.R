@@ -667,8 +667,8 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
     },
     cluster = ,
     multistage = {
-      # Integer codes, not labels: `survey` makes a factor of the ids, which
-      # compares them as text and merges two numbers that print alike.
+      # The ids are integer codes. `survey` makes a factor of the ids, which
+      # compares them as text and would merge two numbers that print alike.
       if (!is.null(design$size)) {
         return(pps_stage_parts(design, units, pop, prefix))
       }

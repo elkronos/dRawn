@@ -221,6 +221,17 @@ test_that("a value outside an argument's choices is refused by name", {
   expect_equal(design_stratified("g", n = 30, allocation = "ney",
                                  allocation_by = "w")$allocation, "neyman")
   expect_equal(ht_total(s, "y", variance = "jack")$method, "jackknife")
+  # NULL gives the default, as match.arg() gave it, for code that passes on
+  # an argument it was not given.
+  expect_equal(design_stratified("g", n = 30, allocation = NULL)$allocation,
+               "proportional")
+  expect_equal(design_multistage("g", n_clusters = 2, n = 4,
+                                 allocation = NULL)$allocation, "equal")
+  expect_equal(design_weighted("w", n = 5, method = NULL)$method,
+               "successive")
+  expect_equal(ht_total(s, "y", variance = NULL)$method, "analytic")
+  expect_equal(ht_mean(s, "y", estimator = NULL)$estimator, "hajek")
+  expect_equal(plan_size(0.1, sd = 1, target = NULL)$target, "mean")
 })
 
 test_that("a printed design says what a NULL default means", {

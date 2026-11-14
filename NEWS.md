@@ -72,10 +72,10 @@
   standard error of about 5% of the exact total. Both now give 0, as the
   analytic estimators did.
 * **`design_weighted()` could give a certain unit a probability a rounding
-  error below 1.** Depending on the scale of the sizes, a unit whose share came to
-  exactly 1 got `1 - 1e-16`, so `.prob == 1` missed it and a census reported
-  a small standard error under a "Deville approximation" note. A share within
-  `1e-9` of 1 is now taken with certainty at exactly 1, in
+  error below 1.** Depending on the scale of the sizes, a unit whose share
+  came to exactly 1 got `1 - 1e-16`, so `.prob == 1` missed it and a census
+  reported a small standard error under a "Deville approximation" note. A
+  share within `1e-9` of 1 is now taken with certainty at exactly 1, in
   `design_weighted()` and `design_spread(size =)`.
 * **A certainty design whose `rest` drew no rows reported an exact total.**
   When a `rest` of random size, such as Poisson sampling with a small `n`,
@@ -137,7 +137,10 @@
   as text. A `design_cluster()` sample holding both got no variance, and two
   rows of the two clusters got the joint probability of rows in one cluster.
   A multistage sample got a Sen-Yates-Grundy variance built on those joint
-  probabilities. Clusters are now compared by integer codes everywhere.
+  probabilities. `design_multistage()` also counted the two as one cluster
+  of twice the size, so their rows got half their inclusion probability and
+  twice their weight, which doubled their part of an estimated total.
+  Clusters are now compared by integer codes everywhere.
 * **`design_multistage()` refused a factor cluster column with unused
   levels.** An unused level counted as a cluster of no rows, so
   `inclusion_prob()`, `sampling_weight()`, `joint_prob()`,
@@ -154,8 +157,8 @@
   it at least once is `(a / A) * (1 - (1 - 1 / N_h)^m)`. In one example, 3
   draws from a cluster of 4 rows gave 0.375 against 0.289. A cluster smaller
   than the per-cluster take was refused as capped at its own size, which it
-  is not with replacement. `draw(weights = TRUE)` refuses with-replacement designs,
-  so no estimate used these figures.
+  is not with replacement. `draw(weights = TRUE)` refuses with-replacement
+  designs, so no estimate used these figures.
 * **A Hajek mean over one primary sampling unit had a standard error of 0.**
   A `by` domain with one sampled row, or with all its sampled rows in one
   cluster, and a Poisson sample of one row got a standard error of 0 and a
@@ -359,12 +362,14 @@
   reason "A variance needs at least two clusters", as a `design_cluster()`
   sample does. The note blamed an unlucky sample for a Sen-Yates-Grundy
   estimate that is negative on every such sample, and a constant `y` got an
-  exact variance of 0.
+  exact variance of 0. A frame of one cluster still gets the variance of a
+  simple random sample within it, since stage one takes every cluster.
 * An `allocation`, `method`, `unit`, `variance`, `estimator`, `target` or
   `type` outside its choices is refused with a message that names the
   argument, the value passed and the choices. The message from `match.arg()`
-  named neither the argument nor the value. A missing cluster label is called
-  a cluster label by `inclusion_prob()` as well as by `draw()`.
+  named neither the argument nor the value. `NULL` gives the default, as it
+  did. A missing cluster label is called a cluster label by
+  `inclusion_prob()` as well as by `draw()`.
 * `ht_total()` and `ht_mean()` stop with the error when something fails
   inside a variance estimator, such as running out of memory. Every error was
   read as the estimator declining, so `variance = "auto"` fell back to the
@@ -481,8 +486,9 @@
   returned `NULL` with a warning.
 * A `by` column named `n`, `variance`, `se`, `ci_lower`, `ci_upper` or
   `method`, or `total` for a total and `mean` for a mean, columns the table
-  of domain estimates uses for its own values, is refused by name. The table's column overwrote it,
-  so `by = "n"` gave domains labelled by their counts.
+  of domain estimates uses for its own values, is refused by name. The
+  table's column overwrote it, so `by = "n"` gave domains labelled by their
+  counts.
 * A `by` table whose columns were selected with `[` or `subset()` prints
   as a plain data frame. It kept its class but lost the attributes its
   printout reads, and `print()` stopped with "argument is of length zero".
@@ -569,8 +575,10 @@
 * Text keys are sorted byte by byte, as in the C locale, whatever the
   session's locale: the order in which strata are drawn and in which they
   break allocation ties, the rows of `by` estimates and of
-  `sample_summary()`, and the walk of a text `order_by`. Factor columns keep
-  their level order. In a locale whose collation differs from C, a seed can
+  `sample_summary()`, and the walk of a text `order_by`. Text read from a
+  file without a declared encoding, as `read.csv()` and `readLines()` give
+  it, is sorted by its bytes in the same way. Factor columns keep their
+  level order. In a locale whose collation differs from C, a seed can
   therefore select different rows than it did in drawn 0.2.0, and a tie can
   go to another stratum. `?design_stratified` gives the tie rule.
 * `by` estimates come out in key order: numbers in sequence (1, 2, 10, not
@@ -1154,9 +1162,10 @@
   columns' levels could form. On 200,000 rows keyed by two columns of 3,000
   values each, the key took 8 seconds where it now takes 0.2, and at 6,000
   values each it ran out of memory.
-* `inclusion_prob()`, `draw(weights = TRUE)` and the estimators of a
-  stratified design take time linear in the number of strata: 0.02 seconds
-  at 40,000 strata, where they took 9.
+* `inclusion_prob()`, `joint_prob()` and `draw(weights = TRUE)` take time
+  linear in the number of strata of a stratified design. At 40,000 strata
+  each took about 9 seconds. `inclusion_prob()` and `joint_prob()` now take
+  under a tenth of a second, and `draw(weights = TRUE)` half a second.
 * `design_cluster()` and `design_multistage()` find the rows of the
   selected clusters in one pass over the frame instead of one pass per
   cluster. Selecting 1,000 clusters from a million rows took 16 seconds and

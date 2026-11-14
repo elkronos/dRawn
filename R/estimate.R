@@ -932,7 +932,7 @@ category_levels <- function(v) {
     lev <- levels(v)
     return(structure(seq_along(lev), levels = lev, class = class(v)))
   }
-  sort(unique(v[!is.na(v)]), method = "radix")
+  key_values(v)
 }
 
 #' Estimates for each level of a factor or character `y`

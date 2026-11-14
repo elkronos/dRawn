@@ -226,7 +226,7 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
   if (!missing(n)) n <- plan_n(n)
   across <- check_columns(across, "across")
   if (is.null(strata)) {
-    if (!missing(allocation)) {
+    if (!missing(allocation) && !is.null(allocation)) {
       stop("`allocation` splits `n` over strata, and `strata` is NULL. Name ",
            "the strata columns in `strata`, or leave `allocation` out.",
            call. = FALSE)
@@ -239,7 +239,7 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
       allocation <- check_stratum_counts(allocation, strata)
       n <- counts_n(if (!missing(n)) n, allocation)
     } else {
-      if (!is.character(allocation)) {
+      if (!is.null(allocation) && !is.character(allocation)) {
         stop("`allocation` must be \"proportional\", \"equal\" or the count ",
              "for each stratum, not ", format_bad(allocation), ".",
              call. = FALSE)

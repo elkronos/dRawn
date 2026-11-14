@@ -185,3 +185,50 @@ test_that("many nested strata are keyed in time linear in the rows", {
   expect_equal(p, rep(0.5, 40000))
   expect_lt(took, 20)
 })
+
+test_that("text of unknown encoding is keyed by its bytes", {
+  # read.csv() and readLines() leave text unmarked unless told the file's
+  # encoding. A radix sort refuses unmarked non-ASCII text, which stopped
+  # every grouped or ordered path. ASCII stand-ins that sort the same way
+  # give the same rows.
+  site <- c("Z\xc3\xbcrich", "Bern", "Gen\xc3\xa8ve", "Basel")
+  Encoding(site) <- "unknown"
+  plain <- c("Zurich", "Bern", "Geneve", "Basel")
+  sizes <- c(7, 11, 9, 13)
+  d <- data.frame(id = 1:40, site = rep(site, times = sizes),
+                  y = (1:40 * 7) %% 23)
+  a <- d
+  a$site <- rep(plain, times = sizes)
+  keyed <- site[c(4, 2, 3, 1)]
+  strat <- design_stratified("site", n = 10)
+  walk <- design_systematic(interval = 4, order_by = "site")
+  run <- function(data) {
+    s <- draw(data, strat, seed = 1, weights = TRUE)
+    cs <- draw(data, design_cluster("site", n_clusters = 2), seed = 1,
+               weights = TRUE)
+    list(levels = levels(drawn:::group_key(data, "site")),
+         strat = s$id,
+         pi = inclusion_prob(data, strat),
+         walk = draw(data, walk, seed = 2)$id,
+         by = ht_total(s, "y", by = "site")$site,
+         by_se = ht_total(s, "y", by = "site")$se,
+         level = ht_mean(s, "site")$level,
+         groups = sample_summary(cs)$by_group$group,
+         se = ht_total(s, "y")$se)
+  }
+  out <- run(d)
+  expect_identical(out$levels, keyed)
+  expect_identical(out$by, keyed)
+  expect_identical(out$level, keyed)
+  ref <- run(a)
+  expect_identical(out$groups, keyed[match(ref$groups, plain[c(4, 2, 3, 1)])])
+  for (part in c("strat", "pi", "walk", "by_se", "se")) {
+    expect_identical(out[[part]], ref[[part]], label = part)
+  }
+  expect_identical(with_other_collation(run(d)), out)
+
+  skip_if_not_installed("survey")
+  s <- draw(d, strat, seed = 1, weights = TRUE)
+  expect_equal(survey::SE(survey::svytotal(~y, as_svydesign(s)))[[1]],
+               out$se)
+})

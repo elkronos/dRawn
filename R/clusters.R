@@ -1,9 +1,9 @@
 # Stage-one cluster selection, shared by design_cluster() and
 # design_multistage().
 #
-# Both designs select clusters the same way, and every later step -- the
-# probabilities, the variance, the degrees of freedom, the hand-off to
-# `survey` -- compares cluster labels. Comparing them as text merges two
+# Both designs select clusters the same way. Every later step compares
+# cluster labels, from the probabilities and the variance to the degrees of
+# freedom and the hand-off to `survey`. Comparing them as text merges two
 # numbers that print alike, such as 0.3 and 0.1 + 0.2, and counting them with
 # table() turns a factor's unused levels into clusters of no rows. Each row's
 # cluster is therefore an integer code, and the codes are built in one place.

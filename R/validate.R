@@ -66,12 +66,13 @@ check_flag <- function(x, arg) {
 #'
 #' The user-facing stand-in for [base::match.arg()], whose message reads
 #' "'arg' should be one of" without naming the argument. `x` left at its
-#' default, the whole of `choices`, gives the first choice, and a unique
-#' abbreviation is completed, as with `match.arg()`.
+#' default, the whole of `choices`, or `NULL` gives the first choice, and a
+#' unique abbreviation is completed, as with `match.arg()`. Code that passes
+#' `NULL` on for an argument it was not given gets the default.
 #'
 #' @noRd
 check_choice <- function(x, choices, arg) {
-  if (identical(x, choices)) return(choices[[1L]])
+  if (is.null(x) || identical(x, choices)) return(choices[[1L]])
   i <- if (is.character(x) && length(x) == 1L && !is.na(x)) {
     pmatch(x, choices)
   } else {
@@ -433,7 +434,7 @@ column_codes <- function(x) {
   if (is.factor(x)) {
     return(list(code = as.integer(x), labels = levels(x)))
   }
-  v <- if (is.object(x) && is.atomic(x)) unclass(x) else x
+  v <- key_text(if (is.object(x) && is.atomic(x)) unclass(x) else x)
   u <- sort(unique(v), method = sort_method(v))
   code <- match(v, u)
   labels <- as.character(x[match(u, v)])
@@ -448,7 +449,44 @@ column_codes <- function(x) {
 #' raw vectors, which have no collation to follow.
 #'
 #' @noRd
-key_order <- function(x) order(x, method = sort_method(x))
+key_order <- function(x) order(key_text(x), method = sort_method(x))
+
+#' The distinct values of a key column in key order
+#'
+#' The values themselves, with their encodings, so they can be matched back
+#' to the column.
+#'
+#' @noRd
+key_values <- function(x) {
+  u <- unique(x[!is.na(x)])
+  u[key_order(u)]
+}
+
+#' Text that a radix sort takes, with the same bytes
+#'
+#' `method = "radix"` refuses a non-ASCII string of unknown encoding, which
+#' is what `read.csv()`, `readLines()` and `data.table::fread()` give unless
+#' told the file's encoding. In the copy returned, such a string is marked
+#' UTF-8 when its bytes are valid UTF-8 and "bytes" otherwise. Its bytes are
+#' unchanged, so text sorts byte by byte, in the same order in a UTF-8
+#' session as in the C locale. `enc2utf8()` is not used because in the C
+#' locale it turns each non-ASCII byte into a `<xx>` escape, which sorts
+#' differently. In the copy, an unmarked string and a UTF-8 string with the
+#' same bytes are one value in any session. Callers take labels from the
+#' original values.
+#'
+#' @noRd
+key_text <- function(x) {
+  if (!is.character(x)) return(x)
+  odd <- which(Encoding(x) == "unknown" &
+                 grepl("[^\001-\177]", x, useBytes = TRUE))
+  if (length(odd)) {
+    v <- x[odd]
+    Encoding(v) <- ifelse(validUTF8(v), "UTF-8", "bytes")
+    x[odd] <- v
+  }
+  x
+}
 
 #' @noRd
 sort_method <- function(x) {

@@ -189,7 +189,7 @@ design_stratified <- function(strata, n,
            "instead.", call. = FALSE)
     }
   } else {
-    if (!is.character(allocation)) {
+    if (!is.null(allocation) && !is.character(allocation)) {
       stop("`allocation` must be \"proportional\", \"equal\", \"neyman\" ",
            "or the count for each stratum, not ", format_bad(allocation), ".",
            call. = FALSE)

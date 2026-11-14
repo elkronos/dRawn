@@ -272,7 +272,8 @@ plan_size <- function(margin, sd = NULL, p = 0.5, N = Inf, level = 0.95,
   deff <- check_pos(plan_deff(deff, target), "deff")
   if (is.null(strata)) {
     given <- c("allocation", "min_per_stratum")[
-      c(!missing(allocation), !missing(min_per_stratum))]
+      c(!missing(allocation) && !is.null(allocation),
+        !missing(min_per_stratum))]
     if (length(given)) {
       warn_drawn(paste0(
         paste0("`", given, "`", collapse = " and "), " ",

@@ -176,6 +176,22 @@ test_that("a sample from one cluster has no variance, and says why", {
   }
 })
 
+test_that("a frame of one cluster gives a simple random sample's variance", {
+  # Stage one takes the only cluster, so the sample is a simple random sample
+  # within it, which the exact estimator measures.
+  d <- data.frame(id = 1:30, cl = "only", y = (1:30 * 7) %% 11 + 40)
+  for (des in list(design_multistage("cl", n_clusters = 1, n = 6),
+                   design_multistage("cl", n_clusters = 1, n = 6,
+                                     allocation = "proportional",
+                                     min_per_cluster = 1))) {
+    s <- draw(d, des, seed = 1, weights = TRUE)
+    r <- ht_total(s, "y", variance = "analytic")
+    expect_equal(r$method, "analytic")
+    expect_equal(r$variance, 30^2 * (1 - 6 / 30) * var(s$y) / 6)
+    expect_false(any(grepl("at least two clusters", r$note)))
+  }
+})
+
 test_that("the jackknife fallback says when it inflates the between-cluster part", {
   d <- data.frame(id = 1:100, cl = rep(sprintf("k%02d", 1:10), each = 10),
                   y = rep(1:10 * 10, each = 10) + 1:100 %% 7)

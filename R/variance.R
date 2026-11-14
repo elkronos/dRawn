@@ -1131,8 +1131,9 @@ two_stage_variance <- function(z, cluster, a, A, sizes) {
 #' N_i` with `m_i` the rows of cluster `i` in the sample. A balanced design
 #' in the `rest` of a certainty design is weighted with its unconditional
 #' probabilities, whose joint probabilities have no closed form, so that
-#' declines. So does a sample from one cluster, and one with a cluster that
-#' gave one row of several, whose variation within cannot be measured.
+#' declines. So does a sample from one cluster of several, and one with a
+#' cluster that gave one row of several, whose variation within cannot be
+#' measured.
 #'
 #' @noRd
 conditional_variance <- function(design, cl, rows, y, pi_i) {
@@ -1142,7 +1143,7 @@ conditional_variance <- function(design, cl, rows, y, pi_i) {
                 note = "Some sampled rows have no cluster label."))
   }
   k <- length(unique(code))
-  if (k < 2L && !all(is_certain(pi_i))) {
+  if (k < 2L && design$n_clusters < cl$total && !all(is_certain(pi_i))) {
     return(list(variance = NA_real_, note = paste0(
       "A variance needs at least two clusters; this sample has ", k, ".")))
   }
@@ -1611,8 +1612,9 @@ ht_variance.drawn_design_cluster <- function(design, data, rows, y, pi_i,
 #' A sample from a single cluster has no variation between clusters to
 #' measure. Sen-Yates-Grundy came out negative on every such sample, or 0 for
 #' a constant `y`, so this declines first, in the words `design_cluster()`
-#' uses. A sample whose every row is certain goes on to the exact estimator,
-#' which gives 0.
+#' uses. It does not decline when the frame holds that one cluster only, as
+#' stage one then takes every cluster. A sample whose every row is certain
+#' goes on to the exact estimator, which gives 0.
 #'
 #' With one row per selected cluster, pairs inside a cluster can never be drawn
 #' together, so the exact estimator has no way to see the within-cluster
@@ -1632,7 +1634,9 @@ ht_variance.drawn_design_multistage <- function(design, data, rows, y, pi_i,
   }
   cl <- from_context(ctx, "clusters", count_clusters(design, data))
   n_cl <- length(unique(cl$code[rows]))
-  if (n_cl < 2L && !all(is_certain(pi_i))) {
+  # A frame of one cluster makes stage one a census, and the sample a simple
+  # random one within it, which the exact estimator measures.
+  if (n_cl < 2L && design$n_clusters < cl$total && !all(is_certain(pi_i))) {
     return(list(variance = NA_real_, note = paste0(
       "A variance needs at least two clusters; this sample has ", n_cl, ".")))
   }
