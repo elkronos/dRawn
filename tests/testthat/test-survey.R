@@ -944,6 +944,20 @@ test_that("replicate weights give the jackknife's standard error", {
                sort(unique(round((1 - n_h / N_h) * (n_h - 1) / n_h, 12))))
 })
 
+test_that("survey's jackknife of balanced clusters keeps a stage-one fpc", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_cluster("cl", n_clusters = 6, balanced = TRUE),
+            seed = 6, weights = TRUE)
+  jk <- ht_total(s, "spend", variance = "jackknife")
+  expect_equal(rep_se(s), jk$se, tolerance = 1e-8)
+  # as.svrepdesign() applies 1 - 6 / 40 for the clusters and warns that it
+  # dropped the second stage's correction.
+  rep <- suppressWarnings(survey::as.svrepdesign(as_svydesign(s)))
+  se <- as.numeric(survey::SE(survey::svytotal(~spend, rep)))
+  expect_equal(se^2, (1 - 6 / 40) * jk$se^2, tolerance = 1e-8)
+})
+
 test_that("rows above a certainty threshold keep their weight in every replicate", {
   skip_if_not_installed("survey")
   d <- svy_pop()
@@ -1004,6 +1018,32 @@ test_that("systematic samples get successive differences along the walk", {
   by_hand <- 0.9 * n / (2 * (n - 1)) * sum(diff(u)^2) +
     mean(u)^2 * 0.3 * 0.7
   expect_equal(rep_se(s)^2, by_hand, tolerance = 1e-8)
+})
+
+test_that("successive differences filled in blocks keep the variance", {
+  skip_if_not_installed("survey")
+  i <- 1:3301
+  d <- data.frame(id = i, x = (i * 0.618034) %% 1)
+  d$spend <- 100 + 400 * d$x + (i * 37) %% 23
+  s <- draw(d, design_systematic(interval = 3, order_by = "x"), seed = 2,
+            weights = TRUE)
+  # About 1,100 rows and 2,048 replicates, filled in three blocks of columns.
+  rw <- replicate_weights(s)
+  expect_equal(ncol(rw), 2048L)
+  expect_gt(nrow(rw) * ncol(rw), 2 * 2^20)
+  expect_equal(rep_se(s, rw = rw), ht_total(s, "spend")$se, tolerance = 1e-8)
+  expect_true(all(rw > 0))
+
+  # The rows of a Sylvester Hadamard matrix are orthogonal, and those past
+  # the first sum to 0.
+  h <- hadamard_entries(1:64, 1:64)
+  expect_equal(h %*% t(h), diag(64, 64))
+  expect_equal(rowSums(h)[-1], rep(0, 63))
+  # Entry (i, j) is -1 to the number of bits i - 1 and j - 1 share, past
+  # 16 bits too: 2 and 1 share none, and 69999 shares one with 1, one with 2
+  # and 9 with itself.
+  expect_equal(hadamard_entries(c(3, 70000), c(2, 70000)),
+               matrix(c(1, -1, -1, -1), 2))
 })
 
 test_that("several systematic starts get one replicate each, empty ones too", {
@@ -1113,6 +1153,16 @@ test_that("frame_totals() totals the rows the design could reach", {
   expect_equal(frame_totals(old, ~ site), frame_totals(s, ~ site))
 })
 
+test_that("frame_totals() reads values defined where the formula was written", {
+  d <- data.frame(id = 1:40, w = 1 + (1:40 * 7) %% 13)
+  s <- draw(d, design_simple(n = 8), seed = 1, weights = TRUE)
+  cut_at <- 6
+  expect_equal(frame_totals(s, ~ I(w > cut_at)),
+               c(`(Intercept)` = 40, `I(w > cut_at)TRUE` = sum(d$w > 6)))
+  over <- function(k) frame_totals(s, ~ I(w > k), table = TRUE)
+  expect_equal(c(over(9)), c(`FALSE` = sum(d$w <= 9), `TRUE` = sum(d$w > 9)))
+})
+
 test_that("frame_totals() counts a region's rows only", {
   skip_if_not_installed("sf")
   g <- expand.grid(lon = seq(-14.5, 14.5, by = 1),
@@ -1158,6 +1208,8 @@ test_that("frame_totals() refuses what it cannot total", {
                "`w` and `z` are missing in 2 of the 30 frame rows",
                fixed = TRUE)
   expect_error(frame_totals(s, ~ nope), "`formula` uses `nope`, which is not")
+  # A function of the name is a misspelt column, not a value.
+  expect_error(frame_totals(s, ~ w + df), "`formula` uses `df`, which is not")
   expect_error(frame_totals(s, id ~ w), "not `id ~ w`, which has a left-hand",
                fixed = TRUE)
   expect_error(frame_totals(s, "w"), "not a character.", fixed = TRUE)

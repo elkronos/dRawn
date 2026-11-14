@@ -1920,8 +1920,12 @@ deff.default <- function(object, ...) {
   }
   # survey::deff() dispatches from where it is called. Called here, it would
   # find this method before its own default and call it again, without end;
-  # called from the base environment, it finds only its own methods.
-  do.call(survey::deff, c(list(object), list(...)), envir = baseenv())
+  # called from an environment over the base one, it finds only its own
+  # methods. `object` is passed by name, so a warning from `survey` shows
+  # `object` in its call rather than the whole object deparsed.
+  env <- new.env(parent = baseenv())
+  env$object <- object
+  do.call(survey::deff, c(list(quote(object)), list(...)), envir = env)
 }
 
 #' Shared argument handling for the estimators

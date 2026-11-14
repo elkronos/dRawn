@@ -154,23 +154,29 @@
 #' @section Replicate weights and calibration:
 #' `survey::as.svrepdesign()` turns the design returned here into one with
 #' replicate weights. For samples from [design_simple()],
-#' [design_stratified()] without `within`, [design_cluster()],
-#' [design_temporal()] and [design_spatial()], its jackknife gives the
-#' standard errors of `ht_total(variance = "jackknife")`. It stops with an
-#' error on the designs handed over with Brewer's approximation or as
-#' Poisson sampling, those of [design_weighted()], [design_spread()] and
+#' [design_stratified()] without `within`, [design_cluster()] without
+#' `balanced`, [design_temporal()] and [design_spatial()], its jackknife
+#' gives the standard errors of `ht_total(variance = "jackknife")`. It stops
+#' with an error on the designs handed over with Brewer's approximation or
+#' as Poisson sampling, those of [design_weighted()], [design_spread()] and
 #' [design_multistage()] with `size`, and [design_certainty()] over them,
 #' because `survey` builds no replicates for its own
 #' probability-proportional-to-size and Poisson designs. That is a
 #' limitation of `survey`. For a systematic sample, alone or within strata,
-#' it builds a jackknife that ignores the order of the walk.
+#' it builds a jackknife that ignores the order of the walk. For
+#' [design_cluster()] with `balanced = TRUE` it keeps the finite population
+#' correction of the first stage, which `ht_total(variance = "jackknife")`
+#' leaves out, and warns that it dropped the corrections after the first
+#' stage. Its variance is then the jackknife's times `1 - n / N`, for `n`
+#' of the `N` clusters selected.
+#'
 #' [replicate_weights()] builds replicate weights from the sample itself,
 #' for [survey::svrepdesign()]: the jackknife of
-#' `ht_total(variance = "jackknife")`, for the designs handed over with
-#' Brewer's approximation too, and successive differences along the walk
-#' for systematic samples. Poisson sampling, which the jackknife
-#' understates, has none, and `survey` estimates it from the design
-#' returned here.
+#' `ht_total(variance = "jackknife")`, for balanced clusters and the designs
+#' handed over with Brewer's approximation too, and successive differences
+#' along the walk for systematic samples. Poisson sampling, which the
+#' jackknife understates, has none, and `survey` estimates it from the
+#' design returned here.
 #'
 #' [frame_totals()] gives the population totals that `survey::calibrate()`
 #' and `survey::postStratify()` take, from the frame stored with the
@@ -277,8 +283,8 @@ as_svydesign <- function(sample, ...) {
 #'
 #' Builds replicate weights from a drawn sample for [survey::svrepdesign()],
 #' from the design the sample was drawn with. Each replicate is the
-#' sample's `.weight` column times a factor, and the replicates give a total
-#' the variance [ht_total()] gives it:
+#' sample's `.weight` column times a factor, and the variance of a total
+#' over the replicates is that of one of [ht_total()]'s estimators:
 #'
 #' * For most designs, the delete-a-unit jackknife of
 #'   `ht_total(variance = "jackknife")`. Each replicate deletes one primary
@@ -289,21 +295,27 @@ as_svydesign <- function(sample, ...) {
 #'   `(m - 1) / m` for a stratum of `m` sampled units, times its finite
 #'   population correction.
 #'   Units taken with certainty keep their weight in every replicate, as
-#'   the jackknife holds them fixed.
+#'   the jackknife holds them fixed. Where the default of [ht_total()] is
+#'   another estimator, such as Deville's approximation for
+#'   [design_weighted()] with `method = "systematic"`, the local mean
+#'   approximation for [design_spread()] or the two-stage variance for
+#'   [design_multistage()] and balanced [design_cluster()], the replicates
+#'   give the jackknife's variance, not that default.
 #' * For [design_systematic()] with one start, and [design_stratified()]
 #'   with `within`, successive-difference replicates in the order the
 #'   design walked, whose variance is the successive-difference
-#'   approximation of [ht_total()], with its term for a random sample size.
-#'   Each pair of neighbours in the walk shares a row of a Hadamard matrix,
-#'   which raises one of the two and lowers the other. The first and last
-#'   rows of a walk are not paired with each other: the circular form of
-#'   successive-difference replication pairs them, which adds the squared
-#'   difference between the two ends of the sort order. On one frame sorted
-#'   on a size measure related to `y`, that more than doubled the variance
-#'   in each of 200 samples.
+#'   approximation [ht_total()] gives by default, with its term for a
+#'   random sample size. Each pair of neighbours in the walk shares a row of
+#'   a Hadamard matrix, which raises one of the two and lowers the other.
+#'   The first and last rows of a walk are not paired with each other: the
+#'   circular form of successive-difference replication pairs them, which
+#'   adds the squared difference between the two ends of the sort order. On
+#'   a frame of 240 rows sorted on a size measure related to `y`, at an
+#'   interval of 8, that more than doubled the variance in each of the 8
+#'   possible samples.
 #' * For [design_systematic()] with `n_starts` of 2 or more, one replicate
 #'   per start, each deleting the rows its start drew. The variance is the
-#'   random group variance [ht_total()] gives.
+#'   random group variance [ht_total()] gives by default.
 #'
 #' Rows above the threshold of [design_certainty()] keep their weight in
 #' every replicate, and the replicates for the rows below it are those of
@@ -320,6 +332,15 @@ as_svydesign <- function(sample, ...) {
 #' `.weight` after the draw, such as trimming, is carried into each one
 #' unchanged. One that depends on which rows responded is more accurately
 #' made again within each replicate.
+#'
+#' The matrix of weights takes `8 * n * R` bytes for `n` sampled rows and
+#' `R` replicates, and building it about twice that. The jackknife has a
+#' replicate for each sampled unit, and successive differences have a
+#' power of 2 above the number of rows, so the size grows with the square
+#' of the sample. Past about 1 GB, `replicate_weights()` refuses: from
+#' about 11,200 rows for a jackknife over rows, and about 8,200 for
+#' successive differences. Such a sample can still be estimated with
+#' [ht_total()], or handed to `survey` with [as_svydesign()].
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`.
 #' @param type The form of the jackknife. `"JKn"`, the default, deletes
@@ -437,12 +458,12 @@ check_replicate_base <- function(sample) {
 #' inclusion probability above 0 when the sample was drawn: the rows inside
 #' the region of [design_spatial()] or the window of [design_temporal()],
 #' those [design_reservoir()] read before `max_items`, and not the rows
-#' `na_rm` dropped or a weight of 0 left out. Those are the rows the
-#' sample's weights stand for. For a sample weighted conditional on the
-#' clusters selected (see "Design weights" in [draw()]), the rows of the
-#' clusters left out count too, since another selection could have drawn
-#' them. A missing value of a variable in `formula` in any of those rows
-#' is refused, since its total is unknown.
+#' `na_rm` dropped. Those are the rows the sample's weights stand for. For
+#' a sample weighted conditional on the clusters selected (see "Design
+#' weights" in [draw()]), the rows of the clusters left out count too,
+#' since another selection could have drawn them. A missing value of a
+#' variable in `formula` in any of those rows is refused, since its total
+#' is unknown.
 #'
 #' A value of a column in `formula` that no sampled row has cannot be
 #' calibrated to. `survey::calibrate()` stops on such a factor level, and
@@ -452,7 +473,10 @@ check_replicate_base <- function(sample) {
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`.
 #' @param formula A one-sided formula of frame columns, such as
-#'   `~ w + site`, as [survey::calibrate()] takes it.
+#'   `~ w + site`, as [survey::calibrate()] takes it. A name in it that is
+#'   not a column of the frame, such as `cutoff` in `~ I(w > cutoff)`, is
+#'   read from the environment of `formula`, as [stats::model.frame()]
+#'   reads it.
 #' @param table `FALSE`, the default, for the column totals of the model
 #'   matrix of `formula`, which [survey::calibrate()] takes. `TRUE` for the
 #'   count of rows in each cell of the variables in `formula`, as a table,
@@ -515,12 +539,23 @@ frame_totals <- function(sample, formula, table = FALSE) {
          "compacting, or rebuild the sample from the full frame with ",
          "as_drawn().", call. = FALSE)
   }
+  # A name that is not a column, such as `cutoff` in `I(w > cutoff)`, is
+  # read from where the formula was written, as model.frame() reads it. A
+  # function of that name is a misspelt column, not a value.
+  env <- environment(formula)
+  defined <- vapply(unknown, function(v) {
+    !is.null(env) && exists(v, envir = env) &&
+      !is.function(get(v, envir = env))
+  }, logical(1))
+  unknown <- unknown[!defined]
   if (length(unknown)) {
+    many <- length(unknown) > 1L
     stop("`formula` uses ", quote_names(unknown), ", which ",
-         if (length(unknown) > 1L) "are not columns" else "is not a column",
-         " of the frame `sample` was drawn from. Use columns of that frame; ",
-         "the totals come from the copy stored with the sample.",
-         call. = FALSE)
+         if (many) "are not columns" else "is not a column",
+         " of the frame `sample` was drawn from, or ",
+         if (many) "values" else "a value", " defined where `formula` was ",
+         "written. Use columns of that frame; the totals come from the copy ",
+         "stored with the sample.", call. = FALSE)
   }
   # A sample saved by drawn 0.2.0 records no probabilities, so they are
   # worked out again from the design.

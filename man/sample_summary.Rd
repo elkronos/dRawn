@@ -43,9 +43,10 @@ of 1.}
 \item{\code{certain_by}}{Those rows by why they are certain, a named count:
 \code{threshold}, above the threshold of \code{\link[=design_certainty]{design_certainty()}}; \code{size},
 put at probability 1 by a size measure, in \code{\link[=design_weighted]{design_weighted()}} or
-in \code{\link[=design_spread]{design_spread()}} or \code{\link[=design_multistage]{design_multistage()}} with \code{size}; and
-\code{whole}, in a stratum, interval or cluster taken whole, or a
-census.}
+in \code{\link[=design_spread]{design_spread()}} or \code{\link[=design_multistage]{design_multistage()}} with \code{size}, which
+includes the rows of a cluster put at 1 by its size and then taken
+whole; and \code{whole}, in a stratum, interval or cluster taken whole,
+or a census, with a size measure or without.}
 \item{\code{conditional}}{The number of clusters selected, when the
 weights are conditional on them, as for \code{\link[=design_cluster]{design_cluster()}} with
 \code{balanced = TRUE} (see "Design weights" in \code{\link[=draw]{draw()}}); otherwise

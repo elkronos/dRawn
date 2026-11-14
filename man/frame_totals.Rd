@@ -10,7 +10,10 @@ frame_totals(sample, formula, table = FALSE)
 \item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}.}
 
 \item{formula}{A one-sided formula of frame columns, such as
-\code{~ w + site}, as \code{\link[survey:calibrate]{survey::calibrate()}} takes it.}
+\code{~ w + site}, as \code{\link[survey:calibrate]{survey::calibrate()}} takes it. A name in it that is
+not a column of the frame, such as \code{cutoff} in \code{~ I(w > cutoff)}, is
+read from the environment of \code{formula}, as \code{\link[stats:model.frame]{stats::model.frame()}}
+reads it.}
 
 \item{table}{\code{FALSE}, the default, for the column totals of the model
 matrix of \code{formula}, which \code{\link[survey:calibrate]{survey::calibrate()}} takes. \code{TRUE} for the
@@ -34,12 +37,12 @@ The totals run over the rows the design could have drawn, those with an
 inclusion probability above 0 when the sample was drawn: the rows inside
 the region of \code{\link[=design_spatial]{design_spatial()}} or the window of \code{\link[=design_temporal]{design_temporal()}},
 those \code{\link[=design_reservoir]{design_reservoir()}} read before \code{max_items}, and not the rows
-\code{na_rm} dropped or a weight of 0 left out. Those are the rows the
-sample's weights stand for. For a sample weighted conditional on the
-clusters selected (see "Design weights" in \code{\link[=draw]{draw()}}), the rows of the
-clusters left out count too, since another selection could have drawn
-them. A missing value of a variable in \code{formula} in any of those rows
-is refused, since its total is unknown.
+\code{na_rm} dropped. Those are the rows the sample's weights stand for. For
+a sample weighted conditional on the clusters selected (see "Design
+weights" in \code{\link[=draw]{draw()}}), the rows of the clusters left out count too,
+since another selection could have drawn them. A missing value of a
+variable in \code{formula} in any of those rows is refused, since its total
+is unknown.
 
 A value of a column in \code{formula} that no sampled row has cannot be
 calibrated to. \code{survey::calibrate()} stops on such a factor level, and

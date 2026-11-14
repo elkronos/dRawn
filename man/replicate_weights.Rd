@@ -31,8 +31,8 @@ estimate.
 \description{
 Builds replicate weights from a drawn sample for \code{\link[survey:svrepdesign]{survey::svrepdesign()}},
 from the design the sample was drawn with. Each replicate is the
-sample's \code{.weight} column times a factor, and the replicates give a total
-the variance \code{\link[=ht_total]{ht_total()}} gives it:
+sample's \code{.weight} column times a factor, and the variance of a total
+over the replicates is that of one of \code{\link[=ht_total]{ht_total()}}'s estimators:
 }
 \details{
 \itemize{
@@ -45,21 +45,27 @@ strata of \code{\link[=design_weighted]{design_weighted()}} and \code{\link[=des
 \code{(m - 1) / m} for a stratum of \code{m} sampled units, times its finite
 population correction.
 Units taken with certainty keep their weight in every replicate, as
-the jackknife holds them fixed.
+the jackknife holds them fixed. Where the default of \code{\link[=ht_total]{ht_total()}} is
+another estimator, such as Deville's approximation for
+\code{\link[=design_weighted]{design_weighted()}} with \code{method = "systematic"}, the local mean
+approximation for \code{\link[=design_spread]{design_spread()}} or the two-stage variance for
+\code{\link[=design_multistage]{design_multistage()}} and balanced \code{\link[=design_cluster]{design_cluster()}}, the replicates
+give the jackknife's variance, not that default.
 \item For \code{\link[=design_systematic]{design_systematic()}} with one start, and \code{\link[=design_stratified]{design_stratified()}}
 with \code{within}, successive-difference replicates in the order the
 design walked, whose variance is the successive-difference
-approximation of \code{\link[=ht_total]{ht_total()}}, with its term for a random sample size.
-Each pair of neighbours in the walk shares a row of a Hadamard matrix,
-which raises one of the two and lowers the other. The first and last
-rows of a walk are not paired with each other: the circular form of
-successive-difference replication pairs them, which adds the squared
-difference between the two ends of the sort order. On one frame sorted
-on a size measure related to \code{y}, that more than doubled the variance
-in each of 200 samples.
+approximation \code{\link[=ht_total]{ht_total()}} gives by default, with its term for a
+random sample size. Each pair of neighbours in the walk shares a row of
+a Hadamard matrix, which raises one of the two and lowers the other.
+The first and last rows of a walk are not paired with each other: the
+circular form of successive-difference replication pairs them, which
+adds the squared difference between the two ends of the sort order. On
+a frame of 240 rows sorted on a size measure related to \code{y}, at an
+interval of 8, that more than doubled the variance in each of the 8
+possible samples.
 \item For \code{\link[=design_systematic]{design_systematic()}} with \code{n_starts} of 2 or more, one replicate
 per start, each deleting the rows its start drew. The variance is the
-random group variance \code{\link[=ht_total]{ht_total()}} gives.
+random group variance \code{\link[=ht_total]{ht_total()}} gives by default.
 }
 
 Rows above the threshold of \code{\link[=design_certainty]{design_certainty()}} keep their weight in
@@ -77,6 +83,15 @@ Every replicate is a multiple of \code{.weight}, so an adjustment written into
 \code{.weight} after the draw, such as trimming, is carried into each one
 unchanged. One that depends on which rows responded is more accurately
 made again within each replicate.
+
+The matrix of weights takes \code{8 * n * R} bytes for \code{n} sampled rows and
+\code{R} replicates, and building it about twice that. The jackknife has a
+replicate for each sampled unit, and successive differences have a
+power of 2 above the number of rows, so the size grows with the square
+of the sample. Past about 1 GB, \code{replicate_weights()} refuses: from
+about 11,200 rows for a jackknife over rows, and about 8,200 for
+successive differences. Such a sample can still be estimated with
+\code{\link[=ht_total]{ht_total()}}, or handed to \code{survey} with \code{\link[=as_svydesign]{as_svydesign()}}.
 }
 \examples{
 \dontshow{if (requireNamespace("survey", quietly = TRUE)) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}

@@ -856,6 +856,36 @@ test_that("sample_summary says why rows were taken with certainty", {
   expect_false(any(grepl("certain rows", capture.output(print(x)))))
 })
 
+test_that("sample_summary counts a group a size design took whole as whole", {
+  d <- data.frame(id = 1:30, w = c(50, 1 + (2:30) %% 7),
+                  site = rep(c("a", "b", "c"), each = 10),
+                  cl = rep(1:6, each = 5), cs = rep(c(40, 2:6), each = 5))
+  # Stratum c is allocated all 10 of its rows; the row of weight 50 in a is
+  # certain by size.
+  s <- draw(d, design_weighted("w", n = 15, method = "systematic",
+                               strata = "site",
+                               allocation = c(a = 3, b = 2, c = 10)),
+            seed = 1, weights = TRUE)
+  expect_equal(sample_summary(s)$certain_by,
+               c(threshold = 0L, size = 1L, whole = 10L))
+  # A census of the rows a size design could reach, two of them dropped
+  d$w[c(25, 26)] <- NA
+  s <- draw(d, design_weighted("w", n = 28, method = "systematic",
+                               na_rm = TRUE), seed = 1, weights = TRUE)
+  expect_equal(sample_summary(s)$certain_by,
+               c(threshold = 0L, size = 0L, whole = 28L))
+  # Every cluster selected and taken whole, against a cluster put at 1 by
+  # size and then taken whole
+  s <- draw(d, design_multistage("cl", n_clusters = 6, n = 30, size = "cs"),
+            seed = 1, weights = TRUE)
+  expect_equal(sample_summary(s)$certain_by,
+               c(threshold = 0L, size = 0L, whole = 30L))
+  s <- draw(d, design_multistage("cl", n_clusters = 2, n = 10, size = "cs"),
+            seed = 1, weights = TRUE)
+  expect_equal(sample_summary(s)$certain_by,
+               c(threshold = 0L, size = 5L, whole = 0L))
+})
+
 test_that("sample_summary gives the expected size of a sample of random size", {
   pop <- data.frame(id = 1:240)
   s <- draw(pop, design_systematic(interval = 7), seed = 1, weights = TRUE)

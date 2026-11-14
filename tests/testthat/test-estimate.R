@@ -146,6 +146,9 @@ test_that("deff is available from both estimators and NA without a variance", {
   # Anything else goes to survey's deff(), which has no design effect for it.
   skip_if_not_installed("survey")
   expect_warning(expect_null(deff(1:10)), "no design effect")
+  # The warning's call names the object rather than printing it.
+  w <- tryCatch(deff(c(a = 1.5, b = 2)), warning = function(w) w)
+  expect_identical(conditionCall(w)[[2]], quote(object))
 })
 
 test_that("the jackknife deletes clusters, not rows", {

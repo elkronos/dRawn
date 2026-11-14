@@ -2686,6 +2686,9 @@ strata_walk_factors <- function(design, data, rows, ctx = NULL) {
 #' a walk by `sqrt(e) / (2 * m)` for the random size. Every factor stays
 #' above 0, because `c` is below 2 and `e` at most `1 / 4`.
 #'
+#' The factors are filled in blocks of about a million entries, so the
+#' memory beyond the result stays a few blocks whatever the sample size.
+#'
 #' @noRd
 successive_factors <- function(walks, n) {
   pairs <- vapply(walks, function(w) {
@@ -2694,41 +2697,57 @@ successive_factors <- function(walks, n) {
   sized <- vapply(walks, function(w) w$e > 0, logical(1))
   R <- 2^ceiling(log2(sum(pairs) + sum(sized) + 1))
   check_replicate_size(n, R)
+  # Row 1 of the matrix, all ones, is left unused. Each walk takes the
+  # next rows for its pairs, then one for its random size.
+  before <- 1L + cumsum(c(0L, (pairs + sized)[-length(walks)]))
   f <- matrix(1, n, R)
-  used <- 1L
-  for (i in seq_along(walks)) {
-    w <- walks[[i]]
-    if (pairs[i] > 0L) {
-      a <- hadamard_rows(used + seq_len(pairs[i]), R)
-      used <- used + pairs[i]
-      f[w$at, ] <- f[w$at, ] + sqrt(w$c / 8) * (rbind(a, 0) - rbind(0, a))
-    }
-    if (sized[i]) {
-      used <- used + 1L
-      m <- length(w$at)
-      f[w$at, ] <- f[w$at, ] + outer(rep(sqrt(w$e) / (2 * m), m),
-                                     hadamard_rows(used, R)[1L, ])
+  width <- max(1L, 2^20 %/% max(n, 1L))
+  for (from in seq(1L, R, by = width)) {
+    cols <- from:min(R, from + width - 1L)
+    for (i in seq_along(walks)) {
+      w <- walks[[i]]
+      if (pairs[i] > 0L) {
+        a <- hadamard_entries(before[i] + seq_len(pairs[i]), cols)
+        d <- rbind(a, 0)
+        d[-1L, ] <- d[-1L, ] - a
+        f[w$at, cols] <- f[w$at, cols] + sqrt(w$c / 8) * d
+      }
+      if (sized[i]) {
+        m <- length(w$at)
+        h <- hadamard_entries(before[i] + pairs[i] + 1L, cols)
+        f[w$at, cols] <- f[w$at, cols] + outer(rep(sqrt(w$e) / (2 * m), m),
+                                               h[1L, ])
+      }
     }
   }
   list(factors = f, scale = 4 / R, rscales = rep(1, R), type = "other")
 }
 
-#' Rows of a Sylvester Hadamard matrix
+#' Entries of a Sylvester Hadamard matrix
 #'
-#' The entry in row `i` and column `j` of the matrix of order `R`, a power
-#' of 2, is `-1` to the number of bits set in both `i - 1` and `j - 1`.
-#' Only the rows asked for are built.
+#' The entry in row `i` and column `j` is `-1` to the number of bits set in
+#' both `i - 1` and `j - 1`. Only the rows `k` and columns `cols` asked
+#' for are built, as a matrix, with the parity of each 16 bits looked up.
 #'
 #' @noRd
-hadamard_rows <- function(k, R) {
-  x <- as.vector(outer(as.integer(k) - 1L, seq_len(R) - 1L, bitwAnd))
-  odd <- integer(length(x))
-  while (any(x > 0L)) {
-    odd <- bitwXor(odd, bitwAnd(x, 1L))
-    x <- bitwShiftR(x, 1L)
-  }
+hadamard_entries <- function(k, cols) {
+  x <- outer(as.integer(k) - 1L, as.integer(cols) - 1L, bitwAnd)
+  odd <- bitwXor(bit_parity[bitwAnd(x, 65535L) + 1L],
+                 bit_parity[bitwShiftR(x, 16L) + 1L])
   matrix(1 - 2 * odd, nrow = length(k))
 }
+
+#' The parity of the bits of 0 to 65535
+#'
+#' Each doubling appends the complement of the parities so far, since
+#' setting one more bit flips the parity.
+#'
+#' @noRd
+bit_parity <- local({
+  p <- 0L
+  for (i in seq_len(16L)) p <- c(p, 1L - p)
+  p
+})
 
 #' Refuse replicate weights too large to hold in memory
 #' @noRd

@@ -1000,27 +1000,35 @@
   possible selection.
 * `replicate_weights()` builds replicate weights from a sample for
   `survey::svrepdesign()`, with the `type`, `scale` and `rscales` to pass
-  with them, so that the standard error of a total is the one
-  `ht_total()` gives. For most designs they are the jackknife of
+  with them. For most designs they are the jackknife of
   `ht_total(variance = "jackknife")`, deleting units within strata with
   each stratum's finite population correction and holding units taken
-  with certainty fixed. A systematic sample, alone or within strata, gets
-  successive-difference replicates in walk order, without the pair the
-  circular form adds between the two ends of the walk, and a replicated
-  one gets a replicate per start. `survey::as.svrepdesign()` stops on the
-  probability-proportional-to-size and Poisson designs `as_svydesign()`
-  hands over, which is a limitation of `survey` that `?as_svydesign` now
-  states, and for a systematic sample builds a jackknife that ignores the
-  walk. Poisson sampling, which the jackknife understates, is refused.
+  with certainty fixed; where the default of `ht_total()` is another
+  estimator, such as Deville's approximation for systematic PPS, they
+  give the jackknife's standard error, not the default's. A systematic
+  sample, alone or within strata, gets successive-difference replicates in
+  walk order, without the pair the circular form adds between the two
+  ends of the walk, and a replicated one gets a replicate per start; both
+  give the standard error `ht_total()` gives by default.
+  `survey::as.svrepdesign()` stops on the probability-proportional-to-size
+  and Poisson designs `as_svydesign()` hands over, which is a limitation
+  of `survey` that `?as_svydesign` now states, for a systematic sample
+  builds a jackknife that ignores the walk, and for balanced clusters
+  keeps a first-stage correction the jackknife of `ht_total()` leaves
+  out. Poisson sampling, which the jackknife understates, is refused, and
+  so are replicate weights that would take more than about 1 GB.
 * `frame_totals()` gives the population totals `survey::calibrate()` takes,
   the column totals of `model.matrix(formula)` over the rows of the stored
   frame that the design could reach, or with `table = TRUE` the counts
   `survey::postStratify()` and `survey::rake()` take. Rows outside a
   region or time window, past a reservoir's `max_items` or dropped by
   `na_rm` are left out, and a missing value in the rows counted is
-  refused. Calibrating a design from `as_svydesign()` needed the totals
-  built by hand. The estimation article has an example; calibration
-  itself stays with `survey`.
+  refused. A name in `formula` that is not a column of the frame, such as
+  `cutoff` in `~ I(w > cutoff)`, is read from where the formula was
+  written.
+  Calibrating a design from `as_svydesign()` needed the totals built by
+  hand. The estimation article has an example; calibration itself stays
+  with `survey`.
 
 * The results of `ht_total()` and `ht_mean()`, `by` tables and contrasts
   have `coef()`, `vcov()`, `confint()` and `as.data.frame()` methods, and

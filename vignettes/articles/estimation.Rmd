@@ -379,8 +379,8 @@ own PPS and Poisson designs, and for a systematic sample it builds a
 jackknife that ignores the order of the walk. `replicate_weights()` builds
 them from the sample instead: the jackknife above for most designs, and
 successive differences along the walk for a systematic sample, with no
-pair joining the two ends of the walk. The standard error of a total is
-then the one `ht_total()` gives:
+pair joining the two ends of the walk. For a systematic sample the
+standard error of a total is then the one `ht_total()` gives by default:
 
 ```{r replicates, eval = requireNamespace("survey", quietly = TRUE)}
 sys <- draw(frame, design_systematic(interval = 10, order_by = "size"),

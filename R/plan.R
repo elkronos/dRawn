@@ -927,9 +927,10 @@ deff_cluster <- function(m, icc) {
 #'     \item{`certain_by`}{Those rows by why they are certain, a named count:
 #'       `threshold`, above the threshold of [design_certainty()]; `size`,
 #'       put at probability 1 by a size measure, in [design_weighted()] or
-#'       in [design_spread()] or [design_multistage()] with `size`; and
-#'       `whole`, in a stratum, interval or cluster taken whole, or a
-#'       census.}
+#'       in [design_spread()] or [design_multistage()] with `size`, which
+#'       includes the rows of a cluster put at 1 by its size and then taken
+#'       whole; and `whole`, in a stratum, interval or cluster taken whole,
+#'       or a census, with a size measure or without.}
 #'     \item{`conditional`}{The number of clusters selected, when the
 #'       weights are conditional on them, as for [design_cluster()] with
 #'       `balanced = TRUE` (see "Design weights" in [draw()]); otherwise
@@ -1001,7 +1002,7 @@ sample_summary <- function(sample) {
       sum(w, na.rm = TRUE)^2 / sum(w^2, na.rm = TRUE)
     } else NA_real_,
     n_certain = sum(certain),
-    certain_by = certain_counts(design, pop, state$rows, certain),
+    certain_by = certain_counts(design, pop, state$rows, certain, pi_all),
     conditional = if (is.null(state$selection)) {
       NA_integer_
     } else {
@@ -1122,10 +1123,14 @@ summary_groups <- function(design, pop, rows) {
 #' `certain` marks the sampled rows at probability 1 and `rows` gives their
 #' frame rows. Rows above a certainty design's threshold count as
 #' `threshold`; the others are put there by the design below it, a size
-#' measure (`size`) or a group taken whole (`whole`).
+#' measure (`size`) or a group taken whole (`whole`). Under a design with a
+#' size measure, a certain row counts as `whole` when its group was taken
+#' whole (see `groups_taken_whole()`), since the size measure then made no
+#' difference. `pi_all`, the frame's probabilities, says which rows the
+#' design could reach; `NULL` counts every row.
 #'
 #' @noRd
-certain_counts <- function(design, pop, rows, certain) {
+certain_counts <- function(design, pop, rows, certain, pi_all = NULL) {
   out <- c(threshold = 0L, size = 0L, whole = 0L)
   while (inherits(design, "drawn_design_certainty")) {
     sp <- certainty_parts(design, pop)
@@ -1134,15 +1139,44 @@ certain_counts <- function(design, pop, rows, certain) {
     pos <- match(rows, sp$keep[sp$rest])
     certain <- certain[!is.na(pos)]
     rows <- pos[!is.na(pos)]
+    if (!is.null(pi_all)) pi_all <- pi_all[sp$keep[sp$rest]]
     pop <- sp$rest_data
     design <- design$rest
   }
   by_size <- inherits(design, "drawn_design_weighted") ||
     (inherits(design, c("drawn_design_spread", "drawn_design_multistage")) &&
        !is.null(design$size))
-  src <- if (by_size) "size" else "whole"
-  out[[src]] <- out[[src]] + sum(certain)
+  whole <- if (by_size) groups_taken_whole(design, pop, rows, pi_all) else TRUE
+  out[["whole"]] <- out[["whole"]] + sum(certain & whole)
+  out[["size"]] <- out[["size"]] + sum(certain & !whole)
   out
+}
+
+#' Whether each sampled row's group was taken whole, under a size measure
+#'
+#' A multistage design takes its clusters whole when it selects every
+#' cluster it could reach. A weighted or spread design takes a stratum
+#' whole, or the frame when it has no strata, when the sample holds every
+#' row of it the design could reach.
+#'
+#' @noRd
+groups_taken_whole <- function(design, pop, rows, pi_all) {
+  reach <- if (is.null(pi_all)) rep(TRUE, nrow(pop)) else reachable(pi_all)
+  if (inherits(design, "drawn_design_multistage")) {
+    code <- count_clusters(design, pop)$code
+    all_drawn <- length(unique(code[rows])) ==
+      length(unique(code[reach & !is.na(code)]))
+    return(rep(all_drawn, length(rows)))
+  }
+  code <- if (is.null(design$strata)) {
+    rep(1L, nrow(pop))
+  } else {
+    as.integer(group_key(pop, design$strata))
+  }
+  k <- max(c(0L, code), na.rm = TRUE)
+  got <- tabulate(code[rows], k)
+  have <- tabulate(code[reach], k)
+  (got == have)[code[rows]]
 }
 
 #' @export
