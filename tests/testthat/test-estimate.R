@@ -380,6 +380,11 @@ test_that("a `.prob` changed or removed after the draw is refused", {
   zero <- s
   zero$.prob[2] <- 0
   expect_error(ht_mean(zero, "y"), "in 1 row(s): 0.", fixed = TRUE)
+  many <- s
+  many$.prob[1:7] <- -(1:7)
+  expect_error(ht_total(many, "y"),
+               "in 7 row(s): -1, -2, -3, -4, -5 and 2 more. `.prob` was",
+               fixed = TRUE)
   chr <- s
   chr$.prob <- as.character(chr$.prob)
   expect_error(ht_total(chr, "y"), "character `.prob` column", fixed = TRUE)

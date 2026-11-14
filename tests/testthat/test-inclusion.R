@@ -350,6 +350,8 @@ test_that("the probability paths refuse what draw() refuses, with its message", 
     d$lat <- seq(-5, 5, length.out = 24)
     none$lon <- NA_real_
     none$lat <- d$lat
+    gap <- d
+    gap$lat[3] <- NA
     box <- function(lo, hi) {
       sf::st_sfc(sf::st_polygon(list(cbind(c(lo, hi, hi, lo, lo),
                                            c(lo, lo, hi, hi, lo)))),
@@ -362,7 +364,9 @@ test_that("the probability paths refuse what draw() refuses, with its message", 
            "No rows fall inside `region`."),
       list(none, design_spatial(c("lon", "lat"), box(-2, 2), n = 1,
                                 na_rm = TRUE),
-           "Every row has missing coordinates in `lon` or `lat`.")
+           "Every row has missing coordinates in `lon` or `lat`."),
+      list(gap, design_spatial(c("lon", "lat"), box(-2, 2), n = 1),
+           "1 row(s) have missing coordinates in `lon` or `lat`")
     ))
   }
   grDevices::pdf(NULL)
@@ -421,6 +425,9 @@ test_that("joint_prob refuses rows that are not whole numbers", {
   expect_error(joint_prob(d, design_simple(n = 5), rows = 1.7,
                           simulate = TRUE, R = 10),
                "not 1.7", fixed = TRUE)
+  # Past five values the list counts the rest, so it ends in one full stop.
+  expect_error(joint_prob(d, design_simple(n = 5), rows = 1:8 + 0.5),
+               "not 1.5, 2.5, 3.5, 4.5, 5.5 and 3 more. Pass", fixed = TRUE)
 })
 
 # ---- where a refusal points ---------------------------------------------------

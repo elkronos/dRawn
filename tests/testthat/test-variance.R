@@ -575,18 +575,22 @@ test_that("a multistage sample of 5,000 rows gets its two-stage variance", {
 
 test_that("Sen-Yates-Grundy declines a sample too large to hold its matrices", {
   # A design with no closed form of its own reaches the pairwise sum. It
-  # declines from the projected size, before allocating anything.
+  # declines from the projected size, before allocating anything. The joint
+  # probabilities of two rows are asked for, to learn whether the design has
+  # any, and never those of the whole sample.
   pop <- data.frame(id = 1:10000, y = (1:10000) %% 97)
   rows <- seq(1L, 10000L, by = 2L)
   fake <- structure(list(), class = c("drawn_design_nope", "drawn_design"))
-  local_mocked_bindings(joint_inclusion = function(...) {
-    stop("the joint matrix was built")
+  local_mocked_bindings(joint_inclusion = function(design, data, rows) {
+    if (length(rows) > 2L) stop("the joint matrix was built")
+    diag(0.5, length(rows))
   })
   err <- tryCatch(drawn:::ht_variance(fake, pop, rows, pop$y[rows],
                                       rep(0.5, 5000)),
                   error = function(e) e)
   expect_s3_class(err, "drawn_declined")
-  expect_match(conditionMessage(err), "1.6 GB of memory for its 5000 x 5000")
+  expect_match(conditionMessage(err),
+               "1.6 GB of memory for its 5,000 x 5,000 matrices", fixed = TRUE)
 
   r <- drawn:::ht_variance_dispatch(fake, pop[rows, ], pop, rows,
                                     pop$y[rows], rep(0.5, 5000), "auto")
@@ -598,6 +602,22 @@ test_that("Sen-Yates-Grundy declines a sample too large to hold its matrices", {
                                     pop$y[rows], rep(0.5, 5000), "analytic")
   expect_true(is.na(a$variance))
   expect_match(a$note, "variance = \"auto\"", fixed = TRUE)
+})
+
+test_that("a design with no joint probabilities says so at any sample size", {
+  # Past the size limit the estimator declined for memory, which hid that
+  # the design has no joint probabilities to fill the matrices with.
+  pop <- data.frame(id = 1:10000, y = (1:10000) %% 97)
+  fake <- structure(list(), class = c("drawn_design_nope", "drawn_design"))
+  for (rows in list(1:100, seq(1L, 10000L, by = 2L))) {
+    err <- tryCatch(drawn:::ht_variance(fake, pop, rows, pop$y[rows],
+                                        rep(0.5, length(rows))),
+                    error = function(e) e)
+    expect_s3_class(err, "drawn_declined")
+    expect_match(conditionMessage(err),
+                 "has no closed-form joint inclusion probability")
+    expect_no_match(conditionMessage(err), "GB")
+  }
 })
 
 test_that("a jackknife that gives no figure reports method 'none'", {

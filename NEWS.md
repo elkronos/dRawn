@@ -1188,7 +1188,8 @@
 * The analytic variance of simple random, reservoir, spatial, stratified,
   temporal and equal-take multistage samples, alone or as the `rest` of
   `design_certainty()`, is computed from the variance within each stratum,
-  interval or cluster, in time and memory that grow with the number of
+  interval or cluster, and for a multistage sample the variance between the
+  estimated cluster totals, in time and memory that grow with the number of
   sampled rows. The Sen-Yates-Grundy sum over every pair of sampled rows,
   which gives the same figures, held several matrices with a row and a
   column per sampled row: a stratified sample of 4,000 rows took 4.8 seconds
@@ -1206,13 +1207,13 @@
   2.4 GB and 6.7 seconds, and now takes 0.2 GB and 0.4 seconds.
 * `by` estimates work out the strata, clusters, systematic order, certainty
   split, spread neighbours and joint probabilities once per call rather than
-  once per domain, and the variances of simple random, reservoir, spatial,
-  stratified and temporal samples, alone or as the `rest` of
+  once per domain, and the analytic variances of simple random, reservoir,
+  spatial, stratified and temporal samples, alone or as the `rest` of
   `design_certainty()`, come from one pass over all the domains. 200 domains
-  of a stratified sample of 1,000 from 100,000 rows took 3.4 seconds and now
-  take 0.1; 200 domains of a spread sample of 1,000 from 20,000 rows took 16
-  seconds and now take 0.3. The standard errors agree with the old ones to
-  rounding error.
+  of a stratified sample of 1,000 from 100,000 rows took about 50 seconds
+  and now take 0.1; 200 domains of a spread sample of 1,000 from 20,000 rows
+  took 16 seconds and now take 0.3. The standard errors agree with the old
+  ones to rounding error.
 * `inclusion_prob()`, `draw(weights = TRUE)` and the estimators of a
   `design_temporal()` sample count the rows of every interval in one pass,
   where they went over the rows once per interval. 200,000 rows in hourly

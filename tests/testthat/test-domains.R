@@ -539,6 +539,33 @@ test_that("200 domains of 2,000 sampled rows take well under 2 seconds", {
                tolerance = 1e-10)
 })
 
+test_that("by works out a stratified allocation as often as one estimate does", {
+  # Every domain worked the allocation out again over the frame, so 50
+  # domains took 51 allocations where the whole sample took 2.
+  N <- 5000
+  pop <- data.frame(id = seq_len(N), st = sprintf("s%d", seq_len(N) %% 5),
+                    dom = sprintf("d%02d", (seq_len(N) * 7919) %% 50))
+  pop$y <- 100 + (pop$id * 37) %% 101
+  s <- draw(pop, design_stratified("st", n = 500), seed = 1, weights = TRUE)
+  calls <- 0L
+  allocate <- stratum_allocation
+  local_mocked_bindings(stratum_allocation = function(...) {
+    calls <<- calls + 1L
+    allocate(...)
+  })
+  count <- function(expr) {
+    calls <<- 0L
+    force(expr)
+    calls
+  }
+  whole <- count(ht_total(s, "y"))
+  expect_gt(whole, 0L)
+  expect_equal(count(ht_total(s, "y", by = "dom")), whole)
+  expect_equal(count(ht_mean(s, "y", by = "dom")), whole)
+  expect_equal(count(ht_total(s, "y", by = "dom", variance = "jackknife")),
+               count(ht_total(s, "y", variance = "jackknife")))
+})
+
 test_that("a contrast of domain totals is the total of the weighted variable", {
   d <- contrast_pop()
   w <- c(a = 1, b = -1, d = 0.5)
@@ -650,6 +677,15 @@ test_that("contrasts name domains as by does, and odd weights are refused", {
                paste("`contrast` names `z`, which is not a domain of `by`.",
                      "Name the weights after the domains, which are `a`,",
                      "`b`, `c`, `d`."), fixed = TRUE)
+  # Past five domains the list ends with a count of the rest. It ended with
+  # "..." and then the full stop, four dots in all.
+  cl <- sort(unique(s$cl), method = "radix")
+  msg <- tryCatch(ht_total(s, "y", by = "cl", contrast = c(z = 1)),
+                  error = conditionMessage)
+  expect_match(msg, paste0("which are ", paste0("`", cl[1:5], "`",
+                                                 collapse = ", "),
+                           " and ", length(cl) - 5L, " more.$"))
+  expect_no_match(msg, "..", fixed = TRUE)
   expect_error(ht_total(s, "y", by = "empty", contrast = c(a = 1, never = -1)),
                "`contrast` names `never`, which has no sampled row",
                fixed = TRUE)

@@ -27,10 +27,11 @@ simulation costs".}
 \value{
 A numeric vector with one element per row of \code{data}.
 
-Rows the design can never select — outside the region, outside the time
-window, past \code{max_items}, or dropped under \code{na_rm = TRUE} — get \code{0} from
-\code{inclusion_prob()} and \code{NA} from \code{sampling_weight()}, since no finite
-number of population rows is represented by a row that cannot be drawn.
+A row the design can never select gets \code{0} from \code{inclusion_prob()} and
+\code{NA} from \code{sampling_weight()}, since no finite number of population rows
+is represented by a row that cannot be drawn. Such a row lies outside
+the region or the time window, comes past \code{max_items}, or was dropped
+under \code{na_rm = TRUE}.
 \code{\link[=sample_summary]{sample_summary()}} counts them. A weight of 0 is not one of these. The
 designs that select in proportion to size refuse it, so drop such rows
 from \code{data} first.

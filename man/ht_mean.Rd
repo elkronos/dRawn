@@ -143,10 +143,11 @@ barely moves, and dividing it by the known \code{N} beats dividing by an
 estimate.
 
 One caveat on \code{"ht"}. It is unbiased for the frame mean \emph{provided every row
-could have been selected}. Rows with inclusion probability 0 — outside a time
-window, outside a region, past \code{max_items}, dropped under \code{na_rm = TRUE} —
-sit inside the \code{N} it divides by but can never enter the numerator, so the
-estimate is biased low by exactly their share of the frame.
+could have been selected}. Rows with inclusion probability 0, such as rows
+outside a time window or a region, past \code{max_items} or dropped under
+\code{na_rm = TRUE}, sit inside the \code{N} it divides by but can never enter the
+numerator, so the estimate is biased low by exactly their share of the
+frame.
 \code{\link[=sample_summary]{sample_summary()}} reports how many such rows there are.
 The Hajek mean is unaffected, because it estimates the mean of the part of
 the frame the design can actually reach.

@@ -74,10 +74,11 @@
 #' estimate.
 #'
 #' One caveat on `"ht"`. It is unbiased for the frame mean *provided every row
-#' could have been selected*. Rows with inclusion probability 0 — outside a time
-#' window, outside a region, past `max_items`, dropped under `na_rm = TRUE` —
-#' sit inside the `N` it divides by but can never enter the numerator, so the
-#' estimate is biased low by exactly their share of the frame.
+#' could have been selected*. Rows with inclusion probability 0, such as rows
+#' outside a time window or a region, past `max_items` or dropped under
+#' `na_rm = TRUE`, sit inside the `N` it divides by but can never enter the
+#' numerator, so the estimate is biased low by exactly their share of the
+#' frame.
 #' [sample_summary()] reports how many such rows there are.
 #' The Hajek mean is unaffected, because it estimates the mean of the part of
 #' the frame the design can actually reach.
@@ -1667,8 +1668,7 @@ contrast_weights <- function(contrast, dom) {
     stop("`contrast` names ", ticks(miss), ", which ",
          if (several) "are not domains" else "is not a domain", " of `by`. ",
          "Name the weights after the domains, which are ",
-         ticks(utils::head(shown, 5L)),
-         if (length(shown) > 5L) ", ..." else "", ".", call. = FALSE)
+         ticks(utils::head(shown, 5L)), more_text(shown), ".", call. = FALSE)
   }
   if (all(contrast == 0)) {
     stop("`contrast` gives every domain a weight of 0. Give at least one ",

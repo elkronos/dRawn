@@ -358,9 +358,11 @@ warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}
 
 The strata, clusters and other pieces the variance reads from the frame
 are worked out once for all the domains. For simple random, reservoir,
-spatial, stratified and temporal samples every domain's variance comes
-from one pass over the sample, in time that grows with the number of
-sampled rows rather than with rows times domains.
+spatial, stratified and temporal samples the analytic variances of all
+the domains come from one pass over the sample, in time that grows with
+the number of sampled rows rather than with rows times domains. A domain
+with units in a stratum or interval of one sampled row, and every domain
+under \code{variance = "jackknife"}, is estimated on its own.
 }
 
 \section{Contrasts}{

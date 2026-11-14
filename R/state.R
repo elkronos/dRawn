@@ -85,12 +85,21 @@ stop_not_drawn <- function(reason = NULL, arg = "sample") {
   stop("`", arg, "` ", reason, call. = FALSE)
 }
 
-#' Up to five values, for a message
+#' Up to five values for a message, and how many more
 #' @noRd
 format_rows <- function(x) {
   x <- sort(unique(x), na.last = TRUE)
-  paste0(paste(utils::head(x, 5L), collapse = ", "),
-         if (length(x) > 5L) ", ..." else "")
+  paste0(paste(utils::head(x, 5L), collapse = ", "), more_text(x))
+}
+
+#' " and k more" for the values of `x` past the first `shown`, or ""
+#'
+#' Counting the rest, rather than ending on "...", leaves the full stop that
+#' follows in a message on its own.
+#'
+#' @noRd
+more_text <- function(x, shown = 5L) {
+  if (length(x) > shown) paste0(" and ", length(x) - shown, " more") else ""
 }
 
 #' The design, frame and frame rows behind a weighted sample
@@ -324,7 +333,7 @@ check_prob <- function(sample, expected = NULL, arg = "sample") {
     stop_not_drawn(paste0(
       "has `.prob` values that are not probabilities in (0, 1] in ",
       sum(bad), " row(s): ", paste(utils::head(vals, 5L), collapse = ", "),
-      if (length(vals) > 5L) ", ...", ". `.prob` was changed after draw().",
+      more_text(vals), ". `.prob` was changed after draw().",
       fix), arg)
   }
   if (!is.null(expected)) {
