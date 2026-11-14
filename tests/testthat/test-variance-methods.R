@@ -416,6 +416,40 @@ test_that("one unit below certainty gives no variance, not a jackknife figure", 
   expect_match(jk$note, "has 1 besides the 3 taken with certainty")
 })
 
+test_that("the jackknife's notes count every unit it held fixed", {
+  # A one-cluster sample has nothing taken with certainty, so advice to draw
+  # more units below certainty does not apply to it.
+  d <- data.frame(cl = rep(letters[1:6], each = 5), y = 1:30)
+  s <- draw(d, design_cluster("cl", n_clusters = 1), seed = 1, weights = TRUE)
+  for (v in c("auto", "jackknife")) {
+    r <- ht_total(s, "y", variance = v)
+    expect_true(is.na(r$variance))
+    expect_match(r$note, "this sample has 1.", fixed = TRUE)
+    expect_false(grepl("certainty", r$note))
+  }
+
+  # Two rows above the threshold, and two more that a systematic PPS `rest`
+  # took with certainty. The note counted only the second two.
+  pop <- data.frame(v = c(1000, 900, 300, 280, 1 + (1:36 %% 5)))
+  pop$y <- 2 * pop$v + 2 * cos(3 * seq_len(nrow(pop)))
+  des <- design_certainty("v", 500, design_weighted("v", n = 6,
+                                                    method = "systematic"))
+  s <- draw(pop, des, seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), 4L)
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_match(jk$note, paste0("the 2 rows at or above the threshold and ",
+                               "the 2 unit(s) `rest` took with certainty ",
+                               "add no variance"), fixed = TRUE)
+
+  s <- draw(pop, design_certainty("v", 250, design_simple(n = 1)), seed = 1,
+            weights = TRUE)
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_true(is.na(jk$variance))
+  expect_match(jk$note, paste0("has 1 besides the 4 rows at or above the ",
+                               "threshold. Draw more units below certainty."),
+               fixed = TRUE)
+})
+
 test_that("a stratum taken whole adds nothing to the jackknife", {
   pop <- data.frame(g = c(rep("all", 5), rep("big", 60)),
                     y = c(1000 * (1:5), 1:60))

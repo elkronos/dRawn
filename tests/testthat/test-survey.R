@@ -497,6 +497,54 @@ test_that("a census is handed to survey with a variance of 0", {
   }
 })
 
+test_that("clusters taken whole are a stratum of their own", {
+  skip_if_not_installed("survey")
+  # With every cluster selected, a cluster whose rows were all drawn is in
+  # every sample. ht_total() leaves it out of the degrees of freedom and the
+  # jackknife holds it fixed, while `survey` counted it as one more unit and,
+  # in one stage, gave it a share of the variance between clusters.
+  cl_pop <- function(sizes) {
+    d <- data.frame(cl = rep(letters[seq_along(sizes)], times = sizes))
+    d$y <- 50 + (seq_len(nrow(d)) * 3) %% 17 + 10 * match(d$cl, letters)
+    d$g <- rep(c("u", "v", "w"), length.out = nrow(d))
+    d$v <- 1
+    d
+  }
+  with_big <- function(d) {
+    rbind(d, data.frame(cl = "z", y = 900, g = "u", v = 100))
+  }
+  cases <- list(
+    two_stage = list(cl_pop(c(5, 20, 20)),
+                     design_multistage("cl", n_clusters = 3, n = 15)),
+    two_whole = list(cl_pop(c(5, 5, 20, 20)),
+                     design_multistage("cl", n_clusters = 4, n = 20)),
+    balanced = list(cl_pop(c(4, 20, 20)),
+                    design_cluster("cl", n_clusters = 3, balanced = TRUE)),
+    one_stage = list(cl_pop(c(1, 20, 20)),
+                     design_multistage("cl", n_clusters = 3, n = 3)),
+    in_rest = list(with_big(cl_pop(c(5, 20, 20))),
+                   design_certainty("v", 50, design_multistage(
+                     "cl", n_clusters = 3, n = 15)))
+  )
+  for (nm in names(cases)) {
+    s <- draw(cases[[nm]][[1]], cases[[nm]][[2]], seed = 3, weights = TRUE)
+    expect_true(any(s$.prob == 1 & s$cl != "z"), label = nm)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "y")
+    # Two clusters below certainty, one stratum
+    expect_equal(ours$df, 1, label = nm)
+    expect_equal(survey::degf(sv), ours$df, label = nm)
+    expect_equal(as.numeric(survey::SE(survey::svytotal(~y, sv))), ours$se,
+                 tolerance = 1e-8, label = nm)
+    expect_equal(as.numeric(survey::SE(survey::svymean(~y, sv))),
+                 ht_mean(s, "y")$se, tolerance = 1e-8, label = nm)
+    by_theirs <- survey::svyby(~y, ~g, sv, survey::svytotal)
+    expect_equal(ht_total(s, "y", by = "g")$se,
+                 as.numeric(survey::SE(by_theirs)), tolerance = 1e-8,
+                 label = nm)
+  }
+})
+
 test_that("an empty sample is refused before it reaches survey", {
   skip_if_not_installed("survey")
   pop <- dominant_svy()

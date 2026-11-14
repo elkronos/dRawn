@@ -88,10 +88,11 @@
 #' Rows taken with certainty are in every possible sample and add nothing to
 #' the variance. That covers rows above a [design_certainty()] threshold, rows
 #' whose size puts them past certainty in [design_weighted()] or
-#' [design_spread()], strata taken whole and a census. Every estimator leaves
+#' [design_spread()], strata taken whole, clusters taken whole by a two-stage
+#' design that selects every cluster, and a census. Every estimator leaves
 #' them out. The jackknife holds them fixed instead of deleting them, and its
 #' finite population correction counts only the other units. A sample made of
-#' nothing else reports a variance of 0, with a note that the total is exact.
+#' nothing else has a variance of 0 under the design's own estimator.
 #'
 #' The analytic estimator declines — returning `NA` with the reason in `note`
 #' — rather than understate. Only a decline sends `variance = "auto"` to the
@@ -2003,10 +2004,25 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
                      } else "",
                      if (lay$corrected) ", with a finite population correction"
                      else "",
-                     if (lay$n_fixed > 0L) {
-                       paste0("; the ", lay$n_fixed, " taken with certainty ",
-                              "add no variance and were held fixed")
+                     if (lay$n_fixed + lay$n_above > 0L) {
+                       paste0("; ", held_fixed(lay$n_fixed, lay$n_above),
+                              " add no variance and were held fixed")
                      }, "."))
+}
+
+#' The units the jackknife held fixed, in words
+#'
+#' `n_fixed` counts the units the design took with certainty, and `n_above`
+#' the rows above a certainty design's threshold, which are counted apart
+#' because the units of `rest` can be clusters.
+#'
+#' @noRd
+held_fixed <- function(n_fixed, n_above = 0L) {
+  if (n_above == 0L) return(paste0("the ", n_fixed, " taken with certainty"))
+  above <- paste0("the ", n_above, if (n_above == 1L) " row" else " rows",
+                  " at or above the threshold")
+  if (n_fixed == 0L) return(above)
+  paste0(above, " and the ", n_fixed, " unit(s) `rest` took with certainty")
 }
 
 #' What the jackknife deletes, and from which strata
@@ -2018,8 +2034,8 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
 #' per stratum holding a unit that is not fixed: the positions in the sample
 #' of its free rows (`rows`), the unit of each (`psu`), the number of units
 #' (`m`) and the stratum's finite population correction (`fpc`). `n_psu`,
-#' `n_strata`, `n_fixed` and `corrected` are what the note on the result
-#' reports.
+#' `n_strata`, `n_fixed`, `n_above` and `corrected` are what the note on
+#' the result reports.
 #'
 #' For a certainty design the rows at or above the threshold are in every
 #' sample, so the layout is `rest`'s, over the rows below the threshold,
@@ -2027,10 +2043,12 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
 #' frame's copy of the sampled rows, which holds the `above` column. Rows
 #' that `rest` itself takes with certainty go along and are held fixed
 #' there, so its finite population correction counts them correctly.
+#' `n_above` counts the rows at or above the threshold, so the note names
+#' every unit held fixed.
 #'
 #' @noRd
 jackknife_layout <- function(design, units, pop, pi_i, domain = NULL,
-                             ctx = NULL) {
+                             ctx = NULL, n_above = 0L) {
   refusal <- jackknife_refusal(design)
   if (!is.null(refusal)) return(list(note = refusal))
   if (inherits(design, "drawn_design_certainty")) {
@@ -2045,7 +2063,8 @@ jackknife_layout <- function(design, units, pop, pi_i, domain = NULL,
     }
     lay <- jackknife_layout(design$rest, units[below, , drop = FALSE],
                             sp$rest_data, pi_i[below], rest_domain(domain, sp),
-                            sub_context(ctx, "rest"))
+                            sub_context(ctx, "rest"),
+                            n_above = n_above + sum(!below))
     if (!is.null(lay$groups)) {
       at <- which(below)
       lay$groups <- lapply(lay$groups, function(g) {
@@ -2073,15 +2092,15 @@ jackknife_layout <- function(design, units, pop, pi_i, domain = NULL,
   m <- vapply(groups, function(g) g$m, integer(1))
   out <- list(certain = FALSE, groups = groups, n_psu = sum(m),
               n_strata = length(st$levels), n_fixed = n_fixed,
-              corrected = any(st$fpc < 1))
+              n_above = n_above, corrected = any(st$fpc < 1))
 
   if (out$n_strata == 1L && out$n_psu < 2L) {
     out$note <- paste0("The jackknife needs at least two primary sampling ",
                        "units; this sample has ", out$n_psu,
-                       if (n_fixed > 0L) {
-                         paste0(" besides the ", n_fixed, " taken with ",
-                                "certainty")
-                       }, ". Draw more units below certainty.")
+                       if (n_fixed + n_above > 0L) {
+                         paste0(" besides ", held_fixed(n_fixed, n_above),
+                                ". Draw more units below certainty")
+                       }, ".")
     return(out)
   }
   # A stratum with one unit cannot be deleted from, unless it was sampled

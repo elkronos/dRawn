@@ -56,13 +56,16 @@ domain estimates against \code{survey::svyby()} and degrees of freedom against
 \itemize{
 \item \strong{Systematic PPS.} Neither package has its joint probabilities. This one
 uses Deville's approximation and \code{survey} uses Brewer's. In simulations
-on skewed frames the standard errors of totals agreed within about 1
-percent, and usually within 0.3 percent. Those of means differed more,
-typically by 1 to 4 percent and by up to 7 percent at a sampling fraction
-of one half. On a frame whose units below certainty had probabilities
-from 0.05 to 0.95, with about 17 of them in each sample, totals differed
-by 2 percent typically and by up to 8 percent. The degrees of freedom
-agree. With \code{strata}, each stratum is handed over the same way.
+on frames of 100 to 300 rows with gamma and lognormal sizes, the
+standard errors of totals usually agreed within 0.5 percent, and within
+3 percent in every sample. Those of means differed more, and more as the
+sampling fraction grew: typically by under 2 percent at a fraction of a
+tenth or a fifth, 2 to 4 percent at a third and 3 to 7 percent at a
+half, where single samples differed by up to 12 percent. On a frame
+whose units below certainty had probabilities from 0.05 to 0.95, with
+about 17 of them in each sample, totals differed by 2 percent typically
+and by up to 8 percent. The degrees of freedom agree. With \code{strata},
+each stratum is handed over the same way.
 \code{\link[=design_multistage]{design_multistage()}} with \code{size} meets the same two approximations at
 the first stage, while the variance within the selected clusters is the
 same in both packages. Where the clusters below certainty had
@@ -98,17 +101,19 @@ when \code{n_starts * interval} exceeds the rows walked, is refused, because
 
 Units taken with certainty are in every sample and add nothing to the
 variance: the rows above a \code{\link[=design_certainty]{design_certainty()}} threshold, strata and
-intervals taken whole, and the units \code{\link[=design_weighted]{design_weighted()}} and
-\code{\link[=design_spread]{design_spread()}} with \code{size} put at probability 1. Each group of them goes
-to \code{survey} as one primary sampling unit in a stratum of its own, with an
-\code{fpc} of 1, so \code{survey} gives them no variance and \code{survey::degf()} leaves
-them out of the degrees of freedom, as \code{\link[=ht_total]{ht_total()}} does. For the PPS
-designs this also keeps them out of Brewer's approximation, which left
-among the other units inflated \code{survey}'s standard error, by a factor of 23
-on a frame with four dominant units. Beside a \code{rest} of clusters, or of
-the replicates of several systematic starts, the certainty rows form one
-more primary sampling unit, and in a two-stage \code{rest} that unit is taken
-whole at the second stage too.
+intervals taken whole, the units \code{\link[=design_weighted]{design_weighted()}} and
+\code{\link[=design_spread]{design_spread()}} with \code{size} put at probability 1, and the clusters
+\code{\link[=design_multistage]{design_multistage()}} and \code{\link[=design_cluster]{design_cluster()}} with \code{balanced = TRUE} take
+whole when they select every cluster. Each group of them goes to \code{survey}
+as one primary sampling unit in a stratum of its own, with an \code{fpc} of 1,
+so \code{survey} gives them no variance and \code{survey::degf()} leaves them out
+of the degrees of freedom, as \code{\link[=ht_total]{ht_total()}} does. For the PPS designs this
+also keeps them out of Brewer's approximation, which left among the other
+units inflated \code{survey}'s standard error, by a factor of 23 on a frame
+with four dominant units. Beside a \code{rest} of clusters, or of the
+replicates of several systematic starts, the certainty rows form one more
+primary sampling unit. In two stages, such a unit is taken whole at the
+second stage too.
 
 A sample in which every row was taken with certainty, a census, goes to
 \code{survey} as \code{ids = ~1} with \code{fpc} the number of rows. Both packages then

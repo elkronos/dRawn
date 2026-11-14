@@ -62,8 +62,9 @@
   `variance = "auto"` fell back to it when one sampled row was below
   certainty. `design_spread(size =)` with dominant sizes averaged 1,270 times
   the true variance. Both estimators now hold certain units fixed, and the
-  jackknife's finite population correction counts only the other units. With
-  one unit below certainty the variance is reported as missing instead.
+  jackknife's finite population correction counts only the other units. Its
+  note says how many units it held fixed. With one unit below certainty the
+  variance is reported as missing instead.
 * **A census got a nonzero jackknife or local-mean standard error.**
   `variance = "jackknife"` on a sample of every row or every cluster applied
   no finite population correction, giving 114 for a six-cluster census in one
@@ -86,8 +87,9 @@
 * **Units taken with certainty counted as degrees of freedom.** The t
   intervals of `ht_total()` and `ht_mean()` counted every sampled unit,
   including the ones `design_weighted()` and `design_spread(size =)` take
-  with certainty, strata and `design_temporal()` intervals taken whole, and
-  such units inside a certainty design's `rest`. With eight certain units
+  with certainty, strata and `design_temporal()` intervals taken whole,
+  clusters taken whole by a two-stage design that selects every cluster,
+  and such units inside a certainty design's `rest`. With eight certain units
   among ten, systematic PPS reported 9 degrees of freedom where the same
   selection built with `design_certainty()` had 1, and its interval covered
   79%; a temporal design whose sparse days were taken whole covered 83%.
@@ -100,7 +102,7 @@
   `rest`, `survey` still centred and scaled Brewer's approximation over the
   certain units, which put its standard error at 23 times `ht_total()`'s on
   a frame with four dominant units. They now go to `survey` in a stratum of
-  their own, taken whole, and the two standard errors agreed within 0.02%
+  their own, taken whole, and the two standard errors agreed within 0.03%
   there.
 * **A blank stratum or cluster value broke stratified and multistage
   designs.** An empty string, such as a blank field read from a file, was
@@ -1218,9 +1220,12 @@
 * Units taken with certainty go to `survey` as one primary sampling unit
   per stratum with an `fpc` of 1, through a new `.psu` id column, so
   `survey::degf()` gives the same degrees of freedom as `ht_total()` for
-  certainty designs, strata and intervals taken whole, and PPS samples with
-  certain units, and `survey::svyciprop()` gives the same interval as
-  `ht_mean()`. `survey` had counted each certain row as a unit.
+  certainty designs, strata and intervals taken whole, PPS samples with
+  certain units, and the clusters `design_multistage()` and
+  `design_cluster(balanced = TRUE)` take whole when they select every
+  cluster, and `survey::svyciprop()` gives the same interval as
+  `ht_mean()`. `survey` had counted each certain row as a unit, and each
+  cluster taken whole as one more.
 * A census, a sample whose every `.prob` is 1, goes to `survey` as
   `ids = ~1` with `fpc` the number of rows. Under systematic PPS, alone or
   as a certainty design's `rest`, Poisson sampling and
@@ -1230,9 +1235,10 @@
   `rest` drew none of the rows below the threshold, which `survey` would
   have reported as exact.
 * `?as_svydesign`, the estimation article and `cran-comments.md` no longer
-  say that `survey` agrees with systematic PPS within 0.2%. Standard errors
-  of totals usually agree within 0.3% and within about 1%; those of means
-  differ by up to 7% at a sampling fraction of one half.
+  say that `survey` agrees with systematic PPS within 0.2%. In simulations on
+  skewed frames, standard errors of totals agreed within 0.5% in most samples
+  and within 3% in all; those of means differed more as the sampling
+  fraction grew, typically by 3 to 7% at one half and by up to 12%.
 * `as_svydesign()` labels strata built from several columns as `a . b`.
   The labels held a carriage return, which broke a CSV export of the design
   variables. Where two labels would read alike, the strata are numbered

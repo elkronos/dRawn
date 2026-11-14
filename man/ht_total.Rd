@@ -200,10 +200,11 @@ Used when requested, and as the fallback under \code{variance = "auto"}.}
 Rows taken with certainty are in every possible sample and add nothing to
 the variance. That covers rows above a \code{\link[=design_certainty]{design_certainty()}} threshold, rows
 whose size puts them past certainty in \code{\link[=design_weighted]{design_weighted()}} or
-\code{\link[=design_spread]{design_spread()}}, strata taken whole and a census. Every estimator leaves
+\code{\link[=design_spread]{design_spread()}}, strata taken whole, clusters taken whole by a two-stage
+design that selects every cluster, and a census. Every estimator leaves
 them out. The jackknife holds them fixed instead of deleting them, and its
 finite population correction counts only the other units. A sample made of
-nothing else reports a variance of 0, with a note that the total is exact.
+nothing else has a variance of 0 under the design's own estimator.
 
 The analytic estimator declines — returning \code{NA} with the reason in \code{note}
 — rather than understate. Only a decline sends \code{variance = "auto"} to the

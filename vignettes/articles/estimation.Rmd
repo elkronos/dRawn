@@ -369,7 +369,7 @@ standard errors, domain estimates and degrees of freedom for every design
 one sampling unit per stratum, taken whole, so that neither package counts
 them among the degrees of freedom. For systematic PPS, `survey` uses Brewer's
 approximation and `drawn` uses Deville's. The degrees of freedom still agree,
-and the standard errors of totals usually agree within 0.3%, but those of
+and the standard errors of totals usually agree within 0.5%, but those of
 means can differ by several percent when the sampling fraction is large.
 `?as_svydesign` has the full table.
 

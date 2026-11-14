@@ -35,13 +35,16 @@
 #'
 #' * **Systematic PPS.** Neither package has its joint probabilities. This one
 #'   uses Deville's approximation and `survey` uses Brewer's. In simulations
-#'   on skewed frames the standard errors of totals agreed within about 1
-#'   percent, and usually within 0.3 percent. Those of means differed more,
-#'   typically by 1 to 4 percent and by up to 7 percent at a sampling fraction
-#'   of one half. On a frame whose units below certainty had probabilities
-#'   from 0.05 to 0.95, with about 17 of them in each sample, totals differed
-#'   by 2 percent typically and by up to 8 percent. The degrees of freedom
-#'   agree. With `strata`, each stratum is handed over the same way.
+#'   on frames of 100 to 300 rows with gamma and lognormal sizes, the
+#'   standard errors of totals usually agreed within 0.5 percent, and within
+#'   3 percent in every sample. Those of means differed more, and more as the
+#'   sampling fraction grew: typically by under 2 percent at a fraction of a
+#'   tenth or a fifth, 2 to 4 percent at a third and 3 to 7 percent at a
+#'   half, where single samples differed by up to 12 percent. On a frame
+#'   whose units below certainty had probabilities from 0.05 to 0.95, with
+#'   about 17 of them in each sample, totals differed by 2 percent typically
+#'   and by up to 8 percent. The degrees of freedom agree. With `strata`,
+#'   each stratum is handed over the same way.
 #'   [design_multistage()] with `size` meets the same two approximations at
 #'   the first stage, while the variance within the selected clusters is the
 #'   same in both packages. Where the clusters below certainty had
@@ -76,17 +79,19 @@
 #'
 #' Units taken with certainty are in every sample and add nothing to the
 #' variance: the rows above a [design_certainty()] threshold, strata and
-#' intervals taken whole, and the units [design_weighted()] and
-#' [design_spread()] with `size` put at probability 1. Each group of them goes
-#' to `survey` as one primary sampling unit in a stratum of its own, with an
-#' `fpc` of 1, so `survey` gives them no variance and `survey::degf()` leaves
-#' them out of the degrees of freedom, as [ht_total()] does. For the PPS
-#' designs this also keeps them out of Brewer's approximation, which left
-#' among the other units inflated `survey`'s standard error, by a factor of 23
-#' on a frame with four dominant units. Beside a `rest` of clusters, or of
-#' the replicates of several systematic starts, the certainty rows form one
-#' more primary sampling unit, and in a two-stage `rest` that unit is taken
-#' whole at the second stage too.
+#' intervals taken whole, the units [design_weighted()] and
+#' [design_spread()] with `size` put at probability 1, and the clusters
+#' [design_multistage()] and [design_cluster()] with `balanced = TRUE` take
+#' whole when they select every cluster. Each group of them goes to `survey`
+#' as one primary sampling unit in a stratum of its own, with an `fpc` of 1,
+#' so `survey` gives them no variance and `survey::degf()` leaves them out
+#' of the degrees of freedom, as [ht_total()] does. For the PPS designs this
+#' also keeps them out of Brewer's approximation, which left among the other
+#' units inflated `survey`'s standard error, by a factor of 23 on a frame
+#' with four dominant units. Beside a `rest` of clusters, or of the
+#' replicates of several systematic starts, the certainty rows form one more
+#' primary sampling unit. In two stages, such a unit is taken whole at the
+#' second stage too.
 #'
 #' A sample in which every row was taken with certainty, a census, goes to
 #' `survey` as `ids = ~1` with `fpc` the number of rows. Both packages then
@@ -603,11 +608,12 @@ check_named_dots <- function(dots) {
 #' whole.
 #'
 #' Units taken with certainty -- a certainty design's rows above the threshold,
-#' strata and intervals taken whole, and the units a size-based design puts at
-#' probability 1 -- are flagged in `whole`. Each stratum of them becomes one
-#' primary sampling unit with an `fpc` of 1, which reads the same as a count of
-#' units and as a probability. `survey` gives such a stratum no variance, and
-#' `survey::degf()` no degree of freedom, as `design_df()` does.
+#' strata, intervals and clusters taken whole, and the units a size-based
+#' design puts at probability 1 -- are flagged in `whole`. Each stratum of
+#' them becomes one primary sampling unit with an `fpc` of 1, which reads the
+#' same as a count of units and as a probability. `survey` gives such a
+#' stratum no variance, and `survey::degf()` no degree of freedom, as
+#' `design_df()` does.
 #'
 #' `dat` is the sample handed to `survey`; `units` is the frame's copy of the
 #' same rows, in the same order, and is where strata and intervals are read.
@@ -687,15 +693,19 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
         # delete-a-cluster jackknife, which is the ultimate-cluster variance
         # with no finite population correction, and `survey` computes it
         # from the clusters alone.
-        return(list(stratum = NULL, fpc = NULL, ids = ids, cluster = cluster))
+        return(whole_cluster_parts(
+          list(stratum = NULL, fpc = NULL, ids = ids, cluster = cluster),
+          dat$.prob, prefix))
       }
       # Two stages, also for balanced clusters, which subsample. `survey`
       # takes each cluster's sampling fraction from the rows sampled in it,
       # which is the take given the clusters selected, so its estimate is the
       # one weighted conditional on them.
-      list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
-           fpc2 = sizes[cluster],
-           ids = stats::as.formula("~.cluster + .unit"), cluster = cluster)
+      whole_cluster_parts(
+        list(stratum = NULL, fpc = rep(n_clusters, nrow(dat)),
+             fpc2 = sizes[cluster],
+             ids = stats::as.formula("~.cluster + .unit"), cluster = cluster),
+        dat$.prob, prefix)
     },
     simple = {
       # Rows use_reserves() found unavailable are outside the population.
@@ -910,6 +920,40 @@ strata_pps_parts <- function(code, labels, dat, prefix, by_group, pps) {
   out$whole <- certain
   out$extra <- list(pps = pps)
   out
+}
+
+#' Clusters taken whole, in a stratum of their own
+#'
+#' A cluster is taken whole when every one of its sampled rows is certain,
+#' which needs every cluster selected and all of the cluster's rows drawn.
+#' Such a cluster is in every sample and adds no variance, and `design_df()`
+#' leaves it out of the degrees of freedom, as the jackknife holds it fixed.
+#' `survey` would count it as one more primary sampling unit at the first
+#' stage, and, in the one-stage form with no `fpc`, give it a share of the
+#' variance between clusters.
+#'
+#' The clusters taken whole go in the stratum `(certain)` with an `fpc` of 1,
+#' where `as_svydesign()` makes them one primary sampling unit, and the others
+#' in the stratum `(clusters)`. In two stages that stratum's `fpc` is the
+#' number of clusters left, all of them selected, and the shared unit is
+#' taken whole at the second stage too: its `fpc2` is its number of rows. In
+#' one stage, with no finite population correction, the other clusters get an
+#' infinite population, which `survey` reads as none. `parts` is the mapping
+#' without them, and `prob` the sampled rows' inclusion probabilities.
+#'
+#' @noRd
+whole_cluster_parts <- function(parts, prob, prefix = "") {
+  whole <- taken_whole(parts$cluster, prob)
+  if (!any(whole) || all(whole)) return(parts)
+  parts$stratum <- paste0(prefix, ifelse(whole, "(certain)", "(clusters)"))
+  parts$whole <- whole
+  if (is.null(parts$fpc)) {
+    parts$fpc <- ifelse(whole, 1, Inf)
+    return(parts)
+  }
+  parts$fpc <- ifelse(whole, 1, length(unique(parts$cluster[!whole])))
+  parts$fpc2[whole] <- sum(whole)
+  parts
 }
 
 #' Which rows lie in a stratum taken whole

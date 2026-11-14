@@ -248,6 +248,10 @@ test_that("a random-size `rest` that drew nothing gives no variance", {
   expect_true(is.na(r$variance))
   expect_equal(r$method, "none")
   expect_true(all(is.na(r$ci)))
+  # No degrees of freedom either, where a total with nothing below the
+  # threshold would have Inf
+  expect_equal(r$df, 0)
+  expect_equal(ht_mean(s, "value")$df, 0)
   expect_match(r$note, paste0("the ", n_below, " rows with `value` below ",
                               "2,500, because `rest` drew none of them"),
                fixed = TRUE)
