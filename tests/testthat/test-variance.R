@@ -83,6 +83,7 @@ test_that("ht_total validates y and level", {
   expect_error(ht_total(s, "nope"), "no column")
   expect_error(ht_total(s, letters[1:30]),
                "one column name, several column names, or a numeric vector")
+  expect_error(ht_total(s, NA_character_), "It is NA, a missing column name")
   expect_error(ht_total(s, "y", level = 1.5), "between 0 and 1")
 })
 

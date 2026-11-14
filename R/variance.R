@@ -307,7 +307,7 @@
 #' maps with identical standard errors, the matrix equals
 #' `vcov(survey::svytotal(~a + b, design))`, or that of `survey::svymean()`
 #' for means. With `by`, the covariances between the variables within each
-#' domain are estimated, and those between domains are 0, as for a `by`
+#' domain are estimated, and those between domains are not, as for a `by`
 #' table of one variable. A covariance is `NA` when either
 #' variance is missing, or when the two variances, or the variance of their
 #' sum, did not come from one estimator, as when the design's own declined
@@ -358,10 +358,12 @@
 #' A `by` table has the same methods. `coef()` names each domain as
 #' `contrast` names it, `confint()` and `tidy()` give a row per domain,
 #' `tidy()` with the `by` columns, and `as.data.frame()` drops the table's
-#' class and attributes. `vcov()` is a diagonal matrix of the
-#' domains' variances: the covariances between domains are not estimated,
-#' so its off-diagonal entries are 0, and the standard error of a difference
-#' between domains comes from `contrast`, not from `vcov()`. A table of
+#' class and attributes. `vcov()` holds the domains' variances. The
+#' covariances between domains are not estimated, and its entries for them
+#' are `NA`, except 0 for two domains of a [design_stratified()] sample
+#' whose sampled rows share no stratum, since strata are sampled
+#' independently. The standard error of a difference between domains comes
+#' from `contrast`, not from `vcov()`. A table of
 #' several variables names each row by its variable, then its domain, as in
 #' `"spend . a"`, and its `vcov()` holds the covariances between variables
 #' described under "Several variables". Selecting
@@ -384,8 +386,10 @@
 #' with the design's own estimator and degrees of freedom.
 #' `survey::svymean(na.rm = TRUE)` on [as_svydesign()] gives the same
 #' estimate and standard error. With `by`, each domain's mean is over its
-#' rows with `y` present. [add_fieldwork()] joins results keyed by an id and
-#' leaves `y` missing for a sampled row with none.
+#' rows with `y` present, and a domain whose sampled rows all have `y`
+#' missing has no mean, no row in the table and no place in `contrast`; the
+#' note names it. [add_fieldwork()] joins results keyed by an id and leaves
+#' `y` missing for a sampled row with none.
 #'
 #' That mean is unbiased for the frame's mean only if the values are missing
 #' completely at random, with no relation between whether a row has a `y`

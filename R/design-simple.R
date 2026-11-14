@@ -38,7 +38,7 @@
 #' @param reserve Number of reserve units to list after the main sample, to
 #'   replace units found unavailable in the field. A single non-negative whole
 #'   number; `n + reserve` cannot exceed the rows of the frame. Not available
-#'   with `replace = TRUE`. See "Reserves".
+#'   with `replace = TRUE` or `n = 0`. See "Reserves".
 #'
 #' @return A design object, for use with [draw()].
 #'
@@ -56,7 +56,7 @@
 design_simple <- function(n, replace = FALSE, reserve = 0) {
   n <- check_count(plan_n(n), "n")
   replace <- check_flag(replace, "replace")
-  reserve <- check_count(reserve, "reserve")
+  reserve <- check_reserve(reserve, n)
   if (replace && reserve > 0L) {
     stop("`reserve` lists units to visit in place of unavailable ones, and ",
          "`replace = TRUE` can draw a unit more than once. Use ",
@@ -134,6 +134,23 @@ reserve_size <- function(design) {
 main_design <- function(design) {
   if (reserve_size(design) > 0L) design[["reserve"]] <- 0L
   design
+}
+
+#' Check `reserve`, which needs a main sample to replace units of
+#'
+#' With `n = 0` there is no unit for a reserve to replace, and the list
+#' would hold the reserves alone at probability 0. Returns `reserve` as an
+#' integer.
+#'
+#' @noRd
+check_reserve <- function(reserve, n) {
+  reserve <- check_count(reserve, "reserve")
+  if (reserve > 0L && n == 0) {
+    stop("`reserve` is ", reserve, " and `n` is 0, so there is no main ",
+         "sample for the reserves to replace units of. Set `n` to 1 or more, ",
+         "or leave out `reserve`.", call. = FALSE)
+  }
+  reserve
 }
 
 #' Refuse more rows than the frame holds for the list and its reserves

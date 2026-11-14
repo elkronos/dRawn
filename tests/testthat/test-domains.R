@@ -842,7 +842,13 @@ test_that("several y by domain hold the covariances within each domain", {
   expect_equal(rownames(V), c("y . east", "y . west", "v . east",
                               "v . west"))
   expect_equal(unname(diag(V)), b$variance)
-  expect_equal(V["y . east", "v . west"], 0)
+  # The halves cross the strata, and their covariance is not estimated.
+  expect_true(is.na(V["y . east", "v . west"]))
+  expect_true(is.na(vcov(one)["east", "west"]))
+  # Domains in strata of their own are sampled independently.
+  by_site <- vcov(ht_total(s, c("y", "v"), by = "site"))
+  expect_equal(by_site["y . a", "v . b"], 0)
+  expect_equal(by_site["y . a", "y . c"], 0)
   # Selecting rows keeps the matching part of the matrix.
   expect_equal(vcov(b[c(4, 1), ]), V[c(4, 1), c(4, 1)])
   expect_output(print(b), "by variable and domain")
@@ -859,6 +865,8 @@ test_that("several y by domain hold the covariances within each domain", {
   sm <- survey::svyby(~y + v, ~half, svd, survey::svymean, covmat = TRUE)
   expect_equal(vcov(m)["y . west", "v . west"],
                vcov(sm)["west:y", "west:v"])
+  ss <- survey::svyby(~y + v, ~site, svd, survey::svytotal, covmat = TRUE)
+  expect_equal(vcov(ss)["a:y", "b:v"], by_site["y . a", "v . b"])
 })
 
 test_that("domain ratios match survey::svyby(svyratio)", {

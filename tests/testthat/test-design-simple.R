@@ -46,6 +46,9 @@ test_that("reserve is validated at construction time", {
   expect_error(design_simple(n = 5, reserve = 1.5), "single whole number")
   expect_error(design_simple(n = 5, replace = TRUE, reserve = 2),
                "replace = FALSE with `reserve`")
+  expect_error(design_simple(n = 0, reserve = 3),
+               "`reserve` is 3 and `n` is 0, so there is no main sample")
+  expect_equal(design_simple(n = 0)$reserve, 0L)
   expect_error(design_certainty("value", 1, rest = design_simple(5, reserve = 2)),
                "Leave `reserve` out of `rest`")
   df <- make_df()

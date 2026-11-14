@@ -434,7 +434,7 @@ Hajek mean their linearised residuals. For the designs \code{\link[=as_svydesign
 maps with identical standard errors, the matrix equals
 \code{vcov(survey::svytotal(~a + b, design))}, or that of \code{survey::svymean()}
 for means. With \code{by}, the covariances between the variables within each
-domain are estimated, and those between domains are 0, as for a \code{by}
+domain are estimated, and those between domains are not, as for a \code{by}
 table of one variable. A covariance is \code{NA} when either
 variance is missing, or when the two variances, or the variance of their
 sum, did not come from one estimator, as when the design's own declined
@@ -489,10 +489,12 @@ is the estimate's own level unless given.
 A \code{by} table has the same methods. \code{coef()} names each domain as
 \code{contrast} names it, \code{confint()} and \code{tidy()} give a row per domain,
 \code{tidy()} with the \code{by} columns, and \code{as.data.frame()} drops the table's
-class and attributes. \code{vcov()} is a diagonal matrix of the
-domains' variances: the covariances between domains are not estimated,
-so its off-diagonal entries are 0, and the standard error of a difference
-between domains comes from \code{contrast}, not from \code{vcov()}. A table of
+class and attributes. \code{vcov()} holds the domains' variances. The
+covariances between domains are not estimated, and its entries for them
+are \code{NA}, except 0 for two domains of a \code{\link[=design_stratified]{design_stratified()}} sample
+whose sampled rows share no stratum, since strata are sampled
+independently. The standard error of a difference between domains comes
+from \code{contrast}, not from \code{vcov()}. A table of
 several variables names each row by its variable, then its domain, as in
 \code{"spend . a"}, and its \code{vcov()} holds the covariances between variables
 described under "Several variables". Selecting
@@ -517,8 +519,10 @@ linearised residuals over every sampled row, 0 for the rows left out,
 with the design's own estimator and degrees of freedom.
 \code{survey::svymean(na.rm = TRUE)} on \code{\link[=as_svydesign]{as_svydesign()}} gives the same
 estimate and standard error. With \code{by}, each domain's mean is over its
-rows with \code{y} present. \code{\link[=add_fieldwork]{add_fieldwork()}} joins results keyed by an id and
-leaves \code{y} missing for a sampled row with none.
+rows with \code{y} present, and a domain whose sampled rows all have \code{y}
+missing has no mean, no row in the table and no place in \code{contrast}; the
+note names it. \code{\link[=add_fieldwork]{add_fieldwork()}} joins results keyed by an id and leaves
+\code{y} missing for a sampled row with none.
 
 That mean is unbiased for the frame's mean only if the values are missing
 completely at random, with no relation between whether a row has a \code{y}

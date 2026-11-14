@@ -901,6 +901,26 @@ test_that("ht_mean(na_rm = TRUE) refuses what it cannot estimate", {
   expect_match(one$note, "The domain of rows with `y` present has one")
 })
 
+test_that("ht_mean(na_rm = TRUE) says which domains have y missing throughout", {
+  s <- draw(est_pop(), design_stratified("site", n = 40), seed = 1,
+            weights = TRUE)
+  s$spend <- s$y
+  s$spend[s$site == "c"] <- NA
+  s$spend[1] <- NA
+  m <- ht_mean(s, "spend", by = "site", na_rm = TRUE)
+  expect_false("c" %in% m$site)
+  expect_match(attr(m, "notes"),
+               "Every sampled row of the domain `c` has `spend` missing",
+               all = FALSE)
+  expect_match(attr(m, "notes"), "rows with `spend` present", all = FALSE)
+  expect_error(ht_mean(s, "spend", by = "site", na_rm = TRUE,
+                       contrast = c(a = 1, c = -1)),
+               "`c`, whose sampled rows all have `y` missing")
+  expect_error(ht_mean(s, "spend", by = "site", na_rm = TRUE,
+                       contrast = c(a = 1, d = -1)),
+               "`d`, which is not a domain")
+})
+
 # ---- ratios -----------------------------------------------------------------
 
 ratio_pop <- function() {

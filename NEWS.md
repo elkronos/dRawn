@@ -1033,11 +1033,12 @@
 * The results of `ht_total()` and `ht_mean()`, `by` tables and contrasts
   have `coef()`, `vcov()`, `confint()` and `as.data.frame()` methods, and
   `tidy()` methods for `generics::tidy()` and so `broom::tidy()`; generics
-  joins `Suggests`. `confint()` gives the interval the estimate holds, on the
-  design's degrees of freedom and, for a proportion, on the logit or beta
-  scale, and forms it again at another `level`. `survey::SE()` and
-  `survey::cv()` work through these. `vcov()` of a `by` table is diagonal,
-  since the covariances between domains are not estimated. Results record
+  joins `Suggests`. `confint()` gives the interval the estimate holds, on
+  the design's degrees of freedom and, for a proportion, on the logit or
+  beta scale, and forms it again at another `level`. `survey::SE()` and
+  `survey::cv()` work through these. `vcov()` of a `by` table gives `NA` for
+  the covariances between domains, which are not estimated, and 0 for two
+  domains of a stratified sample that share no stratum. Results record
   `variable`, the name of `y`, so estimates of several variables can be
   bound with `rbind()` of their `as.data.frame()`, and `n_random`, the
   sampled rows below certainty. `?ht_total` describes them under "Working
@@ -1058,13 +1059,15 @@
   design. It matches each row to the frame through `.row`, or through id
   columns named in `by`, and works out the inclusion probabilities again
   from the design. Ids that are missing, repeated or not in the frame, a
-  frame reordered since the draw, and a sample short of the rows drawn, such
-  as the rows that responded, are refused. `add_fieldwork()` joins fieldwork
-  results keyed by an id to a sample, in the sample's own order and keeping
-  its design, and refuses repeated or unknown ids and columns the sample
-  already has; a sampled row with no result gets a missing value. A sample
-  that had been through a file could not be estimated from, and `merge()`
-  dropped the design. The refusal of a sample without its design names both.
+  frame reordered since the draw, which shows in the columns the rows share
+  with it, and a sample short of the rows drawn, such as the rows that
+  responded, part of a cluster or a row taken with certainty, are refused.
+  `add_fieldwork()` joins fieldwork results keyed by an id to a sample, in
+  the sample's own order and keeping its design, and refuses repeated or
+  unknown ids and columns the sample already has; a sampled row with no
+  result gets a missing value. A sample that had been through a file could
+  not be estimated from, and `merge()` dropped the design. The refusal of a
+  sample without its design names both.
 * `compact_sample()` replaces the copy of the frame a weighted sample holds
   with the columns its design reads, plus any named in `keep`. Each sample
   holds its own copy of the whole frame, in memory and in every file it is
@@ -1073,34 +1076,37 @@
   of a million rows saved to 28 MB, and to 8 MB compacted, most of it the
   frame's inclusion probabilities. Estimates, `as_svydesign()` and
   `sample_summary()` are unchanged; `ht_mean(estimator = "ht")` with `by`,
-  and `frame_totals()`, need their columns in `keep`, and say so. `?draw`
+  `frame_totals()`, and the standard error of a domain when a stratum has
+  one sampled row, need their columns in `keep`, and say so. `?draw`
   describes the cost.
 * `ht_mean()` takes `na_rm`. With `na_rm = TRUE` it estimates the mean over
   the sampled rows with `y` present, as a domain of the whole sample, with
   the design's own variance estimator, and equals
   `survey::svymean(na.rm = TRUE)` on `as_svydesign()`, by domain too. The
   printed result says how many rows were left out and that they are assumed
-  missing completely at random. `?ht_total` has a section on missing values
-  and nonresponse, with the weighting-class adjustment to use when that
-  assumption fails, and the estimation article shows the steps.
+  missing completely at random, and names any `by` domain left without a row
+  because every sampled row of it has `y` missing. `?ht_total` has a section
+  on missing values and nonresponse, with the weighting-class adjustment to
+  use when that assumption fails, and the estimation article shows the
+  steps.
 * `design_simple()` and `design_spread()` take `reserve`, a number of units
   to list after the main sample for replacing units that fieldwork finds
-  cannot be reached. `draw()` returns the main sample and then the
-  reserves, numbered in the order they are used by a new `.reserve`
-  column; the main sample is the one the design draws without `reserve`.
-  For `design_simple()` the list is one random draw, and for
-  `design_spread()` the reserves are a second spread sample from the rows
-  the main sample left, so they cover the space evenly too.
-  `design_spread()` takes `reserve` only without `size` and `strata`, and
-  `design_certainty()` refuses a `rest` with `reserve`. A printed simple or
-  spread design shows a `reserve` line. `ht_total()`, `ht_mean()`,
-  `as_svydesign()` and `sample_summary()` refuse the list. The new
-  `use_reserves()` takes it with the units found unavailable, replaces them
-  with the first available reserves, and returns a sample weighted at
+  cannot be reached. `draw()` returns the main sample and then the reserves,
+  numbered in the order they are used by a new `.reserve` column; the main
+  sample is the one the design draws without `reserve`. For
+  `design_simple()` the list is one random draw, and for `design_spread()`
+  the reserves are a second spread sample from the rows the main sample
+  left, so they cover the space evenly too. `design_spread()` takes
+  `reserve` only without `size` and `strata`, both refuse `reserve` with
+  `n = 0`, and `design_certainty()` refuses a `rest` with `reserve`. A
+  printed simple or spread design shows a `reserve` line. `ht_total()`,
+  `ht_mean()`, `as_svydesign()` and `sample_summary()` refuse the list. The
+  new `use_reserves()` takes it with the units found unavailable, replaces
+  them with the first available reserves, and returns a sample weighted at
   `n / (N - u)` over the frame without the `u` units found unavailable. Its
-  estimates describe the units that can be reached, and `?use_reserves`
-  says what that assumes. `as_drawn()` rebuilds a list read back from a
-  file through its `.reserve` column.
+  estimates describe the units that can be reached, and `?use_reserves` says
+  what that assumes. `as_drawn()` rebuilds a list read back from a file
+  through its `.reserve` column.
 * `ht_ratio()` estimates the ratio of two population totals,
   `sum(y / pi) / sum(x / pi)`, such as audited value per unit of book
   value, with a standard error from the linearised residuals

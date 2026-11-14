@@ -92,8 +92,8 @@ a design that selects in proportion to size takes with certainty.
 strata of a frame, and which strata it holds at the floor, takes whole or
 leaves empty. \code{\link[=joint_prob]{joint_prob()}} gives
 second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} turn a sample
-into a population total, mean or proportion — overall or by domain, for
-one variable or several — with a standard error from the variance
+into a population total, mean or proportion, overall or by domain and for
+one variable or several, with a standard error from the variance
 estimator suited to the design and a confidence interval on the design's
 degrees of freedom. A factor \code{y} gives the count or share of each level.
 \code{\link[=ht_ratio]{ht_ratio()}} estimates a ratio of two totals the same way,

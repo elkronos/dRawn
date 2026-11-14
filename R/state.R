@@ -520,11 +520,25 @@ sample_rows <- function(sample, drawn, N, arg) {
 #' @section Matching rows to the frame:
 #' With `by = NULL`, each row is matched through its `.row` column, the frame
 #' row [draw()] recorded for it. `frame` must then be the frame the sample
-#' was drawn from, with its rows in the same order. With `by`, rows are
-#' matched on the values of one or more id columns that `data` and `frame`
-#' share. Values are compared as [match()] compares them, and as text when
-#' the two columns have different classes, so an id stored as `"007"` does
-#' not match the number 7 that a CSV file gives back.
+#' was drawn from, with its rows in the same order. A frame in another order,
+#' such as a database table read without `ORDER BY`, holds other rows at
+#' those positions, and its strata and clusters would be wrong for the
+#' sample. Each column `data` shares with `frame` is therefore compared with
+#' the frame rows `.row` names, and a column whose values differ is refused.
+#' Numbers need to agree to about eight significant digits, fewer than a CSV
+#' file keeps, and a number read back from text, such as `"007"`, is compared
+#' as the number 7. A missing value on either side is not compared, so a
+#' frame column that fieldwork fills in is accepted. Nor is a date that a
+#' file gave back as text, whose format a spreadsheet may have changed. A
+#' column changed after the draw, such as a corrected address, is refused
+#' too; rename it in `data`, or match on an id. A `data` that shares no
+#' column with `frame` besides those [draw()] adds cannot be checked, so
+#' keep an id column in the file.
+#'
+#' With `by`, rows are matched on the values of one or more id columns that
+#' `data` and `frame` share. Values are compared as [match()] compares them,
+#' and as text when the two columns have different classes, so an id stored
+#' as `"007"` does not match the number 7 that a CSV file gives back.
 #'
 #' When `data` has both `.row` and the `by` columns, they must agree. A frame
 #' row found through `by` that is not the one `.row` names means `frame` is
@@ -543,13 +557,20 @@ sample_rows <- function(sample, drawn, N, arg) {
 #' draws a fixed number of rows (simple, stratified, spread, temporal,
 #' spatial and reservoir designs, systematic designs given `n`, and
 #' [design_weighted()] with `method = "systematic"`, alone or as the `rest`
-#' of [design_certainty()]), a `data` with another number of rows is
-#' refused. A design weighted conditional on its clusters (see "Design
-#' weights" in [draw()]) is rebuilt from the clusters its rows belong to, and
-#' refused when they are not `n_clusters` clusters or a cluster does not hold
-#' the rows the design takes from it. Keep the rows with no response, with
-#' `y` missing, and estimate a mean with `ht_mean(na_rm = TRUE)`; see
-#' "Missing values and nonresponse" in [ht_total()].
+#' of [design_certainty()]), a `data` with another number of rows is refused.
+#' A [design_cluster()] or [design_multistage()] sample, also as the `rest`
+#' of [design_certainty()], is refused when its rows are not of `n_clusters`
+#' clusters or a cluster does not hold the rows the design takes from it,
+#' which are all of its rows for whole clusters, and the same number from
+#' each cluster when that number does not depend on which clusters were
+#' selected. A design weighted conditional on its clusters (see "Design
+#' weights" in [draw()]) is rebuilt from the clusters its rows belong to,
+#' which must hold the rows the design takes from each given that selection.
+#' A frame row the design takes with certainty, with probability 1, is in
+#' every sample, and a `data` without it is refused whatever the design. Keep
+#' the rows with no response, with `y` missing, and estimate a mean with
+#' `ht_mean(na_rm = TRUE)`; see "Missing values and nonresponse" in
+#' [ht_total()].
 #'
 #' A list from a design with `reserve` is rebuilt whole, the main sample and
 #' every reserve, with the `.reserve` column [draw()] added, which records
@@ -629,6 +650,7 @@ as_drawn <- function(data, design, frame, by = NULL) {
   warn_region(design, frame)
 
   rows <- frame_rows(data, frame, by)
+  if (is.null(by)) check_row_values(data, frame, rows, design)
   selection <- NULL
   if (conditional_design(design, frame)) {
     selection <- rebuilt_selection(design, frame, rows)
@@ -638,6 +660,7 @@ as_drawn <- function(data, design, frame, by = NULL) {
     if (inherits(design, "drawn_design_certainty")) {
       check_rest_reach(design, frame, pi_all)
     }
+    check_cluster_rows(design, frame, rows)
   }
   p <- pi_all[rows]
   zero <- is.na(p) | p <= 0
@@ -670,6 +693,15 @@ as_drawn <- function(data, design, frame, by = NULL) {
            "result, and estimate a mean with ht_mean(na_rm = TRUE).",
            call. = FALSE)
     }
+  }
+  certain <- which(!is.na(pi_all) & is_certain(pi_all))
+  left_out <- certain[!certain %in% rows]
+  if (length(left_out)) {
+    stop("`data` does not hold frame row(s) ", format_rows(left_out),
+         ", which `design` takes with certainty, so every sample from it ",
+         "holds them. A sample rebuilt from some of the rows drawn is not a ",
+         "sample from the design; keep every row drawn, with `y` missing ",
+         "where there is no result.", call. = FALSE)
   }
   old <- data[[".prob"]]
   if (is.numeric(old)) {
@@ -845,6 +877,115 @@ frame_rows <- function(data, frame, by) {
   rows
 }
 
+#' Refuse `.row` values that name frame rows holding other values
+#'
+#' With `by = NULL`, rows are matched through `.row`, a position in the
+#' frame. A frame in another order, such as a database table read without
+#' ORDER BY, holds other rows at those positions, and the strata, clusters
+#' and probabilities read from it would belong to other rows. Each column
+#' `data` shares with `frame` is compared on the rows `.row` names, the
+#' design's own columns first, and the first that disagrees is refused.
+#'
+#' A missing value on either side is not compared, since a frame column may
+#' be a placeholder that fieldwork fills in and a CSV file reads an empty or
+#' `"NA"` text back as missing. Columns are compared as `row_values_agree()`
+#' compares them.
+#'
+#' @noRd
+check_row_values <- function(data, frame, rows, design) {
+  shared <- setdiff(intersect(names(data), names(frame)),
+                    c(".prob", ".weight", ".row", ".reserve", ".replicate"))
+  shared <- c(intersect(design_columns(design), shared),
+              setdiff(shared, design_columns(design)))
+  for (col in shared) {
+    a <- data[[col]]
+    b <- frame[[col]][rows]
+    agree <- row_values_agree(a, b)
+    if (is.null(agree)) next
+    compared <- !is.na(a) & !is.na(b)
+    off <- which(compared & !agree)
+    if (!length(off)) next
+    i <- off[1L]
+    stop("`data` has `", col, "` values that differ from those of the ",
+         "`frame` rows its `.row` column names in ", length(off), " of the ",
+         sum(compared), " rows compared, such as ", shown_value(a[i]),
+         " where `frame` row ", rows[i], " has ", shown_value(b[i]), ". ",
+         "Pass `frame` with its rows in the order they had when the sample ",
+         "was drawn; if it is in that order and `", col, "` was changed ",
+         "after the draw, rename it in `data` or match rows on an id column ",
+         "with `by`.", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+#' Do two columns hold the same values, row by row?
+#'
+#' `a` is a column of `data` as read back and `b` the frame's column on the
+#' same rows. Numbers and logical values are compared as numbers, with the
+#' tolerance of `same_prob()`, since a CSV file keeps 15 significant digits.
+#' A number that came back as text, such as an id written `"007"`, is
+#' compared as a number too, and other text and factors as text. Two columns
+#' of one class, such as two `Date` columns, are compared as numbers.
+#' Returns `NULL` for a pair it does not compare: a list or matrix column,
+#' or a classed column, such as a `Date`, on one side only, since a
+#' spreadsheet the file went through may have changed its format.
+#'
+#' @noRd
+row_values_agree <- function(a, b) {
+  if (!is.atomic(a) || !is.atomic(b) || !is.null(dim(a)) ||
+      !is.null(dim(b))) {
+    return(NULL)
+  }
+  classed <- function(x) is.object(x) && !is.factor(x)
+  if (classed(a) || classed(b)) {
+    if (!identical(class(a), class(b)) || !is.numeric(unclass(a))) {
+      return(NULL)
+    }
+    a <- unclass(a)
+    b <- unclass(b)
+  }
+  number <- function(x) is.numeric(x) || is.logical(x)
+  as_number <- function(x) suppressWarnings(as.numeric(as.character(x)))
+  if (number(a) && number(b)) {
+    return(same_prob(as.numeric(a), as.numeric(b)))
+  }
+  if (is.numeric(a)) return(same_prob(as.numeric(a), as_number(b)))
+  if (is.numeric(b)) return(same_prob(as_number(a), as.numeric(b)))
+  as.character(a) == as.character(b)
+}
+
+#' One value of a column, for a message
+#' @noRd
+shown_value <- function(x) {
+  if (is.factor(x)) x <- as.character(x)
+  if (is.character(x)) return(encodeString(x, quote = "\""))
+  if (is.numeric(x)) return(as.character(unclass(x)))
+  format(x)
+}
+
+#' Refuse rows that leave out part of what a cluster design takes together
+#'
+#' A design that takes whole clusters, or the same number of rows from each
+#' cluster it selects, gives every sample `n_clusters` clusters holding those
+#' rows, so a sample with a cluster missing or short of its take is a subset
+#' of one. `rebuilt_selection()` checks it. A certainty design passes the
+#' rows below its threshold to `rest`.
+#'
+#' @noRd
+check_cluster_rows <- function(design, frame, rows) {
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_split(design, frame)
+    below <- sp$keep[sp$rest]
+    at <- match(rows, below)
+    return(check_cluster_rows(design$rest, frame[below, , drop = FALSE],
+                              at[!is.na(at)]))
+  }
+  if (inherits(design, c("drawn_design_cluster", "drawn_design_multistage"))) {
+    rebuilt_selection(design, frame, rows, conditional = FALSE)
+  }
+  invisible(NULL)
+}
+
 #' The clusters a conditionally weighted sample selected, from its rows
 #'
 #' A file keeps the rows and not the selection. The clusters are those the
@@ -854,8 +995,12 @@ frame_rows <- function(data, frame, by) {
 #' is lost too. Listing first the clusters holding more rows than the split
 #' in code order gives them reproduces the split the draw made.
 #'
+#' `conditional` is `FALSE` for a design whose take from each cluster is the
+#' same whichever clusters are selected, which `check_cluster_rows()` checks
+#' the same way.
+#'
 #' @noRd
-rebuilt_selection <- function(design, frame, rows) {
+rebuilt_selection <- function(design, frame, rows, conditional = TRUE) {
   cl <- conditional_setup(design, frame)
   code <- cl$code[rows]
   chosen <- sort(unique(code[!is.na(code)]))
@@ -877,9 +1022,10 @@ rebuilt_selection <- function(design, frame, rows) {
   if (length(off)) {
     label <- cl$labels[match(chosen[off[1]], cl$code)]
     stop("`data` holds ", got[off[1]], " row(s) of cluster `", format(label),
-         "`, where `design` takes ", take[off[1]], " from it given the ",
-         "clusters selected. A sample rebuilt from some of the rows drawn is ",
-         "not a sample from the design; keep every row drawn.", call. = FALSE)
+         "`, where `design` takes ", take[off[1]], " from it",
+         if (conditional) " given the clusters selected", ". A sample ",
+         "rebuilt from some of the rows drawn is not a sample from the ",
+         "design; keep every row drawn.", call. = FALSE)
   }
   chosen
 }
@@ -966,6 +1112,14 @@ add_fieldwork <- function(sample, field, by) {
   if (!length(new)) {
     stop("`field` has no column besides ", quote_names(by), ", so there is ",
          "nothing to add.", call. = FALSE)
+  }
+  reserved <- intersect(new, c(".prob", ".weight", ".row", ".reserve",
+                               ".replicate"))
+  if (length(reserved)) {
+    stop("`field` has ", quote_names(reserved), ", which draw() sets in a ",
+         "weighted sample to hold its design. Rename ",
+         if (length(reserved) > 1L) "them" else "it", " in `field`.",
+         call. = FALSE)
   }
   clash <- intersect(new, names(sample))
   if (length(clash)) {

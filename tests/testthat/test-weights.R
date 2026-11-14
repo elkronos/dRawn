@@ -262,6 +262,78 @@ test_that("as_drawn() refuses the responding rows alone", {
                "holds rows of 2 cluster")
 })
 
+test_that("as_drawn() refuses a frame in another order through `.row`", {
+  pop <- field_pop()
+  des <- design_cluster("cl", n_clusters = 4)
+  s <- draw(pop, des, seed = 1, weights = TRUE)
+  path <- tempfile(fileext = ".csv")
+  on.exit(unlink(path))
+  utils::write.csv(s, path, row.names = FALSE)
+  back <- utils::read.csv(path)
+
+  # Every row has probability 1/3, so `.prob` cannot tell the frames apart.
+  shuffled <- pop[c(seq(2, 120, by = 2), seq(1, 119, by = 2)), ]
+  expect_error(as_drawn(back, des, shuffled),
+               "`data` has `cl` values that differ from those of the `frame`")
+  sorted <- as_drawn(back, des, shuffled[order(shuffled$id), ])
+  expect_equal(ht_total(sorted, "y")[c("total", "se", "df")],
+               ht_total(s, "y")[c("total", "se", "df")])
+
+  # A changed column is refused through `.row` and not through an id.
+  edited <- back
+  edited$note[2] <- "moved"
+  expect_error(as_drawn(edited, des, pop), "`note` values that differ")
+  expect_no_error(as_drawn(edited, des, pop, by = "id"))
+
+  # A frame column fieldwork fills in, and a code read back as a number
+  pop$result <- NA_real_
+  pop$code <- sprintf("%03d", pop$id)
+  s <- draw(pop, des, seed = 1, weights = TRUE)
+  utils::write.csv(s, path, row.names = FALSE)
+  back <- utils::read.csv(path)
+  back$result <- seq_len(nrow(back))
+  expect_type(back$code, "integer")
+  expect_equal(as_drawn(back, des, pop)$.row, s$.row)
+})
+
+test_that("as_drawn() refuses clusters and certain rows left out", {
+  pop <- field_pop()
+  pop$cl <- rep(sprintf("c%02d", 1:12), times = rep(c(6, 10, 14), 4))
+  strip <- function(s) {
+    out <- as.data.frame(s)
+    attributes(out) <- attributes(out)[c("names", "row.names", "class")]
+    out
+  }
+  whole <- design_cluster("cl", n_clusters = 4)
+  s <- strip(draw(pop, whole, seed = 1, weights = TRUE))
+  expect_equal(nrow(as_drawn(s, whole, pop)), nrow(s))
+  expect_error(as_drawn(s[-1, ], whole, pop),
+               "row\\(s\\) of cluster `c[0-9]+`, where `design` takes [0-9]+ from it\\.")
+  expect_error(as_drawn(s[s$cl != s$cl[1], ], whole, pop),
+               "holds rows of 3 cluster")
+
+  # The same take from every cluster selected
+  ms <- design_multistage("cl", n_clusters = 4, n = 20)
+  m <- strip(draw(pop, ms, seed = 1, weights = TRUE))
+  expect_error(as_drawn(m[-1, ], ms, pop), "where `design` takes 5 from it")
+
+  # Rows over the threshold are in every sample.
+  cert <- design_certainty("w", threshold = 50, rest = whole)
+  cs <- strip(draw(pop, cert, seed = 1, weights = TRUE))
+  top <- which(cs$.prob == 1)
+  expect_gt(length(top), 0L)
+  expect_error(as_drawn(cs[-top[1], ], cert, pop),
+               paste0("does not hold frame row\\(s\\) ", cs$.row[top[1]],
+                      ", which `design` takes with certainty"))
+  expect_error(as_drawn(cs[-which(cs$.prob < 1)[1], ], cert, pop),
+               "where `design` takes")
+  pop$w[1:2] <- 1e4
+  pois <- design_weighted("w", n = 30, method = "poisson")
+  p <- strip(draw(pop, pois, seed = 1, weights = TRUE))
+  expect_error(as_drawn(p[p$.row != 1, ], pois, pop),
+               "does not hold frame row\\(s\\) 1, which")
+})
+
 test_that("as_drawn() rebuilds a sample weighted on its clusters", {
   pop <- field_pop()
   pop$cl <- rep(sprintf("c%02d", 1:12), times = rep(c(6, 10, 14), 4))
@@ -316,6 +388,10 @@ test_that("add_fieldwork() joins results in the sample's order", {
                              "id"), "`id` 9999, which is not in `sample`")
   expect_error(add_fieldwork(joined, field, "id"),
                "`field` has `y` and `ok`, which `sample` already has")
+  # Removing `.weight` from the sample would break it, so the message for
+  # the design's own columns says to rename them in `field`.
+  expect_error(add_fieldwork(s, data.frame(id = s$id, .weight = 2), "id"),
+               "`.weight`, which draw\\(\\) sets in a weighted sample")
   expect_error(add_fieldwork(s, data.frame(id = c(s$id[1], NA), y = 1), "id"),
                "no value of `id` in 1 row")
   expect_error(add_fieldwork(s, field["id"], "id"), "nothing to add")
@@ -381,6 +457,22 @@ test_that("compact_sample() names `keep` where a dropped column is needed", {
   expect_error(compact_sample(small, keep = "g"),
                "An earlier compact_sample() dropped `g`", fixed = TRUE)
   expect_error(compact_sample(s, keep = "nope"), "is not a column")
+
+  # A stratum with one sampled row needs the frame's `by` columns to show
+  # that it holds no row of a domain.
+  pop$g <- ifelse(pop$site == "c", "only_c", pop$g)
+  lonely <- draw(pop, design_stratified("site", n = 21,
+                                        allocation = c(a = 10, b = 10, c = 1)),
+                 seed = 1, weights = TRUE)
+  full <- ht_mean(lonely, "y", by = "g")
+  expect_true(all(is.finite(full$se[full$g != "only_c"])))
+  dropped <- ht_mean(compact_sample(lonely), "y", by = "g")
+  expect_true(all(is.na(dropped$se)))
+  expect_match(attr(dropped, "notes"),
+               "compact_sample() dropped `g` from the frame stored with",
+               fixed = TRUE, all = FALSE)
+  expect_identical(ht_mean(compact_sample(lonely, keep = "g"), "y", by = "g"),
+                   full)
 })
 
 test_that("compact_sample() keeps an sf frame's geometry only when read", {

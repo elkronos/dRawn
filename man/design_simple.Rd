@@ -18,7 +18,7 @@ duplicates. See \code{\link[=draw]{draw()}}.}
 \item{reserve}{Number of reserve units to list after the main sample, to
 replace units found unavailable in the field. A single non-negative whole
 number; \code{n + reserve} cannot exceed the rows of the frame. Not available
-with \code{replace = TRUE}. See "Reserves".}
+with \code{replace = TRUE} or \code{n = 0}. See "Reserves".}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.

@@ -52,8 +52,8 @@ a stratum the frame does not have is refused, and no count may exceed
 the rows in its stratum. Only with \code{strata}.}
 
 \item{reserve}{Number of reserve rows to list after the main sample, to
-replace rows found unavailable in the field. Not available with \code{size}
-or \code{strata}. See "Reserves".}
+replace rows found unavailable in the field. Not available with \code{size},
+\code{strata} or \code{n = 0}. See "Reserves".}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.

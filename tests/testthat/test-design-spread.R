@@ -563,6 +563,8 @@ test_that("reserve is refused with size or strata, and checked against N", {
                "Leave out `size` or `reserve`")
   expect_error(design_spread(c("x", "y"), n = 5, strata = "g", reserve = 2),
                "Leave out `strata` or `reserve`")
+  expect_error(design_spread(c("x", "y"), n = 0, reserve = 3),
+               "`reserve` is 3 and `n` is 0")
   expect_error(design_spread(c("x", "y"), n = 5, reserve = -1),
                "must be non-negative")
   d <- spread_pop(20)

@@ -396,7 +396,7 @@ respondent_mean <- function(parts, variance, level, df, ci_method,
   out$estimator <- "hajek"
   out$n <- sum(r)
   out$n_missing <- sum(!r)
-  notes <- c(out$note, missing_note(sum(!r), length(r)))
+  notes <- c(out$note, missing_note(sum(!r), length(r), parts$y_name))
   if (constant && identical(out$variance, 0) &&
       !identical(out$ci_scale, "beta") && any(!is_certain(pi_i[r]))) {
     notes <- c(notes, constant_note(est, parts$proportion))
@@ -406,17 +406,29 @@ respondent_mean <- function(parts, variance, level, df, ci_method,
 }
 
 #' What a mean over the rows with `y` present assumes
+#'
+#' `y_name` is the column `y` names, `NULL` for a vector. `blank` holds the
+#' labels of the `by` domains whose sampled rows all have `y` missing, which
+#' the table leaves out.
+#'
 #' @noRd
-missing_note <- function(n_missing, n) {
+missing_note <- function(n_missing, n, y_name = NULL, blank = NULL) {
   one <- n_missing == 1L
+  y <- paste0("`", y_name %||% "y", "`")
+  gap <- if (length(blank)) {
+    paste0(" Every sampled row of the domain", if (length(blank) > 1L) "s",
+           " ", paste0("`", blank, "`", collapse = ", "), " has ", y,
+           " missing, so the table has no row for ",
+           if (length(blank) > 1L) "them." else "it.")
+  }
   paste0(n_missing, " of the ", n, " sampled rows ", if (one) "has" else
-           "have", " `y` missing and ", if (one) "is" else "are", " left ",
-         "out. The mean is over the rows with `y` present, estimated as a ",
-         "domain of the whole sample, which assumes the values are missing ",
-         "completely at random, with no relation between whether `y` is ",
-         "missing and `y` itself. When response differs between groups ",
-         "whose `y` differs, adjust the weights within those groups and ",
-         "estimate with as_svydesign().")
+           "have", " ", y, " missing and ", if (one) "is" else "are",
+         " left out.", gap, " The mean is over the rows with ", y,
+         " present, estimated as a domain of the whole sample, which assumes ",
+         "the values are missing completely at random, with no relation ",
+         "between whether ", y, " is missing and ", y, " itself. When ",
+         "response differs between groups whose ", y, " differs, adjust the ",
+         "weights within those groups and estimate with as_svydesign().")
 }
 
 #' What the mean divides its Horvitz-Thompson total by, for the design effect
@@ -916,8 +928,9 @@ check_several_y <- function(sample, y) {
 #' `Cov(a, b) = (V(z_a + z_b) - V(z_a) - V(z_b)) / 2`, one more run of the
 #' same estimator for each pair. They are kept in the `vcov` attribute,
 #' which vcov() reads. With `by` they are the covariances between the
-#' variables within each domain, and 0 between domains, as in the vcov() of
-#' a `by` table of one variable.
+#' variables within each domain. Between domains they are `NA`, as in the
+#' vcov() of a `by` table of one variable, or 0 where domains_apart() shows
+#' the domains were sampled independently.
 #'
 #' @noRd
 estimate_several <- function(sample, y, what, variance, level, by, df,
@@ -1174,13 +1187,13 @@ several_vcov <- function(base, fits, variance, nm, ctx) {
 #'
 #' @noRd
 several_vcov_by <- function(base, by, fits, out, variance, nm, ctx) {
-  v <- out$variance
-  V <- diag(v, length(v))
-  dimnames(V) <- list(nm, nm)
-  if (variance == "none") return(V)
   every <- base
   every$respond <- rep(TRUE, nrow(base$sample))
   dom <- domain_keys(every, by)
+  v <- out$variance
+  codes <- unlist(lapply(fits, function(f) f$dom$levels_in))
+  V <- between_domains(v, codes, domains_apart(every, dom), nm)
+  if (variance == "none") return(V)
   start <- cumsum(c(0L, vapply(fits, function(f) nrow(f$table),
                                integer(1))))
   k <- length(fits)
@@ -1271,6 +1284,9 @@ estimate_by <- function(parts, by, variance, level, df, what,
   out$ci_upper <- vapply(rows, `[[`, numeric(1), "hi")
   out$method <- vapply(rows, `[[`, character(1), "method")
   notes <- unique(unlist(lapply(rows, `[[`, "note")))
+  if (any(is.na(out$variance) & out$n > 1L)) {
+    notes <- c(notes, compact_domain_note(parts, dom))
+  }
   if (any(is.finite(out$se) & (is.na(out$ci_lower) | is.na(out$ci_upper)))) {
     notes <- c(notes, df_note(df_use))
   }
@@ -1294,7 +1310,8 @@ estimate_by <- function(parts, by, variance, level, df, what,
   }
   if (any(!parts$respond)) {
     notes <- c(notes, missing_note(sum(!parts$respond),
-                                   length(parts$respond)))
+                                   length(parts$respond), parts$y_name,
+                                   blank = labels[dom$blank]))
   }
   out <- structure(out, class = c("drawn_by", "data.frame"),
                    what = what, estimator = if (what == "mean") estimator,
@@ -1309,7 +1326,48 @@ estimate_by <- function(parts, by, variance, level, df, what,
   attr(out, "n_random") <- stats::setNames(
     vapply(dom$idx, function(i) sum(!is_certain(pi_i[i])), integer(1)),
     domain_names(out))
+  attr(out, "vcov") <- between_domains(out$variance, levels_in,
+                                       domains_apart(parts, dom),
+                                       domain_names(out))
   if (keep) return(list(table = out, z = est$z, dom = dom))
+  out
+}
+
+#' Which pairs of domains a stratified design samples independently
+#'
+#' Strata are sampled independently, and every variance estimator here sums
+#' over them, so two domains whose sampled rows share no stratum have
+#' estimates with a covariance of exactly 0. Returns a logical matrix over
+#' the codes of `dom$labels`, `TRUE` for such a pair, or `NULL` for a design
+#' other than [design_stratified()], whose covariances between domains are
+#' not known.
+#'
+#' @noRd
+domains_apart <- function(parts, dom) {
+  if (!inherits(parts$design, "drawn_design_stratified")) return(NULL)
+  k <- length(dom$labels)
+  stratum <- as.integer(group_key(parts$units, parts$design$strata))
+  # A row with `y` missing under `na_rm = TRUE` is in no domain.
+  use <- !is.na(dom$pos)
+  held <- table(factor(dom$key[use], levels = seq_len(k)),
+                factor(stratum[use], levels = seq_len(max(stratum))))
+  shared <- (unclass(held) > 0) %*% t(unclass(held) > 0)
+  shared == 0
+}
+
+#' A covariance matrix with the variances of a `by` table's rows
+#'
+#' `codes` are the rows' domain codes. Rows of two domains that
+#' domains_apart() shows were sampled independently get a covariance of 0,
+#' and any other pair `NA`, which estimate_several() fills in where it
+#' estimates a covariance.
+#'
+#' @noRd
+between_domains <- function(variance, codes, apart, nm) {
+  out <- matrix(NA_real_, length(variance), length(variance))
+  if (!is.null(apart)) out[apart[codes, codes, drop = FALSE]] <- 0
+  diag(out) <- variance
+  dimnames(out) <- list(nm, nm)
   out
 }
 
@@ -1332,9 +1390,11 @@ check_table_names <- function(by, own) {
 #' Returns `key`, each sampled row's domain as a code into `labels`;
 #' `pop_key`, each frame row's, or `NULL` when the frame lacks a `by` column;
 #' `levels_in`, the codes of the domains with a sampled row, in key order;
-#' `pos`, each sampled row's position in `levels_in`, `NA` for a row with `y`
-#' missing under `na_rm = TRUE`; `idx`, the sampled rows of each domain in
-#' `levels_in`, without those; and `aligned`, whether the frame's `by`
+#' `blank`, the codes of those whose sampled rows all have `y` missing under
+#' `na_rm = TRUE`, which `levels_in` leaves out; `pos`, each sampled row's
+#' position in `levels_in`, `NA` for a row with `y` missing under
+#' `na_rm = TRUE`; `idx`, the sampled rows of each domain in `levels_in`,
+#' without those; and `aligned`, whether the frame's `by`
 #' columns agree with the sample's on the sampled rows, so that the frame can
 #' say which of its rows each domain holds.
 #'
@@ -1370,14 +1430,34 @@ domain_keys <- function(parts, by) {
   # so each domain is the rows of its `by` values with `y` present.
   use <- parts$respond %||% rep(TRUE, length(key))
   levels_in <- which(tabulate(key[use], length(labels)) > 0L)
+  blank <- setdiff(which(tabulate(key, length(labels)) > 0L), levels_in)
   pos <- match(key, levels_in)
   pos[!use] <- NA_integer_
   idx <- split(seq_along(key)[use],
                structure(pos[use], levels = as.character(seq_along(levels_in)),
                          class = "factor"))
   list(by = by, key = key, pop_key = pop_key, labels = labels,
-       levels_in = levels_in, pos = pos, idx = unname(idx),
+       levels_in = levels_in, blank = blank, pos = pos, idx = unname(idx),
        aligned = !is.null(pop_key) && identical(pop_key[parts$rows], key))
+}
+
+#' Say that compact_sample() dropped the `by` columns a variance needed
+#'
+#' A stratum with one sampled row adds nothing to a domain's variance when
+#' the frame shows it holds no row of the domain. Without the `by` columns
+#' the frame cannot show that, and the variance is declined. Called when a
+#' domain of more than one row has no variance; `NULL` unless the stored
+#' frame lacks `by` columns that compact_sample() dropped.
+#'
+#' @noRd
+compact_domain_note <- function(parts, dom) {
+  gone <- intersect(dom$by, parts$compact$dropped)
+  if (!length(gone) || dom$aligned) return(NULL)
+  paste0("compact_sample() dropped ", quote_names(gone), " from the frame ",
+         "stored with `sample`, so the frame cannot show which of its rows ",
+         "each domain holds, and a standard error that depends on it is ",
+         "missing. Compact the sample from draw() with `keep = ",
+         deparse(if (length(gone) > 1L) gone else gone[[1]]), "` instead.")
 }
 
 #' Which frame rows the domains at positions `j` of `levels_in` hold
@@ -1600,9 +1680,12 @@ estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
                          parts$pi, variance, domain_frame(dom, used), ctx)
   out <- finish_estimate(value, var_out, parts, level, df, what = "contrast",
                          class = "drawn_contrast", alternative = alternative)
+  gap <- if (is.na(out$variance)) compact_domain_note(parts, dom)
+  if (!is.null(gap)) out$note <- paste(c(out$note, gap), collapse = " ")
   if (any(!parts$respond)) {
     out$note <- paste(c(out$note, missing_note(sum(!parts$respond),
-                                               length(parts$respond))),
+                                               length(parts$respond),
+                                               parts$y_name)),
                       collapse = " ")
   }
   out$weights <- stats::setNames(w[used], labels)
@@ -1658,6 +1741,14 @@ contrast_weights <- function(contrast, dom) {
   if (anyNA(at)) {
     miss <- nm[is.na(at)]
     several <- length(miss) > 1L
+    blank <- miss[miss %in% dom$labels[dom$blank]]
+    if (length(blank)) {
+      stop("`contrast` names ", ticks(blank), ", whose sampled rows all ",
+           "have `y` missing, so ", if (length(blank) > 1L) "they have" else
+             "it has", " no estimate under `na_rm = TRUE`. Leave ",
+           if (length(blank) > 1L) "them" else "it", " out of `contrast`.",
+           call. = FALSE)
+    }
     empty <- miss[miss %in% dom$labels]
     if (length(empty)) {
       stop("`contrast` names ", ticks(empty), ", which ",
@@ -2080,6 +2171,8 @@ variable_forms <- function(y, arg, several, sample) {
   }
   what <- if (is.null(y)) {
     "NULL"
+  } else if (is.character(y) && length(y) == 1L && is.na(y)) {
+    "NA, a missing column name"
   } else if (is.character(y) && length(y) > 1L) {
     paste0("a character vector of ", length(y), " values, ",
            if (anyNA(y) || !all(nzchar(y))) {
@@ -2710,10 +2803,12 @@ vcov.drawn_contrast <- function(object, ...) vcov.drawn_ht(object)
 vcov.drawn_ratio <- function(object, ...) vcov.drawn_ht(object)
 
 # The covariances between domains are not estimated, so the off-diagonal
-# entries are 0. A difference of domains needs `contrast`. A table of
-# several variables holds the covariances between them in its `vcov`
-# attribute, matched to the rows by name, so that it follows a selection of
-# rows.
+# entries are NA, except 0 between domains of a stratified design that share
+# no stratum. A difference of domains needs `contrast`. The table holds its
+# matrix in its `vcov` attribute, with the covariances between several
+# variables within each domain, matched to the rows by name, so that it
+# follows a selection of rows. A table without one, such as one of
+# quantiles, has its variances alone.
 
 #' @export
 vcov.drawn_by <- function(object, ...) {
@@ -2724,9 +2819,7 @@ vcov.drawn_by <- function(object, ...) {
     return(full[nm, nm, drop = FALSE])
   }
   v <- if ("variance" %in% names(object)) object$variance else object$se^2
-  out <- diag(v, nrow = length(v))
-  dimnames(out) <- list(nm, nm)
-  out
+  between_domains(v, seq_along(v), NULL, nm)
 }
 
 #' @export

@@ -160,8 +160,8 @@
 #'   a stratum the frame does not have is refused, and no count may exceed
 #'   the rows in its stratum. Only with `strata`.
 #' @param reserve Number of reserve rows to list after the main sample, to
-#'   replace rows found unavailable in the field. Not available with `size`
-#'   or `strata`. See "Reserves".
+#'   replace rows found unavailable in the field. Not available with `size`,
+#'   `strata` or `n = 0`. See "Reserves".
 #'
 #' @return A design object, for use with [draw()].
 #'
@@ -256,7 +256,7 @@ design_spread <- function(across, n, size = NULL, scale = TRUE,
   size <- if (is.null(size)) NULL else check_columns(size, "size", 1L)
   scale <- check_flag(scale, "scale")
   na_rm <- check_flag(na_rm, "na_rm")
-  reserve <- check_count(reserve, "reserve")
+  reserve <- check_reserve(reserve, n)
   if (reserve > 0L && (!is.null(size) || !is.null(strata))) {
     by <- if (!is.null(size)) "size" else "strata"
     stop("`reserve` needs every row at the same probability, and `", by,
