@@ -899,9 +899,13 @@ deff_cluster <- function(m, icc) {
 #'     \item{`design`}{The design's type, as a string.}
 #'     \item{`n`, `N`}{Rows drawn, and rows in the frame.}
 #'     \item{`N_reachable`}{Rows of the frame the design gives a probability
-#'       above 0, the population it samples. The printed sampling fraction is
-#'       `n / N_reachable`. `NA` if the design has no closed-form inclusion
-#'       probability, and the fraction is then `n / N`.}
+#'       above 0, the population it samples. For weights conditional on the
+#'       clusters selected, the rows of the clusters not selected count, since
+#'       another selection could have drawn them. The printed sampling
+#'       fraction is `n / N_reachable`. `NA` only when the frame's
+#'       probabilities cannot be worked out, for an empty sample saved by
+#'       drawn 0.2.0, which records none, from a design with no closed-form
+#'       inclusion probability. The fraction is then `n / N`.}
 #'     \item{`expected_n`}{The sample size the design expects, the sum of
 #'       the inclusion probabilities over the frame. It is `n` for a design
 #'       of fixed size, and printed beside `n` when the two differ, as they
@@ -930,9 +934,9 @@ deff_cluster <- function(m, icc) {
 #'       weights are conditional on them, as for [design_cluster()] with
 #'       `balanced = TRUE` (see "Design weights" in [draw()]); otherwise
 #'       `NA`.}
-#'     \item{`unreachable`}{Frame rows with inclusion probability 0 — the
-#'       design could never have selected them. `NA` if the design has no
-#'       closed-form inclusion probability.}
+#'     \item{`unreachable`}{Frame rows with inclusion probability 0, which
+#'       the design could never have selected, such as rows `na_rm` drops.
+#'       `NA` where `N_reachable` is.}
 #'     \item{`by_group`}{A data frame of `group`, `drawn`, `in_frame` and
 #'       `rate` per stratum, interval or cluster, or `NULL` for a design with
 #'       no grouping. The strata are those of [design_stratified()], and of

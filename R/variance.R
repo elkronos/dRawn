@@ -1796,7 +1796,9 @@ pps_stage_variance <- function(design, data, rows, y, pi_i, ctx = NULL) {
   if (length(open) == 1L) {
     return(list(variance = NA_real_, note = paste0(
       "A variance needs at least two clusters below certainty; this sample ",
-      "has one, besides the ", k - 1L, " taken with certainty.")))
+      "has one",
+      if (k > 1L) paste0(", besides the ", k - 1L, " taken with certainty"),
+      ".")))
   }
   z <- as.numeric(y)
   mu <- rowsum(z, g)[, 1L] / m

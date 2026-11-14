@@ -118,17 +118,23 @@ estimator of \code{\link[=design_multistage]{design_multistage()}} without \code
 equal. A cluster taken with certainty is a stratum, and adds only the
 variance of the simple random sample within it. The degrees of freedom
 count the clusters below certainty less one, and in each certain cluster
-the sampled rows less one. The variance is declined when one row is taken
-per cluster, whose variation within clusters cannot be measured, or when
-one cluster below certainty is selected. In simulations of 2,000 draws
+the sampled rows less one. The variance is declined when one cluster
+below certainty is selected. With one row taken per cluster, whose
+variation within clusters cannot be measured, \code{\link[=ht_total]{ht_total()}} falls back to
+the delete-a-cluster jackknife over the clusters below certainty, with no
+finite population correction, and declines if a cluster taken with
+certainty gives one row of several. In simulations of 2,000 draws
 each from frames of 78 or 80 clusters of 10 to 600 rows, taking 2 or 5
 rows from each of 12 or 20 clusters, with and without clusters taken
 with certainty, the variance averaged 0.94 to 1.02 times the true
 variance of the total, and 95\% intervals covered 93\% to 95\% of the time.
 
 \code{\link[=as_svydesign]{as_svydesign()}} hands the design to \code{survey} in two stages with
-Brewer's approximation at the first. Joint probabilities have no closed
-form; \code{\link[=joint_prob]{joint_prob()}} estimates them with \code{simulate = TRUE}.
+Brewer's approximation at the first. A sample with one row from a
+selected cluster of several goes over in one stage instead, as the
+clusters of that jackknife, and the standard errors agree. Joint
+probabilities have no closed form; \code{\link[=joint_prob]{joint_prob()}} estimates them with
+\code{simulate = TRUE}.
 }
 
 \examples{

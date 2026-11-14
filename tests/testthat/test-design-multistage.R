@@ -309,6 +309,12 @@ test_that("one row per cluster, or one cluster below certainty, declines", {
   expect_match(ht_total(s2, "y")$note,
                "The jackknife needs at least two clusters below certainty",
                fixed = TRUE)
+  # With no cluster certain the note does not count certain ones.
+  s1 <- draw(d, design_multistage("cl", n_clusters = 1, n = 3, size = "rows"),
+             seed = 1, weights = TRUE)
+  r1 <- ht_total(s1, "y", variance = "analytic")
+  expect_match(r1$note, "this sample has one.", fixed = TRUE)
+  expect_no_match(r1$note, "besides", fixed = TRUE)
 })
 
 test_that("a size that is not one per cluster, or not usable, is refused", {

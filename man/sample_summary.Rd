@@ -15,9 +15,13 @@ A list with a \code{print()} method, holding:
 \item{\code{design}}{The design's type, as a string.}
 \item{\code{n}, \code{N}}{Rows drawn, and rows in the frame.}
 \item{\code{N_reachable}}{Rows of the frame the design gives a probability
-above 0, the population it samples. The printed sampling fraction is
-\code{n / N_reachable}. \code{NA} if the design has no closed-form inclusion
-probability, and the fraction is then \code{n / N}.}
+above 0, the population it samples. For weights conditional on the
+clusters selected, the rows of the clusters not selected count, since
+another selection could have drawn them. The printed sampling
+fraction is \code{n / N_reachable}. \code{NA} only when the frame's
+probabilities cannot be worked out, for an empty sample saved by
+drawn 0.2.0, which records none, from a design with no closed-form
+inclusion probability. The fraction is then \code{n / N}.}
 \item{\code{expected_n}}{The sample size the design expects, the sum of
 the inclusion probabilities over the frame. It is \code{n} for a design
 of fixed size, and printed beside \code{n} when the two differ, as they
@@ -46,9 +50,9 @@ census.}
 weights are conditional on them, as for \code{\link[=design_cluster]{design_cluster()}} with
 \code{balanced = TRUE} (see "Design weights" in \code{\link[=draw]{draw()}}); otherwise
 \code{NA}.}
-\item{\code{unreachable}}{Frame rows with inclusion probability 0 — the
-design could never have selected them. \code{NA} if the design has no
-closed-form inclusion probability.}
+\item{\code{unreachable}}{Frame rows with inclusion probability 0, which
+the design could never have selected, such as rows \code{na_rm} drops.
+\code{NA} where \code{N_reachable} is.}
 \item{\code{by_group}}{A data frame of \code{group}, \code{drawn}, \code{in_frame} and
 \code{rate} per stratum, interval or cluster, or \code{NULL} for a design with
 no grouping. The strata are those of \code{\link[=design_stratified]{design_stratified()}}, and of

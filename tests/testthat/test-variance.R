@@ -56,6 +56,8 @@ test_that("designs without a closed form refuse", {
   expect_error(joint_prob(d, design_weighted("w", n = 10)), "no closed-form")
   expect_error(joint_prob(d, design_cluster("cl", n_clusters = 3, balanced = TRUE)),
                "no closed-form")
+  expect_error(joint_prob(d, design_cluster("cl", n_clusters = 3, balanced = TRUE)),
+               "joint_prob(data, design, simulate = TRUE)", fixed = TRUE)
   expect_error(joint_prob(d, design_bootstrap(n_replicates = 5)),
                "not a probability sample")
   expect_error(joint_prob(d, design_multistage("cl", n_clusters = 4, n = 10)),

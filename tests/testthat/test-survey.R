@@ -824,6 +824,46 @@ test_that("one row from a cluster of several goes to survey as ultimate clusters
   }
 })
 
+test_that("one row per cluster selected by size goes to survey in one stage", {
+  skip_if_not_installed("survey")
+  # Two stages made survey stop with "has only one PSU at stage 2", where
+  # ht_total() falls back to the delete-a-cluster jackknife.
+  sizes <- c(1, rep(c(3, 5, 8, 4), 5))
+  d <- data.frame(cl = rep(c("big", sprintf("k%02d", 1:20)), times = sizes))
+  d$M <- ave(seq_len(nrow(d)), d$cl, FUN = length)
+  d$y <- seq_len(nrow(d)) %% 7 * 3 + match(d$cl, unique(d$cl)) * 2
+  d$g <- ifelse(seq_len(nrow(d)) %% 3 == 0, "u", "v")
+  # `big` is a cluster of one row taken with certainty, so taken whole.
+  big <- d
+  big$M[1] <- 500
+  for (frame in list(d, big)) {
+    s <- draw(frame, design_multistage("cl", n_clusters = 6, n = 6,
+                                       size = "M"), seed = 3, weights = TRUE)
+    sv <- as_svydesign(s)
+    ours <- ht_total(s, "y")
+    expect_equal(ours$method, "jackknife")
+    theirs <- survey::svytotal(~y, sv)
+    expect_equal(as.numeric(survey::SE(theirs)), ours$se, tolerance = 1e-8)
+    expect_equal(survey::degf(sv), ours$df)
+    expect_equal(as.numeric(survey::SE(survey::svymean(~y, sv))),
+                 ht_mean(s, "y")$se, tolerance = 1e-8)
+    by_theirs <- survey::svyby(~y, ~g, sv, survey::svytotal)
+    expect_equal(ht_total(s, "y", by = "g")$se,
+                 as.numeric(survey::SE(by_theirs)), tolerance = 1e-8)
+  }
+  expect_true("big" %in% s$cl)
+  expect_equal(ours$df, 4)
+
+  # A certain cluster that gives one row of several has nothing to compare
+  # it with in either package.
+  wide <- d
+  wide$M[wide$cl == "k03"] <- 500
+  s <- draw(wide, design_multistage("cl", n_clusters = 6, n = 6, size = "M"),
+            seed = 3, weights = TRUE)
+  expect_true(is.na(ht_total(s, "y")$se))
+  expect_error(survey::svytotal(~y, as_svydesign(s)), "only one PSU")
+})
+
 test_that("spread and systematic samples go to survey as their simple designs", {
   skip_if_not_installed("survey")
   # survey's standard error is that of the first-order design. For spread it

@@ -122,7 +122,7 @@ variance is refused with the stratum named; draw at least two in each.
 
 In simulations of 2,000 draws each from frames of 600 rows in four strata,
 drawing 24 or 60 rows by \code{"systematic"}, the variance averaged 0.94 to
-1.04 times the true variance of the total, and 95\% intervals covered 88\%
+1.04 times the true variance of the total, and 95\% intervals covered 89\%
 to 96\% of the time. The low coverage came where \code{y / pi} was skewed, so
 that samples with a low total also had a low estimated variance; the same
 frames without strata covered 92\% to 94\%.

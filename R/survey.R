@@ -21,7 +21,7 @@
 #'   [design_weighted()], `"poisson"` \tab `survey::poisson_sampling()`, which models the random size; with `strata`, the strata too, which change only the degrees of freedom \tab identical \cr
 #'   [design_certainty()] \tab the certainty rows as one unit in a stratum of their own, taken whole, beside `rest` as it maps alone; over a Poisson `rest`, `survey::poisson_sampling()` from the whole sample's `.prob` \tab as `rest` \cr
 #'   [design_weighted()], `"systematic"` \tab `pps = "brewer"` with the inclusion probabilities; with `strata`, `strata` from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
-#'   [design_multistage()] with `size` \tab two stages, `ids` the `.cluster` numbers then the rows, `pps = "brewer"` with each cluster's stage-one probability and `m / N_i` at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units \tab close \cr
+#'   [design_multistage()] with `size` \tab two stages, `ids` the `.cluster` numbers then the rows, `pps = "brewer"` with each cluster's stage-one probability and `m / N_i` at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units; with one sampled row from a selected cluster of several, one stage, `ids` the `.cluster` numbers and no `fpc` \tab close; identical in one stage \cr
 #'   [design_spread()] \tab as its first-order design: `ids = ~1`, or `pps = "brewer"` with `size`; with `strata`, `strata` from the strata columns and `fpc` each stratum's size, or Brewer's within them \tab **differ** \cr
 #'   [design_systematic()] with `n_starts` of 2 or more \tab `ids` a `.cluster` column numbering the replicates, `fpc` the `n_starts * interval` possible starts \tab identical \cr
 #'   [design_systematic()] \tab `ids = ~1` with `fpc` the rows the walk can reach \tab **differ** \cr
@@ -110,8 +110,9 @@
 #' A stratum or interval with a single sampled row makes `survey` stop with
 #' "Stratum has only one PSU" unless `options(survey.lonely.psu)` says
 #' otherwise; [ht_total()] declines in the same situation. Draw at least two
-#' per stratum. Under [design_multistage()] with `size`, a cluster with a
-#' single sampled row of several does the same at the second stage.
+#' per stratum. Under [design_multistage()] with `size`, a cluster taken with
+#' certainty is a stratum of its sampled rows, so one that gives a single row
+#' of several is such a stratum.
 #' `options(survey.ultimate.cluster = TRUE)` makes `survey` leave out the
 #' second stage of every two-stage design, so its standard errors then
 #' differ from [ht_total()]'s. The agreement the table states holds under
@@ -129,7 +130,10 @@
 #' finite population correction, and `survey` gets that design: one stage,
 #' `ids` the `.cluster` numbers and no `fpc`. So does a certainty design's
 #' `rest` of balanced clusters, which [draw()] weights without regard to the
-#' clusters selected, leaving no two-stage estimator.
+#' clusters selected, leaving no two-stage estimator. Under
+#' [design_multistage()] with `size` the jackknife runs over the clusters
+#' below certainty, and a cluster taken whole is held fixed in a stratum of
+#' its own in both packages.
 #'
 #' @section Weights and design columns:
 #' `survey` gets the sample's `.weight` column as its weights. Weights adjusted
@@ -670,7 +674,7 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
       # The ids are integer codes. `survey` makes a factor of the ids, which
       # compares them as text and would merge two numbers that print alike.
       if (!is.null(design$size)) {
-        return(pps_stage_parts(design, units, pop, prefix))
+        return(pps_stage_parts(design, units, pop, dat$.prob, prefix))
       }
       cl <- count_clusters(design, pop)
       n_clusters <- cl$total
@@ -817,13 +821,30 @@ survey_parts <- function(design, dat, units, pop, rows, prefix = "") {
 #' is a single unit with an `fpc` of 1. `survey::degf()` then counts what
 #' `design_df()` counts.
 #'
+#' One row from a selected cluster of several leaves the variation within
+#' clusters unmeasured, and `ht_total()` falls back to the delete-a-cluster
+#' jackknife over the clusters below certainty, with no finite population
+#' correction. That is `survey`'s one-stage design of the clusters with no
+#' `fpc`, which such a sample gets, with any cluster taken whole in a stratum
+#' of its own. A cluster taken with certainty but not whole then has a single
+#' unit, and both packages decline; it keeps the two stages, where `survey`
+#' stops on it. `prob` holds the sampled rows' inclusion probabilities.
+#'
 #' @noRd
-pps_stage_parts <- function(design, units, pop, prefix = "") {
+pps_stage_parts <- function(design, units, pop, prob, prefix = "") {
   cu <- cluster_units(design, units, pop)
   st <- cluster_stage(design, pop)
   p1 <- st$pi1[cu$code]
-  share <- st$m / st$sizes[cu$code]
+  N <- st$sizes[cu$code]
+  share <- st$m / N
   certain <- is_certain(p1)
+  taken <- tabulate(cu$code, length(st$pi1))[cu$code]
+  if (any(taken < 2L & taken < N) && !any(certain & taken < N)) {
+    return(whole_cluster_parts(
+      list(stratum = NULL, fpc = NULL, ids = stats::as.formula("~.cluster"),
+           cluster = cu$psu),
+      prob, prefix))
+  }
   list(stratum = paste0(prefix, ifelse(certain, paste0("(certain) ", cu$code),
                                        "(pps)")),
        fpc = ifelse(certain, pmin(share, 1), p1),

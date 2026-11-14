@@ -971,7 +971,8 @@
   the exact two-stage estimator when every cluster has the same chance, and
   count each cluster taken with certainty as a stratum of its rows.
   `as_svydesign()` hands `survey` the two stages with Brewer's
-  approximation at the first. A measure that differs within a cluster,
+  approximation at the first, or one stage of clusters when a selected
+  cluster gives one row of several. A measure that differs within a cluster,
   `allocation = "proportional"` and an `n` that `n_clusters` does not
   divide are refused.
 * `inclusion_prob()` gives `design_cluster(balanced = TRUE)` its exact
@@ -1302,12 +1303,12 @@
   the certainty rows at probability 1. Totals, standard errors, domain
   estimates and degrees of freedom agree with `ht_total()` as they do for
   `rest` on its own.
-* A sample from `design_multistage()` or `design_cluster(balanced = TRUE)`
-  with one sampled row from a selected cluster of several goes to `survey`
-  as one stage of clusters with no `fpc`. That is the ultimate-cluster
-  design behind the jackknife `ht_total()` falls back to, so the standard
-  errors agree. In two stages, `survey` stopped with "has only one PSU at
-  stage 2".
+* A sample from `design_multistage()`, with or without `size`, or
+  `design_cluster(balanced = TRUE)` with one sampled row from a selected
+  cluster of several goes to `survey` as one stage of clusters with no
+  `fpc`. That is the ultimate-cluster design behind the jackknife
+  `ht_total()` falls back to, so the standard errors agree. In two stages,
+  `survey` stopped with "has only one PSU at stage 2".
 * `as_svydesign()` refuses a sample with a column named `.stratum`,
   `.cluster`, `.psu`, `.fpc`, `.fpc2` or `.unit`. It wrote the design into
   those columns over the user's, so an analysis of such a column in

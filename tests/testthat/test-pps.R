@@ -449,7 +449,8 @@ test_that("samples bound stratum by stratum are refused, with strata the way", {
                                             method = "systematic"),
          seed = 1, weights = TRUE)
   })
-  expect_error(ht_total(do.call(rbind, parts), "y"))
+  expect_error(ht_total(do.call(rbind, parts), "y"),
+               "more than once, as rbind() of samples", fixed = TRUE)
   whole <- draw(pop, design_weighted("w", n = 12, method = "systematic",
                                      strata = "g"), seed = 1, weights = TRUE)
   expect_false(is.na(ht_total(whole, "y")$se))

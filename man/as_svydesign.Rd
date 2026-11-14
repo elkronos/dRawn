@@ -42,7 +42,7 @@ in \code{survey}'s own terms rather than hand over a weight column and hope.
 \code{\link[=design_weighted]{design_weighted()}}, \code{"poisson"} \tab \code{survey::poisson_sampling()}, which models the random size; with \code{strata}, the strata too, which change only the degrees of freedom \tab identical \cr
 \code{\link[=design_certainty]{design_certainty()}} \tab the certainty rows as one unit in a stratum of their own, taken whole, beside \code{rest} as it maps alone; over a Poisson \code{rest}, \code{survey::poisson_sampling()} from the whole sample's \code{.prob} \tab as \code{rest} \cr
 \code{\link[=design_weighted]{design_weighted()}}, \code{"systematic"} \tab \code{pps = "brewer"} with the inclusion probabilities; with \code{strata}, \code{strata} from the strata columns and Brewer's within them \tab close for totals, less so for means \cr
-\code{\link[=design_multistage]{design_multistage()}} with \code{size} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{pps = "brewer"} with each cluster's stage-one probability and \code{m / N_i} at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units \tab close \cr
+\code{\link[=design_multistage]{design_multistage()}} with \code{size} \tab two stages, \code{ids} the \code{.cluster} numbers then the rows, \code{pps = "brewer"} with each cluster's stage-one probability and \code{m / N_i} at the second stage; each cluster taken with certainty a stratum of its own, whose rows are its units; with one sampled row from a selected cluster of several, one stage, \code{ids} the \code{.cluster} numbers and no \code{fpc} \tab close; identical in one stage \cr
 \code{\link[=design_spread]{design_spread()}} \tab as its first-order design: \code{ids = ~1}, or \code{pps = "brewer"} with \code{size}; with \code{strata}, \code{strata} from the strata columns and \code{fpc} each stratum's size, or Brewer's within them \tab \strong{differ} \cr
 \code{\link[=design_systematic]{design_systematic()}} with \code{n_starts} of 2 or more \tab \code{ids} a \code{.cluster} column numbering the replicates, \code{fpc} the \code{n_starts * interval} possible starts \tab identical \cr
 \code{\link[=design_systematic]{design_systematic()}} \tab \code{ids = ~1} with \code{fpc} the rows the walk can reach \tab \strong{differ} \cr
@@ -132,8 +132,9 @@ there is no finite population for \code{svydesign()} to represent.
 A stratum or interval with a single sampled row makes \code{survey} stop with
 "Stratum has only one PSU" unless \code{options(survey.lonely.psu)} says
 otherwise; \code{\link[=ht_total]{ht_total()}} declines in the same situation. Draw at least two
-per stratum. Under \code{\link[=design_multistage]{design_multistage()}} with \code{size}, a cluster with a
-single sampled row of several does the same at the second stage.
+per stratum. Under \code{\link[=design_multistage]{design_multistage()}} with \code{size}, a cluster taken with
+certainty is a stratum of its sampled rows, so one that gives a single row
+of several is such a stratum.
 \code{options(survey.ultimate.cluster = TRUE)} makes \code{survey} leave out the
 second stage of every two-stage design, so its standard errors then
 differ from \code{\link[=ht_total]{ht_total()}}'s. The agreement the table states holds under
@@ -151,7 +152,10 @@ delete-a-cluster jackknife, which is the ultimate-cluster variance with no
 finite population correction, and \code{survey} gets that design: one stage,
 \code{ids} the \code{.cluster} numbers and no \code{fpc}. So does a certainty design's
 \code{rest} of balanced clusters, which \code{\link[=draw]{draw()}} weights without regard to the
-clusters selected, leaving no two-stage estimator.
+clusters selected, leaving no two-stage estimator. Under
+\code{\link[=design_multistage]{design_multistage()}} with \code{size} the jackknife runs over the clusters
+below certainty, and a cluster taken whole is held fixed in a stratum of
+its own in both packages.
 }
 
 \section{Weights and design columns}{
