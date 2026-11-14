@@ -273,6 +273,67 @@ test_that("the antimeridian warning gives both readings of the edge", {
   expect_warning(joint_prob(d, des), class = "drawn_antimeridian")
 })
 
+test_that("the antimeridian warning starts past 180 degrees", {
+  skip_if_not_installed("sf")
+  # The class of every warning a call gives, so the geodesic warning of a
+  # raw box cannot hide whether the antimeridian one came too.
+  classes <- function(code) {
+    out <- character(0)
+    withCallingHandlers(try(code, silent = TRUE), warning = function(w) {
+      out <<- c(out, class(w)[1])
+      invokeRestart("muffleWarning")
+    })
+    out
+  }
+  d <- data.frame(lon = c(0, 10, -10), lat = c(0, 5, -5))
+  probs <- function(lon, lat = c(-10, 10)) {
+    inclusion_prob(d, design_spatial(c("lon", "lat"), lonlat_box(lon, lat),
+                                     n = 1))
+  }
+  # Raw edges that bow, but that s2 takes the way they are drawn
+  expect_identical(classes(probs(c(-50, 50), c(-30, 30))),
+                   "drawn_geodesic_edges")
+  expect_identical(classes(probs(c(-80, 80), c(-60, 60))),
+                   "drawn_geodesic_edges")
+  expect_identical(classes(probs(c(-89.5, 89.5))), "drawn_geodesic_edges")
+  # One degree past half the globe, the edge goes the other way round
+  w <- tryCatch(probs(c(-90.5, 90.5)), drawn_antimeridian = identity)
+  expect_s3_class(w, "drawn_antimeridian")
+  expect_match(conditionMessage(w), "a span of 179 degrees", fixed = TRUE)
+})
+
+test_that("an edge from -180 to 180 warns, and one along a pole does not", {
+  skip_if_not_installed("sf")
+  # Both ends of such an edge lie on one meridian, so under s2 a band
+  # around the globe encloses nothing, alone or beside another part.
+  band <- lonlat_box(c(-180, 180), c(-60, 60))
+  d <- data.frame(lon = c(0.5, 50, -100), lat = c(0.5, 10, -20))
+  w <- tryCatch(inclusion_prob(d, design_spatial(c("lon", "lat"), band,
+                                                 n = 1)),
+                warning = identity)
+  expect_s3_class(w, "drawn_antimeridian")
+  expect_match(conditionMessage(w), "joins longitudes -180 and 180",
+               fixed = TRUE)
+  expect_match(conditionMessage(w), "same meridian, so the edge spans 0 ",
+               fixed = TRUE)
+  expect_match(conditionMessage(w), "span the 360 degrees of longitude",
+               fixed = TRUE)
+  two <- design_spatial(c("lon", "lat"),
+                        list(lonlat_box(c(0, 1), c(0, 1)), band), n = 1)
+  expect_warning(p <- inclusion_prob(d, two), class = "drawn_antimeridian")
+  expect_equal(p, c(1, 0, 0))
+
+  # A cap around the south pole, closed down the antimeridian and along the
+  # pole, is the region its coordinates describe.
+  cap <- sf::st_sfc(sf::st_polygon(list(cbind(
+    c(seq(180, -180, by = -1), -180, 180, 180),
+    c(rep(-70, 361), -90, -90, -70)))), crs = 4326)
+  south <- data.frame(lon = c(0, 100, 0), lat = c(-80, -85, 0))
+  expect_silent(p <- inclusion_prob(south, design_spatial(c("lon", "lat"),
+                                                          cap, n = 1)))
+  expect_equal(p, c(0.5, 0.5, 0))
+})
+
 test_that("a region larger than a hemisphere works split into a list", {
   skip_if_not_installed("sf")
   # Unioned, the two halves came back as the rest of the globe under s2.

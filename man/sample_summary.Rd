@@ -54,7 +54,10 @@ closed-form inclusion probability.}
 no grouping. The strata are those of \code{\link[=design_stratified]{design_stratified()}}, and of
 \code{\link[=design_spread]{design_spread()}} and \code{\link[=design_weighted]{design_weighted()}} when they have \code{strata},
 and every stratum of the frame is listed, one allocated no rows
-included. The intervals of \code{\link[=design_temporal]{design_temporal()}} are listed in time
+included. A stratum's \code{in_frame} counts the rows the design can
+draw from it, as \code{N} of \code{\link[=allocation_table]{allocation_table()}} does, so rows \code{na_rm}
+drops are left out, and a stratum it empties is not listed. The
+intervals of \code{\link[=design_temporal]{design_temporal()}} are listed in time
 order and named by their start, such as \code{"2024-01-03 00:00"}. For
 \code{\link[=design_cluster]{design_cluster()}} and \code{\link[=design_multistage]{design_multistage()}}, only the clusters
 drawn are listed. For \code{\link[=design_certainty]{design_certainty()}}, the groups are those of

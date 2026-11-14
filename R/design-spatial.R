@@ -72,10 +72,15 @@
 #' [inclusion_prob()], [joint_prob()] and [plot()][plot.drawn_design] warn,
 #' with class `drawn_antimeridian`, whenever an edge of `region` joins two
 #' longitudes more than 180 degrees apart, and the warning gives both
-#' readings. If you meant the short way, `region` is what you drew. If you
-#' meant the long way, split the region into parts smaller than a hemisphere,
-#' add vertices to each as in the previous section, and pass the parts as a
-#' list; or switch to planar interpretation with `sf::sf_use_s2(FALSE)`.
+#' readings. An edge from -180 to 180 is one of them: both ends lie on the
+#' same meridian, so under spherical geometry the edge spans no longitude,
+#' and a box from -180 to 180 encloses nothing. An edge along a pole, where
+#' every longitude meets, does not warn, so a cap around a pole closed along
+#' it does not either. If you meant the short way, `region` is what you
+#' drew. If you meant the long way, split the region into parts smaller than
+#' a hemisphere, add vertices to each as in the previous section, and pass
+#' the parts as a list; or switch to planar interpretation with
+#' `sf::sf_use_s2(FALSE)`.
 #' Splitting works under the default setting. Switching has to happen before
 #' [draw()] and stay in force for every estimate from the sample; see the next
 #' section.
@@ -465,23 +470,36 @@ region_edges <- function(region) {
 #' what a region meant to cross it needs, and the opposite of what a region
 #' meant to go the long way round needs, so the warning gives both readings.
 #' Checking the raw coordinates is exact and cheap; comparing areas is not,
-#' because a collapsed ring and its bounding box collapse together. An edge
-#' whose ends are the same point, 360 degrees apart, is not counted.
+#' because a collapsed ring and its bounding box collapse together.
+#'
+#' An edge from -180 to 180 counts: both ends lie on one meridian, so s2
+#' gives it no extent in longitude, and a box spanning every longitude
+#' encloses nothing. An edge along a pole does not count, since every
+#' longitude meets there and the edge has no length in either reading; a
+#' cap around a pole is closed that way.
 #'
 #' @noRd
 warn_antimeridian <- function(e) {
   dx <- e$x1 - e$x0
   span <- abs(dx)
-  span[abs(dx - 360 * round(dx / 360)) < 1e-9] <- 0
+  pole <- abs(abs(e$y0) - 90) < 1e-9 & abs(abs(e$y1) - 90) < 1e-9
+  span[pole] <- 0
   i <- which.max(span)
   if (!length(i) || !(span[i] > 180)) return(invisible(NULL))
+  short <- abs(dx[i] - 360 * round(dx[i] / 360))
+  taken <- if (short < 1e-9) {
+    paste0("Under spherical geometry both lie on the same meridian, so the ",
+           "edge spans 0 degrees of longitude.")
+  } else {
+    paste0("Under spherical geometry it takes the short way, across the ",
+           "antimeridian, a span of ", fmt_coord(short), " degrees.")
+  }
   warn_drawn(paste0(
     "An edge of `region` joins longitudes ", fmt_coord(e$x0[i]), " and ",
-    fmt_coord(e$x1[i]), ". Under spherical geometry it takes the short way, ",
-    "across the antimeridian, a span of ", fmt_coord(360 - span[i]),
-    " degrees. If you meant it to span the ", fmt_coord(span[i]),
-    " degrees of longitude between the two values, split `region`; see the ",
-    "\"Regions that cross the antimeridian\" section of ?design_spatial."),
+    fmt_coord(e$x1[i]), ". ", taken, " If you meant it to span the ",
+    fmt_coord(span[i]), " degrees of longitude between the two values, ",
+    "split `region`; see the \"Regions that cross the antimeridian\" ",
+    "section of ?design_spatial."),
     "drawn_antimeridian")
 }
 

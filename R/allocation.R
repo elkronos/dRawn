@@ -481,3 +481,33 @@ match_strata <- function(spec, data, strata, arg, value = "n",
   row.names(out) <- NULL
   out
 }
+
+#' Refuse a count for a stratum whose every row `na_rm` drops
+#'
+#' A spread or weighted design splits `n` over the strata of the rows it
+#' keeps, so a stratum `na_rm` empties is not one of them, and
+#' `match_strata()` would refuse its count as one for a stratum `data` does
+#' not have. This names the reason instead. `key` is `group_key()` of the
+#' `strata` over every row of `data`, `keep` the rows kept, and `what` why
+#' the others were dropped, as in "a missing weight in `w`".
+#'
+#' @noRd
+refuse_emptied_counts <- function(design, data, key, keep, what) {
+  if (!has_counts(design)) return(invisible(NULL))
+  code <- as.integer(key)
+  k <- nlevels(key)
+  emptied <- which(tabulate(code, k) > 0L & tabulate(code[keep], k) == 0L)
+  if (!length(emptied)) return(invisible(NULL))
+  spec <- strata_frame(design$allocation, design$strata, "allocation")
+  both <- group_key2(spec, data, design$strata)
+  first <- match(emptied, code)
+  named <- emptied[as.integer(both$table)[first] %in% as.integer(both$x)]
+  if (!length(named)) return(invisible(NULL))
+  one <- length(named) == 1L
+  stop("`allocation` gives ",
+       if (one) "a count for stratum " else "counts for strata ",
+       quote_labels(levels(key)[named]), ", but na_rm = TRUE drops every ",
+       "row of ", if (one) "it" else "them", " for ", what, ". Fill in ",
+       "those values, or leave ", if (one) "the stratum" else "those strata",
+       " out of `allocation`.", call. = FALSE)
+}

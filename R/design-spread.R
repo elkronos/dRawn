@@ -318,7 +318,8 @@ spread_frame <- function(design, data) {
   x_cols <- coordinate_columns(data, design$across, "across", time = TRUE)
   bad <- spread_missing(x_cols,
                         if (!is.null(design$size)) data[[design$size]])
-  if (!is.null(strata)) bad <- bad | is.na(group_key(data, strata))
+  key <- if (!is.null(strata)) group_key(data, strata)
+  if (!is.null(strata)) bad <- bad | is.na(key)
   check_na_policy(bad, design$na_rm,
                   paste0("a missing value in ",
                          paste0("`", c(cols, strata), "`", collapse = ", ")))
@@ -345,6 +346,8 @@ spread_frame <- function(design, data) {
     al <- list(idx = list(seq_along(keep)), sizes = length(keep),
                n_alloc = design$n)
   } else {
+    refuse_emptied_counts(design, data, key, keep, paste0(
+      "a missing value in ", paste0("`", cols, "`", collapse = ", ")))
     al <- stratum_allocation(design, table_frame(
       lapply(strata, function(col) data[[col]][keep]), strata, list()))
   }

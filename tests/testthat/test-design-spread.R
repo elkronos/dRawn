@@ -446,6 +446,25 @@ test_that("strata are refused or warned about as stratified designs are", {
     expect_equal(ht_total(s1, "v", variance = v)$variance,
                  ht_total(s2, "v", variance = v)$variance)
   }
+
+  # A count for a stratum na_rm empties names that reason, on every path.
+  d <- strata_pop()
+  d$x[d$g == "east"] <- NA
+  counts <- design_spread(c("x", "y"), strata = "g", na_rm = TRUE,
+                          allocation = c(north = 10, south = 5, east = 2))
+  msg <- paste0("`allocation` gives a count for stratum `east`, but ",
+                "na_rm = TRUE drops every row of it for a missing value in ",
+                "`x`, `y`. Fill in those values, or leave the stratum out ",
+                "of `allocation`.")
+  expect_error(draw(d, counts, seed = 1), msg, fixed = TRUE)
+  expect_error(inclusion_prob(d, counts), msg, fixed = TRUE)
+  expect_error(allocation_table(d, counts), msg, fixed = TRUE)
+  # Without a count it is outside the frame the design draws from.
+  p <- inclusion_prob(d, design_spread(c("x", "y"), strata = "g",
+                                       na_rm = TRUE,
+                                       allocation = c(north = 10, south = 5)))
+  expect_equal(p[d$g == "east"], rep(0, 30))
+  expect_equal(sum(p), 15)
 })
 
 test_that("sample_summary() and allocation_table() show the strata", {
@@ -456,6 +475,16 @@ test_that("sample_summary() and allocation_table() show the strata", {
   expect_equal(b$group, c("east", "north", "south"))
   expect_equal(b$drawn, c(6L, 14L, 10L))
   expect_equal(b$in_frame, c(30L, 70L, 50L))
+
+  # Rows na_rm drops are in no stratum, as in allocation_table().
+  gap <- strata_pop()
+  gap$x[1:2] <- NA
+  kept <- design_spread(c("x", "y"), n = 30, strata = "g", na_rm = TRUE)
+  b <- sample_summary(draw(gap, kept, seed = 1, weights = TRUE))$by_group
+  tab <- allocation_table(gap, kept)
+  expect_equal(b$in_frame, c(30L, 68L, 50L))
+  expect_equal(b$in_frame, tab$N)
+  expect_equal(b$rate, round(tab$prob, 4))
 
   d$w[c(5, 80)] <- 60
   sized <- design_spread(c("x", "y"), n = 30, strata = "g", size = "w")

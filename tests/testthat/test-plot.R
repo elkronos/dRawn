@@ -297,6 +297,27 @@ test_that("a bootstrap is plotted by its first replicate", {
   expect_equal(shown, paste0("replicate 1 of 50   |   30 draws, ",
                              length(unique(first)), " distinct rows of 240"))
 
+  # Both views of every output mark the rows of the first replicate. The
+  # map drew the count matrix of output = "weights" as row numbers.
+  located <- data.frame(id = 1:30, x = 1:30 %% 7, y = 1:30 %/% 7)
+  boot <- draw(located, design_bootstrap(n_replicates = 20, n = 3), seed = 1)
+  real <- plot_counts
+  marked <- NULL
+  local_mocked_bindings(plot_counts = function(x, y, seed) {
+    out <- real(x, y, seed)
+    marked <<- which(out > 0)
+    out
+  })
+  for (output in c("rows", "indices", "weights")) {
+    for (type in c("selection", "map")) {
+      marked <- NULL
+      plot(design_bootstrap(n_replicates = 20, n = 3, output = output),
+           located, type = type, coords = c("x", "y"), seed = 1)
+      expect_equal(marked, sort(unique(boot$id[boot$.replicate == 1])),
+                   info = paste(output, type))
+    }
+  }
+
   # The probability view has nothing to show and does not point to the
   # selection view either.
   err <- tryCatch(plot(des, pop, type = "probability"), error = identity)

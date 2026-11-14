@@ -154,4 +154,33 @@ test_that("strata of a weighted design are summarised from the frame", {
   expect_identical(sm$by_group$in_frame, c(30L, 10L))
   s$g <- "renamed"
   expect_identical(sample_summary(s)$by_group$drawn, c(6L, 2L))
+
+  # Rows dropped for a missing weight are in no stratum, as in
+  # allocation_table().
+  d$w[1:4] <- NA
+  des <- design_weighted("w", n = 8, method = "systematic", strata = "g",
+                         na_rm = TRUE)
+  b <- sample_summary(draw(d, des, seed = 1, weights = TRUE))$by_group
+  expect_identical(b$in_frame, c(26L, 10L))
+  expect_identical(b$in_frame, allocation_table(d, des)$N)
+})
+
+test_that("counts for strata that na_rm empties name that reason", {
+  d <- data.frame(g = rep(c("a", "b", "c", "d"), each = 5), w = 1)
+  d$w[d$g %in% c("b", "d")] <- NA
+  des <- design_weighted("w", method = "poisson", strata = "g", na_rm = TRUE,
+                         allocation = data.frame(g = c("a", "b", "c", "d"),
+                                                 n = c(2, 1, 2, 1)))
+  expect_error(draw(d, des, seed = 1),
+               paste0("`allocation` gives counts for strata `b`, `d`, but ",
+                      "na_rm = TRUE drops every row of them for a missing ",
+                      "weight in `w`. Fill in those values, or leave those ",
+                      "strata out of `allocation`."), fixed = TRUE)
+  expect_error(inclusion_prob(d, des), "drops every row of them",
+               fixed = TRUE)
+  # A stratum the frame does not have is still refused as one.
+  typo <- design_weighted("w", method = "poisson", strata = "g",
+                          na_rm = TRUE, allocation = c(a = 2, c = 2, e = 1))
+  expect_error(draw(d, typo, seed = 1),
+               "names 1 stratum that `data` does not have: `e`", fixed = TRUE)
 })

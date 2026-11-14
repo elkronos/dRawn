@@ -254,13 +254,16 @@ weighted_setup <- function(design, data) {
 #' @noRd
 weighted_strata <- function(design, data, w, bad) {
   strata <- design$strata
-  gone <- check_na_policy(is.na(group_key(data, strata)) & !bad,
-                          design$na_rm, "a missing stratum key")
+  key <- group_key(data, strata)
+  gone <- check_na_policy(is.na(key) & !bad, design$na_rm,
+                          "a missing stratum key")
   keep <- which(!bad & !gone)
   if (!length(keep)) {
     stop("Every row has a missing weight in `", design$weights, "` or a ",
          "missing stratum key.", call. = FALSE)
   }
+  refuse_emptied_counts(design, data, key, keep,
+                        paste0("a missing weight in `", design$weights, "`"))
   # These methods have no `replace`, so a count above its stratum's rows is
   # refused without offering one.
   split_by <- design

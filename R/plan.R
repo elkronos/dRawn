@@ -938,7 +938,10 @@ deff_cluster <- function(m, icc) {
 #'       no grouping. The strata are those of [design_stratified()], and of
 #'       [design_spread()] and [design_weighted()] when they have `strata`,
 #'       and every stratum of the frame is listed, one allocated no rows
-#'       included. The intervals of [design_temporal()] are listed in time
+#'       included. A stratum's `in_frame` counts the rows the design can
+#'       draw from it, as `N` of [allocation_table()] does, so rows `na_rm`
+#'       drops are left out, and a stratum it empties is not listed. The
+#'       intervals of [design_temporal()] are listed in time
 #'       order and named by their start, such as `"2024-01-03 00:00"`. For
 #'       [design_cluster()] and [design_multistage()], only the clusters
 #'       drawn are listed. For [design_certainty()], the groups are those of
@@ -1082,6 +1085,16 @@ summary_groups <- function(design, pop, rows) {
   if (walks_strata(design)) {
     # Rows the walk leaves out for a missing `order_by` are in no stratum.
     key[is.na(stratum_allocation(design, pop)$code)] <- NA
+  }
+  if (type %in% c("spread", "weighted")) {
+    # A spread or weighted design allocates over the rows it keeps, so rows
+    # its `na_rm` drops are in no stratum, as in allocation_table().
+    keep <- if (type == "spread") {
+      spread_frame(design, pop)$keep
+    } else {
+      weighted_setup(design, pop)$keep
+    }
+    key[!seq_along(key) %in% keep] <- NA
   }
   code <- as.integer(key)
   got <- tabulate(code[rows], nlevels(key))

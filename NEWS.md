@@ -464,7 +464,10 @@
   meant to cross the antimeridian. `inclusion_prob()`, `joint_prob()` and
   `plot(type = "probability")` give it as well as `draw()`, and
   `inclusion_prob(simulate = TRUE)` gives it once, not once per simulated
-  draw.
+  draw. An edge from -180 to 180 still gives it, since both ends lie on one
+  meridian and a box between them encloses nothing. An edge along a pole,
+  where every longitude meets, no longer does, so a cap around a pole closed
+  along it draws without a warning.
 * `design_spatial()` refuses a `region` of points or lines, which enclose no
   area, and names `sf::st_buffer()`, or `sf::st_collection_extract()` for a
   geometry collection. `draw()` found no row inside such a region, or only
@@ -732,10 +735,10 @@
 * `plot(type = "selection")` and `plot(type = "map")` of a design that
   samples with replacement count draws and distinct rows, as in "60 draws,
   51 distinct rows of 240", and ring each row drawn more than once.
-* `plot()` of a `design_bootstrap()` shows its first replicate and says so.
-  It marked every row drawn in any replicate, which at the default 1,000
-  replicates is every row. `plot(type = "probability")` no longer points a
-  bootstrap to the selection view.
+* `plot()` of a `design_bootstrap()` shows its first replicate and says so,
+  whatever its `output`. It marked every row drawn in any replicate, which
+  at the default 1,000 replicates is every row. `plot(type = "probability")`
+  no longer points a bootstrap to the selection view.
 * `plot()` passes `xlim`, `ylim`, `asp` and the other graphical parameters
   in `...` to the panel in place of its own settings. Each one the plot also
   set stopped with "formal argument matched by multiple actual arguments",
@@ -874,7 +877,9 @@
   `ht_mean()` add up the strata's local mean variances, count degrees of
   freedom as for a stratified sample, and refuse by name a stratum with one
   sampled row below certainty. `as_svydesign()` hands the strata to
-  `survey`, and `allocation_table()` and `sample_summary()` list them. The
+  `survey`, and `allocation_table()` and `sample_summary()` list them with
+  the rows each keeps once `na_rm` drops those with a missing value. A count
+  for a stratum that `na_rm` empties is refused with that reason. The
   help page advised spreading within strata for large frames without a way
   to do it, and samples drawn stratum by stratum and bound with `rbind()`
   are refused by the estimators.
@@ -942,7 +947,9 @@
   stratified sample, a stratum with one sampled row below certainty is
   refused by name, and the jackknife deletes within strata.
   `as_svydesign()` hands `survey` the strata, with Brewer's approximation
-  within each, and `allocation_table()` and `sample_summary()` list them.
+  within each, and `allocation_table()` and `sample_summary()` list them
+  with the rows each keeps once `na_rm` drops those with a missing weight. A
+  count for a stratum that `na_rm` empties is refused with that reason.
   Samples drawn stratum by stratum and bound with `rbind()` were the only
   way before, and the estimators refuse them.
 * `design_multistage()` takes `size`, a column holding each cluster's size

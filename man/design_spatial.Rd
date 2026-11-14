@@ -103,10 +103,15 @@ antimeridian, such as a box from longitude 179 to -179. \code{\link[=draw]{draw(
 \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=joint_prob]{joint_prob()}} and \link[=plot.drawn_design]{plot()} warn,
 with class \code{drawn_antimeridian}, whenever an edge of \code{region} joins two
 longitudes more than 180 degrees apart, and the warning gives both
-readings. If you meant the short way, \code{region} is what you drew. If you
-meant the long way, split the region into parts smaller than a hemisphere,
-add vertices to each as in the previous section, and pass the parts as a
-list; or switch to planar interpretation with \code{sf::sf_use_s2(FALSE)}.
+readings. An edge from -180 to 180 is one of them: both ends lie on the
+same meridian, so under spherical geometry the edge spans no longitude,
+and a box from -180 to 180 encloses nothing. An edge along a pole, where
+every longitude meets, does not warn, so a cap around a pole closed along
+it does not either. If you meant the short way, \code{region} is what you
+drew. If you meant the long way, split the region into parts smaller than
+a hemisphere, add vertices to each as in the previous section, and pass
+the parts as a list; or switch to planar interpretation with
+\code{sf::sf_use_s2(FALSE)}.
 Splitting works under the default setting. Switching has to happen before
 \code{\link[=draw]{draw()}} and stay in force for every estimate from the sample; see the next
 section.
