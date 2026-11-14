@@ -90,10 +90,12 @@
 #' [ht_total()], [ht_mean()], [as_svydesign()] and [sample_summary()] find the
 #' region's rows again each time they run, because the variance, the design
 #' effect and `survey`'s population count all depend on them. They compare the
-#' result with the inclusion probabilities stored at draw time and refuse the
-#' sample when the two differ, naming `sf::sf_use_s2()`. The point estimate
-#' would not have moved, since it uses the stored `.prob`, but the standard
-#' error would.
+#' result with the inclusion probabilities stored at draw time, or with the
+#' `.prob` column of a sample saved by drawn 0.2.0, and refuse the sample when
+#' the two differ, naming `sf::sf_use_s2()`. The comparison catches any change
+#' in which rows are inside, including one that comes with another version of
+#' sf. The point estimate would not have moved, since it uses the stored
+#' `.prob`, but the standard error would.
 #'
 #' `sf_use_s2()` is a session setting, and a new R session starts with it
 #' `TRUE` unless the `_SF_USE_S2` environment variable says otherwise. A sample

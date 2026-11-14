@@ -116,8 +116,21 @@ test_that("a sample is refused once sf_use_s2() differs from the draw", {
   # Back under the setting it was drawn with, nothing has changed.
   expect_equal(with_s2(FALSE, ht_total(s, "y"))$se, planar$se)
 
+  # A sample saved by drawn 0.2.0 has no `.row` and no `drawn_pi`, but its
+  # `.prob` shows the same change.
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  expect_error(with_s2(TRUE, ht_total(old, "y")),
+               "gives 20 of its 20 rows a different inclusion probability",
+               fixed = TRUE)
+  expect_error(with_s2(TRUE, sample_summary(old)),
+               "in a session with the same version of sf", fixed = TRUE)
+  expect_equal(with_s2(FALSE, ht_total(old, "y"))$se, planar$se)
+
   skip_if_not_installed("survey")
   expect_error(with_s2(TRUE, as_svydesign(s)), "sf_use_s2", fixed = TRUE)
+  expect_error(with_s2(TRUE, as_svydesign(old)), "sf_use_s2", fixed = TRUE)
 })
 
 # ---- region checks, edges and coordinates -------------------------------------

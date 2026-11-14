@@ -1881,7 +1881,7 @@ deff.default <- function(object, ...) {
 #' The work is split in three so that estimate_several() and ht_ratio() can
 #' read the sample's state once and then one or more variables:
 #' `prepare_sample()` reads the state and checks `level` and `df`, `add_y()`
-#' reads one `y`, and `finish_prepare()` checks `.prob` and `.weight`.
+#' reads one `y`, and `finish_prepare()` checks `.weight`.
 #'
 #' @noRd
 ht_prepare <- function(sample, y, level, df = NULL, na_rm = FALSE) {
@@ -1968,12 +1968,11 @@ add_y <- function(parts, y, na_rm, label = "`y`") {
   parts
 }
 
-#' Check `.prob` and `.weight` once the variables are read
+#' Check `.weight` once the variables are read
 #' @noRd
 finish_prepare <- function(parts) {
-  # A sample saved by drawn 0.2.0 records no probabilities for drawn_state()
-  # to compare `.prob` with, so only its type and range are checked.
-  if (is.null(parts$pi_all)) check_prob(parts$sample)
+  # drawn_state() has checked `.prob`, against the probabilities recorded at
+  # draw time or, for a sample saved by drawn 0.2.0, against the design.
   warn_weight_edited(parts$sample)
   parts
 }

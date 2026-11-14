@@ -399,19 +399,25 @@
 #'
 #' @section Which columns are read:
 #' `ht_total()` and [ht_mean()] divide by `.prob`, the inclusion probabilities
-#' [draw()] attached, and read strata, clusters, time stamps and the other
-#' design columns from the copy of the frame stored with the sample. From the
-#' sample itself they read only `y` and `by`, so renaming, recoding or dropping
-#' a design column in the sample changes nothing.
+#' [draw()] attached, find each sampled row's frame row through `.row`, and
+#' read strata, clusters, time stamps and the other design columns from the
+#' copy of the frame stored with the sample. Of the sample's own columns they
+#' read `.prob`, `.row`, `y` and `by`, and `.weight` only to warn when it was
+#' edited, so renaming, recoding or dropping a design column in the sample
+#' changes nothing.
 #'
-#' `.weight` is not used. A weight adjusted after the draw, for nonresponse or
-#' by trimming, and written into `.weight` is ignored with a warning of class
-#' `drawn_weight_edited`; [as_svydesign()] hands `.weight` to `survey`, which is
-#' where adjusted weights are estimated from. A sample whose `.prob` was changed
-#' or removed is refused. So is one whose design gives the frame different
-#' inclusion probabilities in the current session than it did at draw time,
-#' which a change of [sf::sf_use_s2()] does to a [design_spatial()] sample: the
-#' variance is recomputed from the design and would describe another one.
+#' `.weight` is not used in the estimate. A weight adjusted after the draw, for
+#' nonresponse or by trimming, and written into `.weight` is ignored with a
+#' warning of class `drawn_weight_edited`; [as_svydesign()] hands `.weight` to
+#' `survey`, which is where adjusted weights are estimated from. A sample
+#' whose `.prob` was changed or removed is refused. So is one whose design
+#' gives the frame different inclusion probabilities in the current session
+#' than it did at draw time, which a change of [sf::sf_use_s2()] does to a
+#' [design_spatial()] sample: the variance is recomputed from the design and
+#' would describe another one. A sample saved by drawn 0.2.0 has no `.row`
+#' and records no probabilities for the frame, so its rows are matched by
+#' position and it is refused when the design gives a sampled row a
+#' probability other than its `.prob`.
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`. See
 #'   "Which columns are read".

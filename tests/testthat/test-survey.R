@@ -57,6 +57,10 @@ test_that("a bootstrap design is refused", {
   attr(fake, "drawn_rows") <- 1:10
   attr(fake, "drawn_population") <- d
   expect_error(as_svydesign(fake), "no survey equivalent")
+  expect_error(ht_total(fake, "spend"), "comes from a bootstrap design",
+               fixed = TRUE)
+  expect_error(replicate_weights(fake), "comes from a bootstrap design",
+               fixed = TRUE)
 })
 
 test_that("as_svydesign needs a sample carrying its design", {
@@ -303,6 +307,18 @@ test_that("survey gets its own copy of the sample", {
   before <- as.numeric(survey::SE(survey::svytotal(~spend, des)))
   data.table::setorderv(s, "spend")
   expect_equal(as.numeric(survey::SE(survey::svytotal(~spend, des))), before)
+})
+
+test_that("survey's copy of the sample keeps S4 vector columns", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  d$per <- lubridate::hours(d$id %% 24L)
+  s <- draw(d, design_stratified("site", n = 60), seed = 1, weights = TRUE)
+  des <- as_svydesign(s)
+  expect_identical(des$variables$per, s$per)
+  got <- survey::svytotal(~I(lubridate::period_to_seconds(per)), des)
+  s$sec <- lubridate::period_to_seconds(s$per)
+  expect_equal(as.numeric(coef(got)), ht_total(s, "sec")$total)
 })
 
 test_that("as_svydesign says what dropped a sample's design", {

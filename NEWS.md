@@ -27,7 +27,8 @@
   `design_stratified(replace = TRUE)` returned duplicates weighted as distinct
   units, and in one example a total a third too high. It is now refused like
   any other with-replacement design. Drawing it without weights is still
-  allowed.
+  allowed. `ht_total()`, `ht_mean()`, `as_svydesign()` and `sample_summary()`
+  refuse such a sample saved by drawn 0.2.0.
 * **Renaming, recoding or dropping a design column in a sample changed its
   standard errors.** The degrees of freedom, the jackknife, `as_svydesign()`
   and `sample_summary()` read strata and cluster labels from the sample's
@@ -49,8 +50,10 @@
   affected. `ht_total()`, `ht_mean()`, `as_svydesign()` and
   `sample_summary()` now check that the design still gives the frame the
   inclusion probabilities it gave at draw time, and refuse the sample when it
-  does not, naming `sf::sf_use_s2()` for a spatial design. `?design_spatial`
-  says the setting must be the same at draw time and after.
+  does not, naming `sf::sf_use_s2()` for a spatial design. A sample saved by
+  drawn 0.2.0, which records no probabilities for the frame, is checked
+  against its `.prob` column instead. `?design_spatial` says the setting must
+  be the same at draw time and after.
 * **The jackknife and the local-mean variance treated rows taken with
   certainty as random.** A row that is in every possible sample was deleted,
   or compared with its neighbours, as if it could have been left out. With
@@ -317,7 +320,8 @@
   the per-stratum Hansen-Hurwitz form.
 * `ht_total()`, `ht_mean()`, `as_svydesign()` and `sample_summary()` refuse a
   sample whose `.prob` column was removed, is not numeric, holds a value
-  outside (0, 1], or differs from the probabilities recorded at draw time. A
+  outside (0, 1], or differs from the probabilities recorded at draw time
+  (for a sample saved by drawn 0.2.0, from the ones its design gives). A
   removed `.prob` gave a total of 0, and a missing value gave `NA` with a
   note saying the jackknife had run. The message says that adjusted weights
   belong in `.weight`.

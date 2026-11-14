@@ -534,19 +534,25 @@ reached.
 \section{Which columns are read}{
 
 \code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} divide by \code{.prob}, the inclusion probabilities
-\code{\link[=draw]{draw()}} attached, and read strata, clusters, time stamps and the other
-design columns from the copy of the frame stored with the sample. From the
-sample itself they read only \code{y} and \code{by}, so renaming, recoding or dropping
-a design column in the sample changes nothing.
+\code{\link[=draw]{draw()}} attached, find each sampled row's frame row through \code{.row}, and
+read strata, clusters, time stamps and the other design columns from the
+copy of the frame stored with the sample. Of the sample's own columns they
+read \code{.prob}, \code{.row}, \code{y} and \code{by}, and \code{.weight} only to warn when it was
+edited, so renaming, recoding or dropping a design column in the sample
+changes nothing.
 
-\code{.weight} is not used. A weight adjusted after the draw, for nonresponse or
-by trimming, and written into \code{.weight} is ignored with a warning of class
-\code{drawn_weight_edited}; \code{\link[=as_svydesign]{as_svydesign()}} hands \code{.weight} to \code{survey}, which is
-where adjusted weights are estimated from. A sample whose \code{.prob} was changed
-or removed is refused. So is one whose design gives the frame different
-inclusion probabilities in the current session than it did at draw time,
-which a change of \code{\link[sf:s2]{sf::sf_use_s2()}} does to a \code{\link[=design_spatial]{design_spatial()}} sample: the
-variance is recomputed from the design and would describe another one.
+\code{.weight} is not used in the estimate. A weight adjusted after the draw, for
+nonresponse or by trimming, and written into \code{.weight} is ignored with a
+warning of class \code{drawn_weight_edited}; \code{\link[=as_svydesign]{as_svydesign()}} hands \code{.weight} to
+\code{survey}, which is where adjusted weights are estimated from. A sample
+whose \code{.prob} was changed or removed is refused. So is one whose design
+gives the frame different inclusion probabilities in the current session
+than it did at draw time, which a change of \code{\link[sf:s2]{sf::sf_use_s2()}} does to a
+\code{\link[=design_spatial]{design_spatial()}} sample: the variance is recomputed from the design and
+would describe another one. A sample saved by drawn 0.2.0 has no \code{.row}
+and records no probabilities for the frame, so its rows are matched by
+position and it is refused when the design gives a sampled row a
+probability other than its \code{.prob}.
 }
 
 \examples{

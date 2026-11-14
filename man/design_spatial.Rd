@@ -123,10 +123,12 @@ same setting when you draw a sample and whenever you analyse it.
 \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=as_svydesign]{as_svydesign()}} and \code{\link[=sample_summary]{sample_summary()}} find the
 region's rows again each time they run, because the variance, the design
 effect and \code{survey}'s population count all depend on them. They compare the
-result with the inclusion probabilities stored at draw time and refuse the
-sample when the two differ, naming \code{sf::sf_use_s2()}. The point estimate
-would not have moved, since it uses the stored \code{.prob}, but the standard
-error would.
+result with the inclusion probabilities stored at draw time, or with the
+\code{.prob} column of a sample saved by drawn 0.2.0, and refuse the sample when
+the two differ, naming \code{sf::sf_use_s2()}. The comparison catches any change
+in which rows are inside, including one that comes with another version of
+sf. The point estimate would not have moved, since it uses the stored
+\code{.prob}, but the standard error would.
 
 \code{sf_use_s2()} is a session setting, and a new R session starts with it
 \code{TRUE} unless the \verb{_SF_USE_S2} environment variable says otherwise. A sample

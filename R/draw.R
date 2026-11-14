@@ -181,20 +181,8 @@ draw <- function(data, design, seed = NULL, weights = FALSE) {
          "cannot tell them apart.", call. = FALSE)
   }
   if (samples_with_replacement(design)) {
-    stop("`weights = TRUE` is not available for ",
-         if (inherits(design, "drawn_design_certainty")) {
-           "a certainty design over a with-replacement `rest`"
-         } else {
-           "a with-replacement design"
-         }, ".\n",
-         "`.prob` would be the chance of being selected *at least once*, but ",
-         "the sample holds\nduplicates, so summing `y * .weight` over it ",
-         "overstates the total by a factor of\n(n / N) / (1 - (1 - 1 / N)^n), ",
-         "about 5% at n = N / 10, 15% at n = 0.3 * N, 58% at\nn = N and more ",
-         "beyond, within each stratum of a stratified design. Use\n",
-         "replace = FALSE, or estimate with the Hansen-Hurwitz form, ",
-         "N / n * sum(y), summed\nover strata as N_h / n_h * sum(y_h).",
-         call. = FALSE)
+    stop("`weights = TRUE` is not available for ", replacement_design(design),
+         ".\n", replacement_problem(design, "would be"), call. = FALSE)
   }
 
   # Probabilities first, so a design with no closed form fails before any
@@ -313,6 +301,40 @@ samples_with_replacement <- function(design) {
   isTRUE(design$replace) ||
     (inherits(design, "drawn_design_certainty") &&
        samples_with_replacement(design$rest))
+}
+
+#' A with-replacement design, named for a message
+#' @noRd
+replacement_design <- function(design) {
+  if (inherits(design, "drawn_design_certainty")) {
+    "a certainty design over a with-replacement `rest`"
+  } else {
+    "a with-replacement design"
+  }
+}
+
+#' Why a with-replacement design gets no weights, and what to do instead
+#'
+#' draw() gives this reason when it refuses `weights = TRUE`, with `tense`
+#' "would be", and drawn_state() when it refuses a sample that carries such
+#' a design, with "is". A certainty design takes `replace` in its `rest`.
+#'
+#' @noRd
+replacement_problem <- function(design, tense = "is") {
+  paste0(
+    "`.prob` ", tense, " the chance of being selected *at least once*, but ",
+    "the sample holds\nduplicates, so summing `y * .weight` over it ",
+    "overstates the total by a factor of\n(n / N) / (1 - (1 - 1 / N)^n), ",
+    "about 5% at n = N / 10, 15% at n = 0.3 * N, 58% at\nn = N and more ",
+    "beyond, within each stratum of a stratified design. Use\n",
+    if (inherits(design, "drawn_design_certainty")) {
+      paste0("replace = FALSE in `rest`, or estimate with the Hansen-Hurwitz ",
+             "form,\nN / n * sum(y), summed over strata as ",
+             "N_h / n_h * sum(y_h).")
+    } else {
+      paste0("replace = FALSE, or estimate with the Hansen-Hurwitz form, ",
+             "N / n * sum(y), summed\nover strata as N_h / n_h * sum(y_h).")
+    })
 }
 
 #' Let `:=` work on a data.table built by base subsetting

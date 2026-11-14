@@ -27,9 +27,9 @@ test_that("weights are attached correctly even with duplicate rows", {
 test_that("with-replacement designs refuse weights rather than mislead", {
   # `.prob` for a with-replacement design is the chance of appearing at least
   # once, but the sample holds duplicates. Summing y * .weight over it counts
-  # every duplicate at the distinct-unit weight, high by a factor of
-  # (n / N) / (1 - (1 - 1 / N)^n) -- 169% at n = 25, N = 10 -- and ht_total()
-  # inherited the same bias.
+  # every duplicate at the distinct-unit weight, so the total is high by a
+  # factor of (n / N) / (1 - (1 - 1 / N)^n). At n = 25 and N = 10 that factor
+  # is 2.69, a total 169% high. ht_total() inherited the same bias.
   df <- data.frame(id = 1:10, y = 1:10)
   for (des in list(design_simple(n = 25, replace = TRUE),
                    design_stratified("g", n = 6, replace = TRUE))) {
@@ -132,6 +132,35 @@ test_that("a certainty design over a with-replacement rest refuses to weight", {
   s <- draw(df, design_certainty("w", 100, design_simple(n = 10)), seed = 1,
             weights = TRUE)
   expect_equal(nrow(s), 14)
+  expect_error(draw(df, design_certainty("w", 100,
+                                         design_simple(n = 30, replace = TRUE)),
+                    seed = 1, weights = TRUE),
+               "Use\nreplace = FALSE in `rest`", fixed = TRUE)
+})
+
+test_that("a sample that carries a with-replacement design is refused", {
+  # drawn 0.2.0 weighted a certainty design over a with-replacement `rest`,
+  # so a sample it saved can hold duplicates weighted as distinct units.
+  df <- data.frame(id = 1:40, g = rep(c("a", "b"), each = 20),
+                   w = c(rep(1, 36), rep(500, 4)), y = 1:40)
+  s <- draw(df, design_certainty("w", 100, design_simple(n = 10)), seed = 1,
+            weights = TRUE)
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  attr(old, "drawn_design") <- design_certainty(
+    "w", 100, design_simple(n = 30, replace = TRUE))
+  msg <- paste0("`sample` comes from a certainty design over a ",
+                "with-replacement `rest`, for which `weights = TRUE` is not ",
+                "available.")
+  expect_error(ht_total(old, "y"), msg, fixed = TRUE)
+  expect_error(ht_mean(old, "y"), "replace = FALSE in `rest`", fixed = TRUE)
+  expect_error(sample_summary(old), msg, fixed = TRUE)
+  # A sample with its `.row` column is refused the same way.
+  attr(s, "drawn_design") <- attr(old, "drawn_design")
+  expect_error(ht_total(s, "y"), msg, fixed = TRUE)
+  skip_if_not_installed("survey")
+  expect_error(as_svydesign(old), msg, fixed = TRUE)
 })
 
 test_that("the with-replacement refusal gives the bias factor, not one figure", {

@@ -119,10 +119,35 @@ test_that("an in-place edit of a data.table frame does not reach the sample", {
   pop <- attr(s, "drawn_population")
   expect_s3_class(pop, "data.table")
   expect_identical(data.table::key(pop), "site")
-  before <- pop$value
+  # `+ 0` makes new vectors. set() overwrites the column vector in place, so
+  # a plain reference to it would change along with the frame.
+  before <- pop$value + 0
+  ids <- pop$id + 0L
   data.table::set(dt, j = "value", value = 0)
   data.table::setorderv(dt, "id", order = -1L)
   expect_identical(attr(s, "drawn_population")$value, before)
+  expect_identical(attr(s, "drawn_population")$value, make_df()$value)
+  expect_identical(attr(s, "drawn_population")$id, ids)
+})
+
+test_that("the frame copy keeps S4 vector columns as they were", {
+  # lubridate's Period, Duration and Interval columns are S4 vectors. A copy
+  # that lost the S4 bit printed as bare numbers and could not be ordered by
+  # its methods, so the variance of a design ordered by one went wrong.
+  df <- make_df(40L)
+  df$per <- lubridate::hours((seq_len(40L) * 17L) %% 41L)
+  df$dur <- lubridate::duration(seq_len(40L), "hours")
+  s <- draw(df, design_stratified("site", n = 5), seed = 1, weights = TRUE)
+  expect_identical(attr(s, "drawn_population"), df)
+  expect_true(isS4(attr(s, "drawn_population")$per))
+
+  df$sec <- lubridate::period_to_seconds(df$per)
+  by_per <- draw(df, design_systematic(interval = 4, order_by = "per"),
+                 seed = 1, weights = TRUE)
+  by_sec <- draw(df, design_systematic(interval = 4, order_by = "sec"),
+                 seed = 1, weights = TRUE)
+  expect_identical(by_per$id, by_sec$id)
+  expect_equal(ht_total(by_per, "value")$se, ht_total(by_sec, "value")$se)
 })
 
 test_that("renaming, reordering or deleting frame columns does not reach the sample", {

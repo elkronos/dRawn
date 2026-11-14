@@ -55,10 +55,13 @@ copy_column <- function(x) {
   if (!is.atomic(x) && !is.list(x)) return(x)
   # Without its class, a column has no `[` or length() method that could
   # change what is copied, so every element is copied. The attributes are
-  # then put back as they were.
+  # then put back as they were. Setting attributes does not set the S4 bit,
+  # so an S4 vector column (a lubridate Period, Duration or Interval) gets it
+  # back from asS4(); without it, the copy no longer dispatches its methods.
   base <- unclass(x)
   out <- .subset(base, seq_along(base))
   attributes(out) <- attributes(x)
+  if (isS4(x)) out <- asS4(out)
   out
 }
 
@@ -125,10 +128,18 @@ format_rows <- function(x) {
 #' holds the probabilities recorded at draw time, and when the design, applied
 #' to the stored frame in this session, gives the frame other probabilities
 #' than it did then. The joint probabilities and variance are recomputed in
-#' this session, so they would otherwise describe another design. Samples saved
-#' by drawn 0.2.0 get neither check: they record no probabilities to compare.
+#' this session, so they would otherwise describe another design. A sample
+#' saved by drawn 0.2.0 records no probabilities for the frame, so its
+#' `.prob` column is checked instead. It must hold probabilities, and the
+#' design must give each sampled row the probability in its `.prob`. Its
+#' design gets the fields added since 0.2.0 from legacy_design().
 #' A conditional sample's probabilities are worked out again from its stored
 #' selection.
+#'
+#' A sample whose design samples with replacement is refused, as draw()
+#' refuses to weight one; drawn 0.2.0 weighted a certainty design over a
+#' with-replacement `rest`. A sample that carries a bootstrap design, which
+#' only a sample built by hand can, is refused too.
 #'
 #' @noRd
 drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
@@ -146,6 +157,23 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
   if (is.null(design) || is.null(drawn) || is.null(pop)) {
     stop_not_drawn(arg = arg)
   }
+  if (inherits(design, "drawn_design_bootstrap")) {
+    # draw() never weights a bootstrap, so only a sample built by hand
+    # carries one.
+    stop_not_drawn(paste0(
+      "comes from a bootstrap design, which resamples the sample rather than ",
+      "drawing a probability sample of a finite population. It has no ",
+      "inclusion probabilities, so it has no design-based estimate and no ",
+      "survey equivalent. Draw a probability sample with `weights = TRUE` to ",
+      "estimate from."), arg)
+  }
+  if (samples_with_replacement(design)) {
+    # draw() refuses to weight such a design, but drawn 0.2.0 checked only
+    # the outer design and weighted a certainty design over one.
+    stop_not_drawn(paste0("comes from ", replacement_design(design),
+                          ", for which `weights = TRUE` is not available.\n",
+                          replacement_problem(design)), arg)
+  }
   r <- reserve_size(design)
   if (r > 0L && !reserves) {
     stop_not_drawn(paste0(
@@ -157,7 +185,8 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
 
   if (is.null(pi_all)) {
     # Saved by drawn 0.2.0, which had no `.row` column. Rows can only be
-    # matched by position, and only a change in the row count shows.
+    # matched by position. A change in the row count shows, and so does a
+    # `.prob` that the design no longer gives the row in that position.
     if (length(drawn) != nrow(sample)) {
       stop_not_drawn(paste0(
         "has ", nrow(sample), " rows but was drawn with ", length(drawn),
@@ -165,6 +194,9 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
         "from the sample as draw() returned it, and use `by` for groups."),
         arg)
     }
+    design <- legacy_design(design)
+    check_prob(sample, arg = arg)
+    check_legacy_prob(sample, design, pop, drawn, arg)
     return(list(design = design, pop = pop, rows = drawn, pi_all = NULL,
                 units = pop[drawn, , drop = FALSE], selection = NULL,
                 compact = compact, meta = meta))
@@ -333,21 +365,78 @@ check_drift <- function(design, pop, pi_all, arg = "sample",
     !same_prob(now, pi_all)
   }
   if (!any(differ)) return(invisible(NULL))
-
-  fix <- if (uses_s2(design)) {
-    paste0("sf::sf_use_s2() decides which rows of a spatial design fall ",
-           "inside `region`, and it is ", isTRUE(sf::sf_use_s2()), " now. ",
-           "Set it to the value it had when the sample was drawn, then ",
-           "estimate.")
-  } else {
-    paste0("Estimate in a session set up as the one the sample was drawn in, ",
-           "with the same version of drawn, or draw the sample again.")
-  }
   stop_not_drawn(paste0(
     "has a design that gives ", sum(differ), " of its ", length(differ),
     " frame rows a different inclusion probability in this session or this ",
     "version of drawn than when the sample was drawn, so its standard errors ",
-    "would describe another design. ", fix), arg)
+    "would describe another design. ", drift_fix(design)), arg)
+}
+
+#' What to do about a design whose probabilities have changed since the draw
+#' @noRd
+drift_fix <- function(design) {
+  if (uses_s2(design)) {
+    paste0("sf::sf_use_s2() decides which rows of a spatial design fall ",
+           "inside `region`, and it is ", isTRUE(sf::sf_use_s2()), " now. ",
+           "Set it to the value it had when the sample was drawn, in a ",
+           "session with the same version of sf, then estimate.")
+  } else {
+    paste0("Estimate in a session set up as the one the sample was drawn in, ",
+           "with the same version of drawn, or draw the sample again.")
+  }
+}
+
+#' Refuse a sample saved by drawn 0.2.0 whose `.prob` the design no longer gives
+#'
+#' Such a sample records no probabilities for the frame, but its `.prob`
+#' column holds the draw-time probability of each sampled row, and its rows
+#' are in the order of `drawn`. The design, applied to the stored frame in
+#' this session, must give each of those rows the same probability. A
+#' spatial design under another sf::sf_use_s2() setting does not, and
+#' neither does a `.prob` edited after the draw or a sample put in another
+#' order.
+#'
+#' @noRd
+check_legacy_prob <- function(sample, design, pop, drawn, arg = "sample") {
+  if (!length(drawn)) return(invisible(NULL))
+  now <- exact_inclusion(design, pop)[drawn]
+  differ <- !same_prob(now, sample[[".prob"]])
+  if (!any(differ)) return(invisible(NULL))
+  stop_not_drawn(paste0(
+    "has a design that gives ", sum(differ), " of its ", length(differ),
+    " rows a different inclusion probability in this session or this ",
+    "version of drawn than its `.prob` column records, so its standard ",
+    "errors would describe another design. ", drift_fix(design), " A `.prob` ",
+    "changed after draw(), or rows put in another order, gives the same ",
+    "difference, because a sample saved by drawn 0.2.0 is matched to its ",
+    "frame rows by position. Keep such a sample as draw() returned it."), arg)
+}
+
+#' Fill in the fields that a design saved by drawn 0.2.0 does not have
+#'
+#' Each field added since then gets the value that keeps the design as it
+#' was. A missing field is not the same as a `NULL` one, because `$` matches
+#' a partial name: a systematic design without `n` read its `na_rm` as `n`.
+#'
+#' @noRd
+legacy_design <- function(design) {
+  added <- switch(
+    class(design)[1L],
+    drawn_design_simple = list(reserve = 0L),
+    drawn_design_stratified = list(cost = NULL, within = NULL),
+    drawn_design_systematic = list(n = NULL, n_starts = 1L),
+    drawn_design_multistage = list(size = NULL),
+    drawn_design_weighted = list(strata = NULL, allocation = NULL),
+    drawn_design_reservoir = list(batches = FALSE),
+    drawn_design_spread = list(strata = NULL, allocation = NULL,
+                               reserve = 0L),
+    list())
+  missing <- setdiff(names(added), names(design))
+  if (length(missing)) design[missing] <- added[missing]
+  if (inherits(design, "drawn_design_certainty")) {
+    design$rest <- legacy_design(design$rest)
+  }
+  design
 }
 
 #' Does a design decide membership with `sf`, directly or through `rest`?

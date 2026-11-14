@@ -202,14 +202,10 @@ as_svydesign <- function(sample, ...) {
   require_suggested("survey", "handing a sample to the survey package")
   overrides <- list(...)
   check_named_dots(overrides)
+  # drawn_state() refuses a bootstrap design, which has no survey equivalent.
   state <- drawn_state(sample)
   design <- state$design
   pop <- state$pop
-  if (design_type(design) == "bootstrap") {
-    stop("A bootstrap design has no survey equivalent: it resamples the ",
-         "sample rather than drawing a probability sample of a finite ",
-         "population.", call. = FALSE)
-  }
 
   if (!nrow(sample)) {
     stop_not_drawn(paste0(
@@ -370,13 +366,9 @@ as_svydesign <- function(sample, ...) {
 #' @export
 replicate_weights <- function(sample, type = c("JKn", "JK1")) {
   type <- check_choice(type, c("JKn", "JK1"), "type")
+  # drawn_state() refuses a bootstrap design, which has no replicate weights.
   state <- drawn_state(sample)
   design <- state$design
-  if (design_type(design) == "bootstrap") {
-    stop("A bootstrap design has no replicate weights to build: it ",
-         "resamples the sample rather than drawing a probability sample of ",
-         "a finite population.", call. = FALSE)
-  }
   if (!nrow(sample)) {
     stop_not_drawn(paste0(
       "has no rows, so there are no weights to replicate. For an empty draw ",

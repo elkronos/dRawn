@@ -321,6 +321,13 @@ test_that("a damaged `.row` column is refused", {
   far <- s
   far$.row[1] <- 1000L
   expect_error(ht_total(far, "y"), "not rows of the 300-row frame")
+  gap <- s
+  gap$.row[2] <- NA
+  expect_error(ht_total(gap, "y"), "frame it was drawn from: NA.",
+               fixed = TRUE)
+  gap$.row[5] <- 1000L
+  expect_error(ht_mean(gap, "y"), "frame it was drawn from: 1000, NA.",
+               fixed = TRUE)
   half <- s
   half$.row <- half$.row + 0.5
   expect_error(ht_total(half, "y"), "not rows of the 300-row frame")
@@ -337,6 +344,26 @@ test_that("a sample saved by drawn 0.2.0 still estimates, by position", {
   attr(old, "drawn_pi") <- NULL
   expect_equal(ht_total(old, "y")$se, ht_total(s, "y")$se)
   expect_error(ht_total(old[1:10, ], "y"), "has 10 rows but was drawn with 30")
+})
+
+test_that("a sample saved by drawn 0.2.0 has its design brought up to date", {
+  # A systematic design saved then has no `n` field, and `design$n` matched
+  # its `na_rm` by partial name, so the design read as `n = FALSE`.
+  d <- est_pop()
+  s <- draw(d, design_systematic(interval = 10, order_by = "w"), seed = 2,
+            weights = TRUE)
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  des <- attr(s, "drawn_design")
+  attr(old, "drawn_design") <- structure(
+    unclass(des)[c("interval", "start", "order_by", "na_rm")],
+    class = class(des))
+  want <- ht_total(s, "y")
+  got <- ht_total(old, "y")
+  expect_equal(got$se, want$se)
+  expect_equal(got$df, want$df)
+  expect_equal(sample_summary(old)$N_reachable, nrow(d))
 })
 
 test_that("a `.prob` changed or removed after the draw is refused", {
@@ -367,13 +394,30 @@ test_that("a `.prob` changed or removed after the draw is refused", {
   expect_error(sample_summary(edited), "`.prob` was changed after draw()",
                fixed = TRUE)
 
-  # A sample saved by drawn 0.2.0 records no probabilities to compare with,
-  # but its `.prob` must still be a probability.
+  # A sample saved by drawn 0.2.0 records no probabilities for the frame, so
+  # its `.prob` must be a probability and the one the design gives its row.
   old <- s
   old$.row <- NULL
   attr(old, "drawn_pi") <- NULL
   old$.prob[1] <- NA
   expect_error(ht_total(old, "y"), "in 1 row(s): NA", fixed = TRUE)
+  expect_error(sample_summary(old), "in 1 row(s): NA", fixed = TRUE)
+  old$.prob <- NULL
+  expect_error(sample_summary(old), "has no `.prob` column", fixed = TRUE)
+  old <- edited
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  expect_error(ht_total(old, "y"), paste0(
+    "gives 3 of its 20 rows a different inclusion probability in this ",
+    "session or this version of drawn than its `.prob` column records"),
+    fixed = TRUE)
+  expect_error(ht_mean(old, "y"), "`.prob` changed after draw()",
+               fixed = TRUE)
+  expect_error(sample_summary(old), "matched to its frame rows by position",
+               fixed = TRUE)
+  skip_if_not_installed("survey")
+  expect_error(as_svydesign(old), "than its `.prob` column records",
+               fixed = TRUE)
 })
 
 test_that("a `y` that is not finite is refused with a count", {
