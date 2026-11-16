@@ -142,9 +142,12 @@ Documented in `?as_svydesign` and asserted in the tests:
 
 * systematic PPS — neither package has its joint probabilities; `ht_total()`
   uses Deville's approximation and `survey` Brewer's. The degrees of freedom
-  agree. Standard errors of totals agreed within 3%, usually within 0.5%,
-  in simulations on skewed frames; those of means differed typically by 3
-  to 7%, and by up to 12%, at a sampling fraction of one half;
+  agree. In simulations on frames of 100 to 300 rows with gamma and
+  lognormal sizes, standard errors of totals agreed within 3%, usually
+  within 0.5%, and those of means differed typically by 3 to 7%, and by up
+  to 12%, at a sampling fraction of one half. Where the probabilities below
+  certainty spread from 0.05 to 0.95, totals differed by up to 9% and means
+  by up to 17%;
 * a census — both packages report a variance of 0, and `survey::degf()`
   gives `n - 1` where `ht_total()` gives `Inf`;
 * `design_spread()` — `survey` has no estimator for a spatially balanced sample

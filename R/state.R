@@ -137,11 +137,16 @@ more_text <- function(x, shown = 5L) {
 #' holds the probabilities recorded at draw time, and when the design, applied
 #' to the stored frame in this session, gives the frame other probabilities
 #' than it did then. The joint probabilities and variance are recomputed in
-#' this session, so they would otherwise describe another design. A sample
-#' saved by drawn 0.2.0 records no probabilities for the frame, so its
-#' `.prob` column is checked instead. It must hold probabilities, and the
-#' design must give each sampled row the probability in its `.prob`. Its
-#' design gets the fields added since 0.2.0 from legacy_design().
+#' this session, so they would otherwise describe another design. A design
+#' that no longer applies to the stored frame at all is refused the same way.
+#'
+#' A sample saved by drawn 0.2.0 has no `.row` column and records no
+#' probabilities for the frame. Its rows are matched to the frame rows by
+#' position, so the frame columns it keeps must hold the values of those
+#' rows in the order drawn, as check_legacy_order() checks. Its `.prob`
+#' column must hold probabilities, and the design must give each sampled row
+#' the probability in its `.prob`. Its design gets the fields added since
+#' 0.2.0 from legacy_design().
 #' A conditional sample's probabilities are worked out again from its stored
 #' selection.
 #'
@@ -194,8 +199,9 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
 
   if (is.null(pi_all)) {
     # Saved by drawn 0.2.0, which had no `.row` column. Rows can only be
-    # matched by position. A change in the row count shows, and so does a
-    # `.prob` that the design no longer gives the row in that position.
+    # matched by position. A change in the row count shows, and so do frame
+    # columns whose values were moved to other rows and a `.prob` that the
+    # design no longer gives the row in that position.
     if (length(drawn) != nrow(sample)) {
       stop_not_drawn(paste0(
         "has ", nrow(sample), " rows but was drawn with ", length(drawn),
@@ -205,6 +211,7 @@ drawn_state <- function(sample, arg = "sample", reserves = FALSE) {
     }
     design <- legacy_design(design)
     check_prob(sample, arg = arg)
+    check_legacy_order(sample, pop, drawn, arg)
     check_legacy_prob(sample, design, pop, drawn, arg)
     return(list(design = design, pop = pop, rows = drawn, pi_all = NULL,
                 units = pop[drawn, , drop = FALSE], selection = NULL,
@@ -363,11 +370,7 @@ check_prob <- function(sample, expected = NULL, arg = "sample") {
 #' @noRd
 check_drift <- function(design, pop, pi_all, arg = "sample",
                         selection = NULL) {
-  now <- if (is.null(selection)) {
-    exact_inclusion(design, pop)
-  } else {
-    conditional_inclusion(design, pop, selection)
-  }
+  now <- inclusion_now(design, pop, selection, arg)
   differ <- if (length(now) != length(pi_all)) {
     rep(TRUE, max(length(now), length(pi_all)))
   } else {
@@ -379,6 +382,36 @@ check_drift <- function(design, pop, pi_all, arg = "sample",
     " frame rows a different inclusion probability in this session or this ",
     "version of drawn than when the sample was drawn, so its standard errors ",
     "would describe another design. ", drift_fix(design)), arg)
+}
+
+#' The inclusion probabilities the design gives the stored frame now
+#'
+#' The draw worked them out from the same design and frame, so an error here
+#' means the session or the version of drawn has changed what the design does
+#' with the frame. A spatial design drawn with `n = 100` under
+#' `sf::sf_use_s2(FALSE)` may find fewer than 100 rows inside `region` under
+#' `TRUE`, and stop there. The sample is then refused as one whose
+#' probabilities have changed, with the design's error quoted. A spatial
+#' design in a session without sf keeps the error that asks for sf.
+#'
+#' @noRd
+inclusion_now <- function(design, pop, selection = NULL, arg = "sample") {
+  tryCatch(
+    if (is.null(selection)) {
+      exact_inclusion(design, pop)
+    } else {
+      conditional_inclusion(design, pop, selection)
+    },
+    error = function(e) {
+      if (uses_s2(design) && !requireNamespace("sf", quietly = TRUE)) stop(e)
+      stop_not_drawn(paste0(
+        "has a design that gives its frame different inclusion ",
+        "probabilities in this session or this version of drawn than when ",
+        "the sample was drawn. Applied to the stored frame now, the design ",
+        "stops with the error \"", gsub("\n", " ", conditionMessage(e)),
+        "\", so the probabilities and standard errors of the draw cannot be ",
+        "worked out again. ", drift_fix(design)), arg)
+    })
 }
 
 #' What to do about a design whose probabilities have changed since the draw
@@ -402,13 +435,15 @@ drift_fix <- function(design) {
 #' are in the order of `drawn`. The design, applied to the stored frame in
 #' this session, must give each of those rows the same probability. A
 #' spatial design under another sf::sf_use_s2() setting does not, and
-#' neither does a `.prob` edited after the draw or a sample put in another
-#' order.
+#' neither does a `.prob` edited after the draw. Rows put in another order
+#' change `.prob` only in a design that gives rows unequal probabilities;
+#' check_legacy_order() refuses them before this, through the frame columns
+#' the sample keeps.
 #'
 #' @noRd
 check_legacy_prob <- function(sample, design, pop, drawn, arg = "sample") {
   if (!length(drawn)) return(invisible(NULL))
-  now <- exact_inclusion(design, pop)[drawn]
+  now <- inclusion_now(design, pop, arg = arg)[drawn]
   differ <- !same_prob(now, sample[[".prob"]])
   if (!any(differ)) return(invisible(NULL))
   stop_not_drawn(paste0(
@@ -421,11 +456,69 @@ check_legacy_prob <- function(sample, design, pop, drawn, arg = "sample") {
     "frame rows by position. Keep such a sample as draw() returned it."), arg)
 }
 
+#' Refuse a sample saved by drawn 0.2.0 whose rows were put in another order
+#'
+#' Such a sample has no `.row` column, so its rows are matched to the frame
+#' rows in `drawn` by position. Sorting it pairs `y` with the strata,
+#' clusters, time stamps and frame positions of other rows, and in a design
+#' that gives every row the same probability `.prob` does not change. The
+#' frame columns the sample keeps show it: a column that holds the values of
+#' the drawn rows, in another order, was moved with its rows. A column whose
+#' values were changed after the draw holds other values and is passed over,
+#' as are columns that `row_values_agree()` does not compare. A sample that
+#' keeps no frame column cannot be checked.
+#'
+#' @noRd
+check_legacy_order <- function(sample, pop, drawn, arg = "sample") {
+  shared <- setdiff(intersect(names(sample), names(pop)),
+                    c(".prob", ".weight", ".row", ".reserve", ".replicate"))
+  sorted <- function(x) sort(x, method = "radix", na.last = TRUE)
+  for (col in shared) {
+    v <- comparable_values(sample[[col]], pop[[col]][drawn])
+    if (is.null(v) || same_values(v$a, v$b)) next
+    if (!same_values(sorted(v$a), sorted(v$b))) next
+    id <- c(col, setdiff(shared, col))
+    id <- id[vapply(id, function(k) identifies_rows(pop[[k]]), logical(1))]
+    by <- if (length(id)) encodeString(id[1L], quote = "\"") else
+      "<an id column>"
+    stop_not_drawn(paste0(
+      "has its rows in another order than draw() returned them: its `", col,
+      "` column holds the values of the drawn rows, in another order. A ",
+      "sample saved by drawn 0.2.0 has no `.row` column and is matched to ",
+      "its frame rows by position, so its standard errors would pair rows ",
+      "with the strata, clusters or frame positions of other rows. Rebuild ",
+      "it with as_drawn(sample, attr(sample, \"drawn_design\"), ",
+      "attr(sample, \"drawn_population\"), by = ", by, "), which adds a ",
+      "`.row` column, or put its rows back in the order draw() returned ",
+      "them."), arg)
+  }
+  invisible(NULL)
+}
+
+#' Does a frame column hold a different value in every row?
+#' @noRd
+identifies_rows <- function(x) {
+  is.atomic(x) && is.null(dim(x)) && !anyNA(x) && !anyDuplicated(x)
+}
+
+#' Do two vectors from comparable_values() agree in every position?
+#'
+#' Missing values agree with missing values only.
+#'
+#' @noRd
+same_values <- function(a, b) {
+  agree <- if (is.numeric(a)) same_prob(a, b) else a == b
+  all((!is.na(agree) & agree) | (is.na(a) & is.na(b)))
+}
+
 #' Fill in the fields that a design saved by drawn 0.2.0 does not have
 #'
 #' Each field added since then gets the value that keeps the design as it
 #' was. A missing field is not the same as a `NULL` one, because `$` matches
-#' a partial name: a systematic design without `n` read its `na_rm` as `n`.
+#' a partial name: a systematic design without `n` read its `na_rm` as `n`,
+#' and drew no rows. check_design(), as_drawn(), the plot method and
+#' drawn_state() apply it, so a design read back with readRDS() works
+#' wherever a design is passed or a sample carries one.
 #'
 #' @noRd
 legacy_design <- function(design) {
@@ -437,6 +530,7 @@ legacy_design <- function(design) {
     drawn_design_multistage = list(size = NULL),
     drawn_design_weighted = list(strata = NULL, allocation = NULL),
     drawn_design_reservoir = list(batches = FALSE),
+    drawn_design_bootstrap = list(output = "rows"),
     drawn_design_spread = list(strata = NULL, allocation = NULL,
                                reserve = 0L),
     list())
@@ -623,6 +717,7 @@ as_drawn <- function(data, design, frame, by = NULL) {
     stop("`design` must come from one of the design_*() constructors, not ",
          a_class(design), ". See ?designs.", call. = FALSE)
   }
+  design <- legacy_design(design)
   if (!is.data.frame(data)) {
     stop("`data` must be a data frame of the sampled rows, not ",
          a_class(data), ".", call. = FALSE)
@@ -932,6 +1027,18 @@ check_row_values <- function(data, frame, rows, design) {
 #'
 #' @noRd
 row_values_agree <- function(a, b) {
+  v <- comparable_values(a, b)
+  if (is.null(v)) return(NULL)
+  if (is.numeric(v$a)) same_prob(v$a, v$b) else v$a == v$b
+}
+
+#' Two columns as plain numbers or text, the way row_values_agree() compares
+#'
+#' A list with `a` and `b`, both numeric or both character, or `NULL` for a
+#' pair that is not compared.
+#'
+#' @noRd
+comparable_values <- function(a, b) {
   if (!is.atomic(a) || !is.atomic(b) || !is.null(dim(a)) ||
       !is.null(dim(b))) {
     return(NULL)
@@ -947,11 +1054,11 @@ row_values_agree <- function(a, b) {
   number <- function(x) is.numeric(x) || is.logical(x)
   as_number <- function(x) suppressWarnings(as.numeric(as.character(x)))
   if (number(a) && number(b)) {
-    return(same_prob(as.numeric(a), as.numeric(b)))
+    return(list(a = as.numeric(a), b = as.numeric(b)))
   }
-  if (is.numeric(a)) return(same_prob(as.numeric(a), as_number(b)))
-  if (is.numeric(b)) return(same_prob(as_number(a), as.numeric(b)))
-  as.character(a) == as.character(b)
+  if (is.numeric(a)) return(list(a = as.numeric(a), b = as_number(b)))
+  if (is.numeric(b)) return(list(a = as_number(a), b = as.numeric(b)))
+  list(a = as.character(a), b = as.character(b))
 }
 
 #' One value of a column, for a message

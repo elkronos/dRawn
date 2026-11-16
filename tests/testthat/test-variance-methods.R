@@ -448,6 +448,13 @@ test_that("the jackknife's notes count every unit it held fixed", {
   expect_match(jk$note, paste0("has 1 besides the 4 rows at or above the ",
                                "threshold. Draw more units below certainty."),
                fixed = TRUE)
+
+  # One unit held fixed takes a singular verb.
+  s <- draw(pop, design_certainty("v", 950, design_simple(n = 3)), seed = 1,
+            weights = TRUE)
+  jk <- ht_total(s, "y", variance = "jackknife")
+  expect_match(jk$note, paste0("; the 1 row at or above the threshold adds ",
+                               "no variance and was held fixed."), fixed = TRUE)
 })
 
 test_that("a stratum taken whole adds nothing to the jackknife", {

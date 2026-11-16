@@ -370,9 +370,11 @@ standard errors, domain estimates and degrees of freedom for every design
 `survey` can represent exactly. Units taken with certainty go to `survey` as
 one sampling unit per stratum, taken whole, so that neither package counts
 them among the degrees of freedom. For systematic PPS, `survey` uses Brewer's
-approximation and `drawn` uses Deville's. The degrees of freedom still agree,
-and the standard errors of totals usually agree within 0.5%, but those of
-means can differ by several percent when the sampling fraction is large.
+approximation and `drawn` uses Deville's. The degrees of freedom still agree.
+On frames of a few hundred rows with skewed sizes the standard errors of
+totals usually agree within 0.5%, and usually within 3% where the
+probabilities below certainty spread widely. Those of means can differ by
+several percent when the sampling fraction is large.
 `?as_svydesign` has the full table.
 
 `survey::as.svrepdesign()` cannot build replicate weights from `survey`'s

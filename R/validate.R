@@ -263,7 +263,9 @@ a_class <- function(x) with_article(class(x)[1])
 #' Require a design, and say so when it and the data are swapped
 #'
 #' `data |> draw(design)` written the other way round, `design |> draw(data)`,
-#' puts the design where the data go.
+#' puts the design where the data go. Returns the design with the fields
+#' added since drawn 0.2.0 filled in by legacy_design(), so a design saved
+#' with saveRDS() then draws as it did; callers use the value returned.
 #'
 #' @noRd
 check_design <- function(design, data, fun) {
@@ -276,7 +278,7 @@ check_design <- function(design, data, fun) {
     stop("`design` must come from one of the design_*() constructors, not ",
          a_class(design), ". See ?designs.", call. = FALSE)
   }
-  invisible(design)
+  invisible(legacy_design(design))
 }
 
 #' Validate a data frame and, optionally, that it holds the given columns

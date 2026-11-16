@@ -2130,8 +2130,10 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
                      if (lay$corrected) ", with a finite population correction"
                      else "",
                      if (lay$n_fixed + lay$n_above > 0L) {
+                       one <- lay$n_fixed + lay$n_above == 1L
                        paste0("; ", held_fixed(lay$n_fixed, lay$n_above),
-                              " add no variance and were held fixed")
+                              if (one) " adds no variance and was held fixed"
+                              else " add no variance and were held fixed")
                      }, "."))
 }
 
@@ -2139,7 +2141,8 @@ jackknife_variance <- function(design, units, pop, y, pi_i, domain = NULL,
 #'
 #' `n_fixed` counts the units the design took with certainty, and `n_above`
 #' the rows above a certainty design's threshold, which are counted apart
-#' because the units of `rest` can be clusters.
+#' because the units of `rest` can be clusters. The phrase is the subject of
+#' a verb that the caller makes singular when the two add up to 1.
 #'
 #' @noRd
 held_fixed <- function(n_fixed, n_above = 0L) {

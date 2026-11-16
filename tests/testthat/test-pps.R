@@ -384,7 +384,8 @@ test_that("the jackknife of PPS within strata deletes rows within strata", {
                                  strata = "g"), seed = 2, weights = TRUE)
   jk <- ht_total(s, "y", variance = "jackknife")
   expect_match(jk$note, "in 3 strata", fixed = TRUE)
-  expect_match(jk$note, "taken with certainty add no variance", fixed = TRUE)
+  expect_match(jk$note, "the 1 taken with certainty adds no variance",
+               fixed = TRUE)
   expect_gt(jk$se, 0)
 })
 

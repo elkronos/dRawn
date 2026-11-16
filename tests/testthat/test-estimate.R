@@ -349,6 +349,68 @@ test_that("a sample saved by drawn 0.2.0 still estimates, by position", {
   expect_error(ht_total(old[1:10, ], "y"), "has 10 rows but was drawn with 30")
 })
 
+test_that("a sample saved by drawn 0.2.0 and put in another order is refused", {
+  # Such a sample is matched to its frame rows by position. Every row of a
+  # proportional stratified or systematic sample has the same `.prob`, so a
+  # sort leaves `.prob` as the design gives it and moved `y` onto other rows'
+  # strata or places in the walk.
+  d <- est_pop()
+  as_legacy <- function(s) {
+    s$.row <- NULL
+    attr(s, "drawn_pi") <- NULL
+    s
+  }
+  sorted <- list()
+  for (des in list(design_stratified("site", n = 30),
+                   design_systematic(interval = 10))) {
+    s <- draw(d, des, seed = 3, weights = TRUE)
+    old <- as_legacy(s)
+    r <- old[order(old$y), ]
+    expect_error(ht_total(r, "y"), paste0(
+      "`sample` has its rows in another order than draw() returned them: ",
+      "its `id` column"), fixed = TRUE)
+    expect_error(ht_mean(r, "y"), "by = \"id\")", fixed = TRUE)
+    expect_error(sample_summary(r), "matched to its frame rows by position",
+                 fixed = TRUE)
+    back <- as_drawn(r, attr(r, "drawn_design"), attr(r, "drawn_population"),
+                     by = "id")
+    expect_equal(ht_total(back, "y")$se, ht_total(s, "y")$se)
+    sorted <- c(sorted, list(r))
+  }
+
+  # A frame column changed after the draw is not taken for a reorder.
+  s <- draw(d, design_stratified("site", n = 30), seed = 3, weights = TRUE)
+  edited <- as_legacy(s)
+  edited$y <- edited$y * 2
+  edited$site <- toupper(edited$site)
+  expect_equal(ht_total(edited, "y")$se, 2 * ht_total(s, "y")$se)
+
+  skip_if_not_installed("survey")
+  for (r in sorted) {
+    expect_error(as_svydesign(r), "in another order", fixed = TRUE)
+  }
+})
+
+test_that("a design saved by drawn 0.2.0 draws as it did", {
+  # A systematic design then had no `n` field, and `design$n` matched its
+  # `na_rm` by partial name, so the design drew no rows.
+  d <- est_pop()
+  des <- design_systematic(interval = 10, order_by = "w")
+  old <- structure(unclass(des)[c("interval", "start", "order_by", "na_rm")],
+                   class = class(des))
+  expect_identical(draw(d, old, seed = 2), draw(d, des, seed = 2))
+  expect_identical(draw(d, old, seed = 2, weights = TRUE)$.row,
+                   draw(d, des, seed = 2, weights = TRUE)$.row)
+  expect_equal(inclusion_prob(d, old), rep(0.1, nrow(d)))
+  expect_equal(joint_prob(d, old, rows = 1:3), joint_prob(d, des, rows = 1:3))
+  cert <- design_certainty("w", 450, old)
+  expect_identical(draw(d, cert, seed = 2),
+                   draw(d, design_certainty("w", 450, des), seed = 2))
+  s <- draw(d, des, seed = 2, weights = TRUE)
+  back <- as_drawn(s[, c("id", "y")], old, d, by = "id")
+  expect_equal(ht_total(back, "y")$se, ht_total(s, "y")$se)
+})
+
 test_that("a sample saved by drawn 0.2.0 has its design brought up to date", {
   # A systematic design saved then has no `n` field, and `design$n` matched
   # its `na_rm` by partial name, so the design read as `n = FALSE`.

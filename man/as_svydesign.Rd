@@ -63,8 +63,9 @@ sampling fraction grew: typically by under 2 percent at a fraction of a
 tenth or a fifth, 2 to 4 percent at a third and 3 to 7 percent at a
 half, where single samples differed by up to 12 percent. On a frame
 whose units below certainty had probabilities from 0.05 to 0.95, with
-about 17 of them in each sample, totals differed by 2 percent typically
-and by up to 8 percent. The degrees of freedom agree. With \code{strata},
+about 17 of them in each sample, totals differed by about 1 percent
+typically and by up to 9 percent, and means by 7 to 9 percent typically
+and by up to 17 percent. The degrees of freedom agree. With \code{strata},
 each stratum is handed over the same way.
 \code{\link[=design_multistage]{design_multistage()}} with \code{size} meets the same two approximations at
 the first stage, while the variance within the selected clusters is the

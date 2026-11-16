@@ -149,7 +149,7 @@
 #'   total with a standard error.
 #' @export
 draw <- function(data, design, seed = NULL, weights = FALSE) {
-  check_design(design, data, "draw")
+  design <- check_design(design, data, "draw")
   check_seed(seed)
   check_flag(weights, "weights")
   warn_region(design, data)

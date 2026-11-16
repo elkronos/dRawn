@@ -135,7 +135,7 @@
 #' @export
 inclusion_prob <- function(data, design, simulate = FALSE, R = 5000,
                            seed = NULL) {
-  check_design(design, data, "inclusion_prob")
+  design <- check_design(design, data, "inclusion_prob")
   validate_data(data)
   check_flag(simulate, "simulate")
   check_seed(seed)
@@ -202,10 +202,7 @@ sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
 #' @seealso [inclusion_prob()], [design_certainty()]
 #' @export
 certainty_set <- function(data, design) {
-  if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not ",
-         a_class(design), ". See ?designs.", call. = FALSE)
-  }
+  design <- check_design(design, data, "certainty_set")
   size <- if (inherits(design, "drawn_design_weighted") &&
               design$method %in% c("systematic", "poisson")) {
     design$weights

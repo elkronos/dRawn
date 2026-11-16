@@ -133,6 +133,7 @@ plot.drawn_design <- function(x, y, type = c("selection", "probability", "map"),
          "plot(design, data).", call. = FALSE)
   }
   validate_data(y, arg = "y")
+  design <- legacy_design(x)
   max_dots <- check_count(max_dots, "max_dots", allow_zero = FALSE)
   if (!is.null(ncol)) ncol <- check_count(ncol, "ncol", allow_zero = FALSE)
   main <- check_title(main, "main")
@@ -140,17 +141,18 @@ plot.drawn_design <- function(x, y, type = c("selection", "probability", "map"),
   pal <- check_palette(palette)
   check_panel_args(...)
   dots <- list(...)
-  main <- main %||% design_label(x)
+  main <- main %||% design_label(design)
 
   if (type == "probability") {
-    plot_probability(x = x, y = y, max_dots = max_dots, main = main,
+    plot_probability(x = design, y = y, max_dots = max_dots, main = main,
                      sub = sub, pal = pal, dots = dots)
   } else if (type == "map") {
     # A design with `reserve` is shown by its main sample.
-    plot_map(x = main_design(x), y = y, coords = coords, max_dots = max_dots,
-             seed = seed, main = main, sub = sub, pal = pal, dots = dots)
+    plot_map(x = main_design(design), y = y, coords = coords,
+             max_dots = max_dots, seed = seed, main = main, sub = sub,
+             pal = pal, dots = dots)
   } else {
-    plot_selection(x = main_design(x), y = y, max_dots = max_dots,
+    plot_selection(x = main_design(design), y = y, max_dots = max_dots,
                    seed = seed, ncol = ncol, main = main, sub = sub,
                    pal = pal, dots = dots)
   }

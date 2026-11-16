@@ -11,7 +11,10 @@
   reordering by `[`, `dplyr::arrange()` or `data.table::setorder()` changes
   nothing, and `ht_total()`, `ht_mean()`, `as_svydesign()` and
   `sample_summary()` refuse a subset, a sample bound to another, or a join
-  that repeats rows.
+  that repeats rows. A sample saved by drawn 0.2.0 has no `.row` column and
+  is still matched by position, so it is refused once the frame columns it
+  keeps show its rows in another order; `as_drawn()` rebuilds it with
+  `.row`.
 * **Editing the frame in place after drawing changed the sample's
   estimates.** The sample kept a reference to the frame, so a data.table
   `setkey()`, `setorder()` or `:=` on it afterwards changed the standard
@@ -50,10 +53,12 @@
   affected. `ht_total()`, `ht_mean()`, `as_svydesign()` and
   `sample_summary()` now check that the design still gives the frame the
   inclusion probabilities it gave at draw time, and refuse the sample when it
-  does not, naming `sf::sf_use_s2()` for a spatial design. A sample saved by
-  drawn 0.2.0, which records no probabilities for the frame, is checked
-  against its `.prob` column instead. `?design_spatial` says the setting must
-  be the same at draw time and after.
+  does not, naming `sf::sf_use_s2()` for a spatial design. That includes a
+  design that now stops, such as one whose `n` is more than the rows inside
+  the region under the current setting. A sample saved by drawn 0.2.0,
+  which records no probabilities for the frame, is checked against its
+  `.prob` column instead. `?design_spatial` says the setting must be the
+  same at draw time and after.
 * **The jackknife and the local-mean variance treated rows taken with
   certainty as random.** A row that is in every possible sample was deleted,
   or compared with its neighbours, as if it could have been left out. With
@@ -937,7 +942,9 @@
   `interval` that did not divide the frame gave one of two sample sizes, and
   a fractional `interval` was refused, so 30 rows from 100 could not be
   asked for. `interval` keeps its place as the first argument, and a seed
-  draws the same rows with it as before.
+  draws the same rows with it as before. A design saved by drawn 0.2.0 and
+  read back with `readRDS()` gets the fields added since, so it draws and
+  gives the probabilities it did then.
 * `design_systematic()` takes `n_starts`, for a replicated systematic
   sample. With `n_starts = m`, `m` different starts are drawn from
   `1:(m * interval)` and each is walked at a step of `m * interval`, so
@@ -1323,9 +1330,12 @@
   have reported as exact.
 * `?as_svydesign`, the estimation article and `cran-comments.md` no longer
   say that `survey` agrees with systematic PPS within 0.2%. In simulations on
-  skewed frames, standard errors of totals agreed within 0.5% in most samples
-  and within 3% in all; those of means differed more as the sampling
-  fraction grew, typically by 3 to 7% at one half and by up to 12%.
+  frames of 100 to 300 rows with gamma and lognormal sizes, standard errors
+  of totals agreed within 0.5% in most samples and within 3% in all; those
+  of means differed more as the sampling fraction grew, typically by 3 to 7%
+  at one half and by up to 12%. Where the probabilities below certainty
+  spread from 0.05 to 0.95, totals differed by up to 9% and means by up to
+  17%.
 * `as_svydesign()` labels strata built from several columns as `a . b`.
   The labels held a carriage return, which broke a CSV export of the design
   variables. Where two labels would read alike, the strata are numbered

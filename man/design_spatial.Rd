@@ -133,8 +133,10 @@ result with the inclusion probabilities stored at draw time, or with the
 \code{.prob} column of a sample saved by drawn 0.2.0, and refuse the sample when
 the two differ, naming \code{sf::sf_use_s2()}. The comparison catches any change
 in which rows are inside, including one that comes with another version of
-sf. The point estimate would not have moved, since it uses the stored
-\code{.prob}, but the standard error would.
+sf. A region that holds fewer than \code{n} rows under the current setting
+leaves nothing to compare, and the sample is refused the same way. The
+point estimate would not have moved, since it uses the stored \code{.prob}, but
+the standard error would.
 
 \code{sf_use_s2()} is a session setting, and a new R session starts with it
 \code{TRUE} unless the \verb{_SF_USE_S2} environment variable says otherwise. A sample

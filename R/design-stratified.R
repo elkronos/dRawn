@@ -652,10 +652,7 @@ stratum_allocation <- function(design, data) {
 #' @seealso [design_stratified()], [design_spread()], [inclusion_prob()]
 #' @export
 allocation_table <- function(data, design) {
-  if (!is_design(design)) {
-    stop("`design` must come from one of the design_*() constructors, not ",
-         a_class(design), ". See ?designs.", call. = FALSE)
-  }
+  design <- check_design(design, data, "allocation_table")
   validate_data(data)
   if (inherits(design, "drawn_design_certainty") &&
       has_strata(design$rest)) {

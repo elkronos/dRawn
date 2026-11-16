@@ -133,6 +133,52 @@ test_that("a sample is refused once sf_use_s2() differs from the draw", {
   expect_error(with_s2(TRUE, as_svydesign(old)), "sf_use_s2", fixed = TRUE)
 })
 
+test_that("a design that stops under another sf_use_s2() names the setting", {
+  skip_if_not_installed("sf")
+  # Under planar geometry this box spans longitudes -179 to 179. Under
+  # spherical geometry it is the 2-degree strip across the antimeridian,
+  # which holds 2 of the rows, fewer than `n`, so the design stops before
+  # any probability can be compared.
+  box <- sf::st_sfc(sf::st_polygon(list(cbind(c(-179, 179, 179, -179, -179),
+                                              c(-60, -60, 60, 60, -60)))),
+                    crs = 4326)
+  grid <- expand.grid(lon = c(seq(-170, 170, by = 10), -179.5, 179.5),
+                      lat = c(-40, 0, 40))
+  grid <- grid[grid$lat == 0 | abs(grid$lon) < 179, ]
+  grid$y <- seq_len(nrow(grid)) %% 5 + grid$lat / 10
+  des <- design_spatial(c("lon", "lat"), box, n = 20)
+  with_s2 <- function(value, code) {
+    old <- suppressMessages(sf::sf_use_s2(value))
+    on.exit(suppressMessages(sf::sf_use_s2(old)))
+    suppressMessages(code)
+  }
+  expect_warning(
+    expect_error(with_s2(TRUE, inclusion_prob(grid, des)),
+                 "`n` (20) exceeds the 2 row(s) inside `region`.",
+                 fixed = TRUE),
+    class = "drawn_antimeridian")
+
+  s <- with_s2(FALSE, draw(grid, des, seed = 1, weights = TRUE))
+  old <- s
+  old$.row <- NULL
+  attr(old, "drawn_pi") <- NULL
+  planar <- with_s2(FALSE, ht_total(s, "y"))
+  for (x in list(s, old)) {
+    expect_error(with_s2(TRUE, ht_total(x, "y")), paste0(
+      "different inclusion probabilities in this session or this version of ",
+      "drawn than when the sample was drawn. Applied to the stored frame now, ",
+      "the design stops with the error \"`n` (20) exceeds the 2 row(s) ",
+      "inside `region`.\""), fixed = TRUE)
+    expect_error(with_s2(TRUE, ht_mean(x, "y")), "sf_use_s2", fixed = TRUE)
+    expect_error(with_s2(TRUE, sample_summary(x)), "it is TRUE now",
+                 fixed = TRUE)
+    expect_equal(with_s2(FALSE, ht_total(x, "y"))$se, planar$se)
+  }
+  skip_if_not_installed("survey")
+  expect_error(with_s2(TRUE, as_svydesign(s)), "sf_use_s2", fixed = TRUE)
+  expect_error(with_s2(TRUE, as_svydesign(old)), "sf_use_s2", fixed = TRUE)
+})
+
 # ---- region checks, edges and coordinates -------------------------------------
 
 lonlat_box <- function(lon, lat, crs = 4326) {

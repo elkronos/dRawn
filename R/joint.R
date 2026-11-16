@@ -91,7 +91,7 @@
 #' @export
 joint_prob <- function(data, design, rows = NULL, simulate = FALSE, R = 5000,
                        seed = NULL) {
-  check_design(design, data, "joint_prob")
+  design <- check_design(design, data, "joint_prob")
   validate_data(data)
   check_flag(simulate, "simulate")
   check_seed(seed)
