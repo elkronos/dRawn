@@ -96,13 +96,26 @@ check_choice <- function(x, choices, arg) {
 #'
 #' `main` also takes an expression, a call such as `quote(alpha^2)` or a
 #' name such as `quote(alpha)`, which `mtext()` draws as plotmath. `sub` is
-#' added to the line under the title as text, so it takes a string only.
+#' added to the line under the title as text, so it takes a string only. An
+#' expression vector must hold one title. `mtext()` stops partway through the
+#' plot on an empty one, and draws the parts of a longer one over each other.
 #'
 #' @noRd
 check_title <- function(x, arg) {
   string <- is.character(x) && length(x) == 1L && !is.na(x)
-  math <- arg == "main" && is.language(x)
+  math <- arg == "main" && is.language(x) &&
+    (!is.expression(x) || length(x) == 1L)
   if (is.null(x) || string || math) return(x)
+  if (arg == "main" && is.expression(x)) {
+    stop("`main` is a length-", length(x), " expression, ",
+         if (length(x) == 0L) {
+           "which has nothing to draw"
+         } else {
+           "whose parts would be drawn over each other"
+         },
+         ". Pass one expression, such as `expression(alpha^2)`, or NULL ",
+         "for the default title.", call. = FALSE)
+  }
   stop("`", arg, "` must be a single string",
        if (arg == "main") ", an expression", " or NULL, not ",
        format_bad(x), ".", call. = FALSE)

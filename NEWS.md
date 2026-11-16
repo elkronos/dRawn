@@ -563,9 +563,11 @@
   is read as a list. A colour R did not know stopped the plot partway, with
   part of the page drawn, and a bad `surface` left the margins changed for
   the next plot. A misspelt entry was ignored, and a named vector stopped
-  with "is.list(val) is not TRUE". `main` takes one string, an expression,
+  with "is.list(val) is not TRUE". `main` takes one string, one expression,
   or a name or call such as `quote(alpha)`. A number, which was drawn as
-  text, is refused, so write `main = "5"` for `main = 5`.
+  text, is refused, so write `main = "5"` for `main = 5`. So are an empty
+  `expression()`, which stopped the plot partway, and an expression of two
+  or more parts, which were drawn over each other.
 * A message about an argument given a function, a name, an environment or
   a data frame names its class, as in "not a function". A function or a
   name gave a warning from `is.na()` as well, and a data frame stopped with
@@ -835,7 +837,9 @@
   systematic start past the last row is called random, where the message
   named `start`. A warning whose details change from draw to draw, such as
   the empty cluster or the random start it names, is shown as the first
-  draw gave it, with the number of draws that gave one like it.
+  draw gave it, with the number of draws that gave one like it. When each
+  draw gives the same few warnings of one kind, the message says how many
+  each draw gave.
 * `inclusion_prob(simulate = TRUE)` and `joint_prob(simulate = TRUE)` time
   the draws after the first two, which carry one-off costs such as loading
   a package, and a run projected to take more than 30 seconds says how
@@ -1479,26 +1483,26 @@
   simulation; and under a pure trend it falls towards `6 / n` of the truth.
   `?ht_total` also says that intervals cover less often than `level` when
   `y / pi` is skewed and the sample small, 87% to 91% in most of the cases
-  it cites, that the Hajek mean's ratio bias lowers its coverage further
-  when `y` is close to proportional to size, and that
-  `variance = "jackknife"` declines for systematic and Poisson samples,
-  where it said the jackknife always resamples. `?ht_mean` says the Hajek
-  and Horvitz-Thompson means coincide for an equal-probability design that
-  can reach every row of the frame, which a region or `max_items` can
-  prevent. `?designs` says that only `method = "successive"` of
-  `design_weighted()` returns rows in draw order. `?design_weighted` says
-  that Poisson sampling takes rows past certainty with certainty and
-  rescales the rest, as systematic PPS does, where it said they were capped
-  at 1, and puts successive sampling of weights `1:10` at `n = 5` up to
-  about 36% from proportional, by exact enumeration, where it said 35%.
-  `?design_systematic` says that `start` counts along the walk, sorted by
-  `order_by` when given, and `?draw` that a seed is sure to draw the same
-  rows only from a frame in the same row order. The estimation article
-  checks five designs against their exact variance at 1,000 draws, where
-  the ratios of 0.85 and 0.87 it printed for cluster and Poisson samples
-  were Monte Carlo error. The spatial-sampling article shows the mean it
-  promised, and the choosing-a-design article says why one cluster sample's
-  design effect came out below 1.
+  it cites, that the Hajek mean covers less often still when `y` is close
+  to proportional to size, through its ratio bias and a variance estimate
+  that runs low, and that `variance = "jackknife"` declines for systematic
+  and Poisson samples, where it said the jackknife always resamples.
+  `?ht_mean` says the Hajek and Horvitz-Thompson means coincide for an
+  equal-probability design that can reach every row of the frame, which a
+  region or `max_items` can prevent. `?designs` says that only
+  `method = "successive"` of `design_weighted()` returns rows in draw order.
+  `?design_weighted` says that Poisson sampling takes rows past certainty
+  with certainty and rescales the rest, as systematic PPS does, where it said
+  they were capped at 1, and puts successive sampling of weights `1:10` at
+  `n = 5` up to about 36% from proportional, by exact enumeration, where it
+  said 35%. `?design_systematic` says that `start` counts along the walk,
+  sorted by `order_by` when given, and `?draw` that a seed is sure to draw
+  the same rows only from a frame in the same row order. The estimation
+  article checks five designs against their exact variance at 1,000 draws,
+  where the ratios of 0.85 and 0.87 it printed for cluster and Poisson
+  samples were Monte Carlo error. The spatial-sampling article shows the mean
+  it promised, and the choosing-a-design article says why one cluster
+  sample's design effect came out below 1.
 * `?drawn` and the package description give Deville's (1999) approximation
   as the variance for systematic probability-proportional-to-size samples,
   where they gave it for every probability-proportional-to-size design.

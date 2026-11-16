@@ -45,27 +45,25 @@
 #'     the successive-difference approximation, which compares each sampled
 #'     row with its neighbour in the order the design walked (Wolter 2007), at
 #'     every step, including a step under 2 rows, where every pair of rows can
-#'     be drawn together. It removes a
-#'     trend along that order rather than counting it as noise, which is why it
-#'     beats treating the sample as simple random: on a frame sorted by a
-#'     variable related to `y`, the simple random formula overstated the
-#'     variance two- to thirtyfold in the package's simulations. This one came
-#'     closer, but its average over the random starts depends on the frame,
-#'     and on the estimation article's example it was 1.6 times the true
-#'     variance. No estimator from a single systematic sample escapes its
-#'     limits. A frame that cycles with a period equal to the step, or one
-#'     that divides it, such as 5 rows at a step of 10, puts every row of one
-#'     sample at the same phase of the cycle, and the variance is
-#'     understated, to under
-#'     0.001 of the truth in one simulation. A period of twice the step puts
-#'     neighbouring sampled rows at opposite phases, and the variance is
-#'     overstated, 29-fold in the same simulation. When a smooth trend so
-#'     dominates `y` that the random start is almost the only source of
-#'     variation, it runs low, and has no floor. It was 0.3 to 0.7 of the
-#'     truth when the trend spanned 25 noise standard deviations, 0.2 at 100
-#'     and 0.06 at 1,000. With `y` a straight line along the walk and no
-#'     noise, it is `6 * k / (n * (k + 1))` times the truth, about `6 / n`,
-#'     for `n` rows sampled at a step of `k`.
+#'     be drawn together. It removes a trend along that order rather than
+#'     counting it as noise, which is why it beats treating the sample as
+#'     simple random: on a frame sorted by a variable related to `y`, the
+#'     simple random formula overstated the variance two- to thirtyfold in the
+#'     package's simulations. This one came closer, but its average over the
+#'     random starts depends on the frame, and on the estimation article's
+#'     example it was 1.6 times the true variance. No estimator from a single
+#'     systematic sample escapes its limits. A frame that cycles with a period
+#'     equal to the step, or one that divides it, such as 5 rows at a step of
+#'     10, puts every row of one sample at the same phase of the cycle, and the
+#'     variance is understated, to under 0.001 of the truth in one simulation.
+#'     A period of twice the step puts neighbouring sampled rows at opposite
+#'     phases, and the variance is overstated, 29-fold in the same simulation.
+#'     When a smooth trend so dominates `y` that the random start is almost the
+#'     only source of variation, it runs low, and has no floor. It was 0.3 to
+#'     0.7 of the truth when the trend spanned 25 noise standard deviations,
+#'     0.2 at 100 and 0.06 at 1,000. With `y` a straight line along the walk
+#'     and no noise, it is `6 * k / (n * (k + 1))` times the truth, about
+#'     `6 / n`, for `n` rows sampled at a step of `k`.
 #'     When `interval` does not divide the number of rows walked, the sample
 #'     size is random, one of two values, and the total moves with it in a way
 #'     successive differences cannot see. A term for that,
@@ -159,16 +157,16 @@
 #' variance estimate is close to unbiased. In 2,000 draws with `n = 30` from
 #' 240 rows in proportion to a size whose coefficient of variation was 0.66,
 #' with `y` close to proportional to size, the 95% interval for the total
-#' covered 90% of the time under systematic PPS and 94% under Poisson PPS.
-#' The mean with `estimator = "ht"`, which [ht_mean()] recommends in that
-#' case, is the total divided by `N` and covered as often. The default Hajek
-#' mean covered 91% under both methods. Skew is one reason. The Hajek mean
-#' also has a ratio bias, here 1.5% of the mean under systematic PPS and
-#' 1.8% under Poisson PPS, and its estimated variance averaged 0.89 and 0.88
-#' times the variance of the mean over the draws. Skew lowers coverage under
-#' equal probabilities too. A simple random sample of 30 from 600 lognormal values with a
-#' coefficient of variation of 1.5 covered 87%. A larger sample brings the
-#' coverage closer to `level`. The audit-sampling article checks a bound's
+#' covered 90% of the time under systematic PPS and 94% under Poisson PPS. The
+#' mean with `estimator = "ht"`, which [ht_mean()] recommends in that case, is
+#' the total divided by `N` and covered as often. The default Hajek mean
+#' covered 91% under both methods. Skew is one reason. The Hajek mean also has
+#' a ratio bias, here 1.5% of the mean under systematic PPS and 1.8% under
+#' Poisson PPS, and its estimated variance averaged 0.89 and 0.88 times the
+#' variance of the mean over the draws. Skew lowers coverage under equal
+#' probabilities too. A simple random sample of 30 from 600 lognormal values
+#' with a coefficient of variation of 1.5 covered 87%. A larger sample brings
+#' the coverage closer to `level`. The audit-sampling article checks a bound's
 #' coverage by drawing the design many times, which is how to check it on a
 #' frame of your own.
 #'
@@ -2164,13 +2162,14 @@ replicate_variance <- function(design, walk, rows, y, pi_i) {
 #'
 #' Works from the sampled rows alone, which is what makes it available where
 #' the analytic form is not. `units` is the frame's copy of those rows, so the
-#' strata and clusters are the ones the sample was drawn with. Primary sampling units are whole clusters where the
-#' design has them, otherwise individual rows; where the design has strata --
-#' stratified, and temporal, whose intervals are strata -- units are deleted
-#' within their own stratum and only that stratum is reweighted (JKn). Deleting
-#' across strata instead counts the differences *between* strata as sampling
-#' variance, which stratification exists to remove: on a frame with four
-#' well-separated strata that overstated the standard error sixty-fold.
+#' strata and clusters are the ones the sample was drawn with. Primary sampling
+#' units are whole clusters where the design has them, otherwise individual
+#' rows; where the design has strata (stratified, and temporal, whose
+#' intervals are strata), units are deleted within their own stratum and only
+#' that stratum is reweighted (JKn). Deleting across strata instead counts the
+#' differences *between* strata as sampling variance, which stratification
+#' exists to remove: on a frame with four well-separated strata that overstated
+#' the standard error sixty-fold.
 #'
 #' Two designs are declined rather than approximated. A systematic sample has a
 #' single primary sampling unit -- the random start -- so deleting rows does not

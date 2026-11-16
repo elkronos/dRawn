@@ -518,6 +518,45 @@ test_that("a warning each draw raises is given once, with the count", {
                  "Every random start", class = "drawn_empty_start")
 })
 
+test_that("messages that differ only inside a draw are not called varied", {
+  given <- function(R, one) {
+    caught <- character(0)
+    withCallingHandlers(simulate_draws(R, seed = 1, one),
+                        drawn_empty_stratum = function(w) {
+                          caught <<- c(caught, conditionMessage(w))
+                          invokeRestart("muffleWarning")
+                        })
+    caught
+  }
+  # Every draw gives the same two messages, so none differ from draw to draw.
+  same_pair <- function() {
+    warn_drawn("Stratum `a` is empty.", "drawn_empty_stratum")
+    warn_drawn("Stratum `b` is empty.", "drawn_empty_stratum")
+  }
+  expect_identical(given(5, same_pair),
+                   paste("Stratum `a` is empty. This happened in 5 of the 5",
+                         "simulated draws. Each of them gave the same 2",
+                         "warnings like it, and this is the first."))
+  # A repeat of one message in a draw is still one message.
+  twice <- function() {
+    warn_drawn("Stratum `a` is empty.", "drawn_empty_stratum")
+    warn_drawn("Stratum `a` is empty.", "drawn_empty_stratum")
+  }
+  expect_identical(given(4, twice),
+                   paste("Stratum `a` is empty. This happened in 4 of the 4",
+                         "simulated draws."))
+  # The pair in the first draw and one message after it differ by draw.
+  k <- 0L
+  first_pair <- function() {
+    k <<- k + 1L
+    warn_drawn("Stratum `a` is empty.", "drawn_empty_stratum")
+    if (k == 1L) warn_drawn("Stratum `b` is empty.", "drawn_empty_stratum")
+  }
+  expect_match(given(3, first_pair),
+               "3 of the 3 simulated draws gave one like it, with details that differ from draw to draw.",
+               fixed = TRUE)
+})
+
 test_that("a long simulation says how long it will take", {
   df <- data.frame(id = 1:20)
   des <- design_simple(n = 3)

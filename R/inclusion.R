@@ -279,7 +279,8 @@ drawn_ids <- function(s, key, design) {
 #' once per draw. The first message of a kind is the one shown. When the
 #' draws worded it differently, as when it names the cluster or the start of
 #' the draw, the count is given for warnings like it, since the details shown
-#' are the first draw's alone.
+#' are the first draw's alone. A draw that gave several messages of one kind,
+#' the same in every draw, is reported with how many each draw gave.
 #'
 #' A run is timed over the draws that follow its first two. Those two carry
 #' one-off costs, such as loading a package on the first call or compiling a
@@ -296,24 +297,43 @@ simulate_draws <- function(R, seed, one) {
   i <- 0L
   kinds <- character(0)
   first <- character(0)
-  varied <- logical(0)
   draws <- integer(0)
   last <- integer(0)
+  # The distinct messages of each kind in the first draw that gave it
+  # (`first_set`) and in the latest one (`this_set`). `across` marks a kind
+  # whose messages differ between draws, `within` one that gave several
+  # different messages in one draw.
+  first_set <- list()
+  this_set <- list()
+  across <- logical(0)
+  within <- logical(0)
+  close_draw <- function(k) {
+    if (draws[k] == 1L) {
+      first_set[[k]] <<- this_set[[k]]
+    } else if (!setequal(this_set[[k]], first_set[[k]])) {
+      across[k] <<- TRUE
+    }
+    if (length(this_set[[k]]) > 1L) within[k] <<- TRUE
+  }
   record <- function(w) {
+    msg <- conditionMessage(w)
     k <- match(class(w)[1L], kinds)
     if (is.na(k)) {
       kinds <<- c(kinds, class(w)[1L])
-      first <<- c(first, conditionMessage(w))
-      varied <<- c(varied, FALSE)
+      first <<- c(first, msg)
       draws <<- c(draws, 0L)
       last <<- c(last, 0L)
+      across <<- c(across, FALSE)
+      within <<- c(within, FALSE)
       k <- length(kinds)
-    } else if (!varied[k] && !identical(conditionMessage(w), first[k])) {
-      varied[k] <<- TRUE
     }
     if (last[k] != i) {
+      if (draws[k] > 0L) close_draw(k)
       draws[k] <<- draws[k] + 1L
       last[k] <<- i
+      this_set[[k]] <<- msg
+    } else if (!msg %in% this_set[[k]]) {
+      this_set[[k]] <<- c(this_set[[k]], msg)
     }
     invokeRestart("muffleWarning")
   }
@@ -343,10 +363,16 @@ simulate_draws <- function(R, seed, one) {
   }, drawn_warning = record))
 
   for (k in seq_along(kinds)) {
-    count <- if (varied[k]) {
+    close_draw(k)
+    count <- if (across[k]) {
       paste0(" This is the first of these warnings. ", fmt_n(draws[k]),
              " of the ", fmt_n(R), " simulated draws gave one like it, ",
              "with details that differ from draw to draw.")
+    } else if (within[k]) {
+      paste0(" This happened in ", fmt_n(draws[k]), " of the ", fmt_n(R),
+             " simulated draws. Each of them gave the same ",
+             length(first_set[[k]]),
+             " warnings like it, and this is the first.")
     } else {
       paste0(" This happened in ", fmt_n(draws[k]), " of the ", fmt_n(R),
              " simulated draws.")

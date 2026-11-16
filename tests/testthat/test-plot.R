@@ -402,6 +402,16 @@ test_that("palette, main and sub are checked before anything is drawn", {
                  "`main` must be a single string, an expression or NULL, not a function.",
                  fixed = TRUE)
   )
+  # An empty expression stopped partway through the plot, after a warning
+  # from max(), and the parts of a longer one were drawn over each other.
+  expect_no_warning(
+    expect_error(plot(d, pop, main = expression()),
+                 "`main` is a length-0 expression, which has nothing to draw. Pass one expression",
+                 fixed = TRUE)
+  )
+  expect_error(plot(d, pop, main = expression(alpha, beta)),
+               "`main` is a length-2 expression, whose parts would be drawn over each other.",
+               fixed = TRUE)
   expect_no_warning(
     expect_error(plot(d, pop, palette = list(accent = mean)),
                  "`palette$accent` must be one colour, a name from colors() or a code such as \"#1B6B52\", not a function.",
