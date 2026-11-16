@@ -100,6 +100,11 @@
 #' with one sampled row or a Poisson sample of one row, gets no standard
 #' error. The "Domains" section of [ht_total()] says more.
 #'
+#' With `estimator = "ht"` each domain's total is divided by the domain's
+#' number of rows in the frame, read from the frame's `by` columns. A frame
+#' row with a `by` value missing could be in any domain, so such a frame is
+#' refused.
+#'
 #' `contrast` gives a weighted sum of domain means, such as the difference
 #' between two, with its standard error; see "Contrasts" in [ht_total()].
 #' Its interval is symmetric whatever `proportion` and `ci_method` say.
@@ -1303,6 +1308,12 @@ estimate_by <- function(parts, by, variance, level, df, what,
                                 ci_method = ci_method,
                                 certain = any(is_certain(pi_i))))
   }
+  if (is.null(linearised) && variance != "none") {
+    held <- certain_only_domains(parts, dom, out$variance)
+    if (length(held)) {
+      notes <- c(notes, certain_total_note(labels[levels_in[held]]))
+    }
+  }
   constant <- vapply(rows, `[[`, logical(1), "constant")
   if (any(constant)) {
     shown <- labels[levels_in[constant]]
@@ -1537,6 +1548,19 @@ domain_estimates <- function(parts, dom, what, estimator) {
       }
       stop("estimator = \"ht\" needs the domain's population size, and ",
            "the `by` columns are not in the population.", call. = FALSE)
+    }
+    # A frame row with a `by` value missing could be in any domain, so no
+    # domain's size is known. Counting without it overstated the mean.
+    gap <- sum(is.na(dom$pop_key))
+    if (gap) {
+      several <- length(dom$by) > 1L
+      stop("estimator = \"ht\" divides each domain's total by its number ",
+           "of frame rows, and the `by` column", if (several) "s", " ",
+           quote_names(dom$by), if (several) " are" else " is",
+           " missing in ", gap, " of the frame's ", length(dom$pop_key),
+           " rows, which could be in any domain. Fill in the frame's `by` ",
+           "values, or use estimator = \"hajek\", which needs no domain ",
+           "sizes.", call. = FALSE)
     }
     size <- tabulate(dom$pop_key, length(dom$labels))[dom$levels_in]
   }
@@ -1825,7 +1849,8 @@ print.drawn_by <- function(x, ...) {
   print(y, digits = 4, row.names = FALSE)
   print_unreachable(attr(x, "unreachable"), "these estimates")
   notes <- attr(x, "notes")
-  notes <- notes[nzchar(notes) & !grepl("^Variance not requested", notes)]
+  notes <- notes[nzchar(notes) &
+                   !grepl("^Variance not requested", notes, useBytes = TRUE)]
   if (length(notes)) cat_note(notes)
   invisible(x)
 }
@@ -1852,7 +1877,7 @@ contrast_label <- function(w, quote = TRUE) {
     paste0(if (a != 1) paste0(format(a), " "), tick, names(w)[i], tick)
   }, character(1))
   out <- paste0(ifelse(w < 0, "- ", "+ "), terms, collapse = " ")
-  sub("^- ", "-", sub("^\\+ ", "", out))
+  sub("^- ", "-", sub("^\\+ ", "", out, useBytes = TRUE), useBytes = TRUE)
 }
 
 #' "95% CI", or "95% upper bound" for a one-sided interval

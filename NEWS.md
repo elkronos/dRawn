@@ -166,18 +166,21 @@
   designs, so no estimate used these figures.
 * **A Hajek mean over one primary sampling unit had a standard error of 0.**
   A `by` domain with one sampled row, or with all its sampled rows in one
-  cluster, and a Poisson sample of one row got a standard error of 0 and a
-  zero-width interval labelled "analytic", because the linearised residuals
-  of a mean sum to zero inside the one unit. `survey` gives the same 0.
-  `ht_mean()` now gives such a mean no standard error, with a note, unless
-  every unit of the domain was taken with certainty, which makes it exact.
-  Rows taken with certainty count as one unit, as the jackknife and
-  `as_svydesign()` treat them, so a domain whose sampled rows were all
-  certain gets no standard error either while the design could have drawn
-  its other rows. In one systematic PPS example a domain sampled as its two
-  certain rows got a zero-width interval, where the domain mean's standard
-  deviation over 1,500 draws was 3.4. `?ht_total` adds that intervals for
-  domains with few sampled rows cover less often than `level` says.
+  cluster that stage one could have left out, and a Poisson sample of one
+  row got a standard error of 0 and a zero-width interval labelled
+  "analytic", because the linearised residuals of a mean sum to zero inside
+  the one unit. `survey` gives the same 0. `ht_mean()` now gives such a mean
+  no standard error, with a note, unless every unit of the domain was taken
+  with certainty, which makes it exact. Rows taken with certainty count as
+  one unit, as the jackknife and `as_svydesign()` treat them, so a domain
+  whose sampled rows were all certain gets no standard error either while
+  the design could have drawn its other rows. In one systematic PPS example
+  a domain sampled as its two certain rows got a zero-width interval, where
+  the domain mean's standard deviation over 1,500 draws was 3.4. `?ht_total`
+  adds that intervals for domains with few sampled rows cover less often
+  than `level` says. A domain total, and the `estimator = "ht"` mean, keep
+  the standard error of 0 their unbiased estimators give such a domain, with
+  a note that says why the interval has no width.
 * **A systematic sample understated the variance when `interval` did not
   divide the frame.** The sample size is then random, 30 or 31 rows for 244
   rows at an interval of 8, and successive differences cannot see what that
@@ -378,8 +381,16 @@
   reason "A variance needs at least two clusters", as a `design_cluster()`
   sample does. The note blamed an unlucky sample for a Sen-Yates-Grundy
   estimate that is negative on every such sample, and a constant `y` got an
-  exact variance of 0. A frame of one cluster still gets the variance of a
-  simple random sample within it, since stage one takes every cluster.
+  exact variance of 0. When stage one takes every cluster, as from a frame
+  of one cluster, each cluster's rows are its units, so totals, means,
+  ratios and domain means inside one cluster get the variance of a simple
+  random sample within it.
+* `ht_mean(estimator = "ht")` with `by` refuses a frame whose `by` columns
+  are missing for some rows, which could be in any domain. Each domain's
+  total was divided by its frame rows with those left out, so a domain of
+  30 frame rows, 10 of them with `by` missing, got a mean 1.5 times too
+  large. The Hajek mean, the default, needs no domain sizes and is
+  unaffected.
 * An `allocation`, `method`, `unit`, `variance`, `estimator`, `target` or
   `type` outside its choices is refused with a message that names the
   argument, the value passed and the choices. The message from `match.arg()`
@@ -608,10 +619,13 @@
   break allocation ties, the rows of `by` estimates and of
   `sample_summary()`, and the walk of a text `order_by`. Text read from a
   file without a declared encoding, as `read.csv()` and `readLines()` give
-  it, is sorted by its bytes in the same way. Factor columns keep their
-  level order. In a locale whose collation differs from C, a seed can
-  therefore select different rows than it did in drawn 0.2.0, and a tie can
-  go to another stratum. `?design_stratified` gives the tie rule.
+  it, is sorted by its bytes in the same way, Latin-1 read in a UTF-8
+  session included. An unmarked cluster label and a UTF-8 one with the same
+  bytes are one cluster in every locale, as they are one stratum; in the C
+  locale they were two. Factor columns keep their level order. In a locale
+  whose collation differs from C, a seed can therefore select different rows
+  than it did in drawn 0.2.0, and a tie can go to another stratum.
+  `?design_stratified` gives the tie rule.
 * `by` estimates come out in key order: numbers in sequence (1, 2, 10, not
   1, 10, 2) and factors in level order, where they were sorted as text.
   Domains with no sampled row are still left out, as `survey::svyby()`

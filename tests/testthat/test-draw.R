@@ -193,6 +193,8 @@ test_that("a value outside an argument's choices is refused by name", {
     paste0("`allocation` must be one of \"proportional\", \"equal\" or ",
            "\"neyman\", not \"neymann\".")
   )
+  expect_match(msg(design_stratified("g", n = 30, allocation = character(0))),
+               "not a length-0 character.", fixed = TRUE)
   expect_match(msg(design_multistage("g", n_clusters = 2, n = 4,
                                      allocation = "even")),
                "^`allocation` must be one of \"equal\" or \"proportional\"")

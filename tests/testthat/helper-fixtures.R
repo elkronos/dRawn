@@ -121,6 +121,30 @@ with_other_collation <- function(code) {
   skip("No installed locale sorts \"a\" before \"B\".")
 }
 
+# Evaluates `code` with a UTF-8 character type, or with the C locale's when
+# `utf8` is FALSE, as in a session started in such a locale, and restores
+# the session's character type afterwards. Skips where no such locale is
+# installed.
+with_ctype <- function(code, utf8 = TRUE) {
+  old <- Sys.getlocale("LC_CTYPE")
+  old_env <- Sys.getenv("LC_CTYPE", unset = NA)
+  on.exit({
+    if (is.na(old_env)) Sys.unsetenv("LC_CTYPE") else
+      Sys.setenv(LC_CTYPE = old_env)
+    Sys.setlocale("LC_CTYPE", old)
+  }, add = TRUE)
+  candidates <- if (utf8) c("en_US.UTF-8", "C.UTF-8", "C.utf8") else "C"
+  for (loc in candidates) {
+    Sys.setenv(LC_CTYPE = loc)
+    if (nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", loc))) &&
+        identical(isTRUE(l10n_info()[["UTF-8"]]), utf8)) {
+      return(code)
+    }
+  }
+  skip(if (utf8) "No UTF-8 locale is installed." else
+    "The C locale cannot be set.")
+}
+
 # A point frame for the tests that pass an sf object as `data`.
 sf_points <- function() {
   skip_if_not_installed("sf")

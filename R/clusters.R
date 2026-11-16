@@ -23,8 +23,10 @@ cluster_codes <- function(labels) {
 
 #' The values cluster labels are compared on
 #'
-#' A factor's level numbers, the underlying numbers of a date or time, and
-#' any other vector as it is.
+#' A factor's level numbers, the underlying numbers of a date or time, text
+#' as `key_text()` gives it, and any other vector as it is. Through
+#' `key_text()` an unmarked label and a UTF-8 one with the same bytes are one
+#' cluster in every locale, as they are one stratum.
 #'
 #' @noRd
 cluster_values <- function(labels) {
@@ -33,7 +35,7 @@ cluster_values <- function(labels) {
   } else if (is.object(labels) && is.atomic(labels)) {
     unclass(labels)
   } else {
-    labels
+    key_text(labels)
   }
 }
 

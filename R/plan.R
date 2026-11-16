@@ -1278,7 +1278,7 @@ print.drawn_summary <- function(x, ...) {
   if (!is.null(x$by_group)) {
     cat("\n  by ", paste(x$group_col, collapse = " x "), ":\n", sep = "")
     b <- x$by_group
-    w1 <- max(nchar(c(b$group, "group")))
+    w1 <- max(text_width(c(b$group, "group")))
     cat("    ", formatC("group", width = -w1), "  drawn  in frame   rate\n",
         sep = "")
     for (i in seq_len(nrow(b))) {

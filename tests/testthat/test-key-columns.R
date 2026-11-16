@@ -186,6 +186,25 @@ test_that("many nested strata are keyed in time linear in the rows", {
   expect_lt(took, 20)
 })
 
+test_that("an unmarked and a UTF-8 cluster label with the same bytes are one", {
+  # In the C locale match() told them apart, so selection counted one
+  # cluster as two while sample_summary() keyed them as one stratum.
+  plain <- "Z\xc3\xbcrich"
+  marked <- plain
+  Encoding(marked) <- "UTF-8"
+  d <- data.frame(id = 1:27, cl = rep(c(plain, marked, "Bern", "Basel"),
+                                      times = c(4, 5, 9, 9)))
+  run <- function() {
+    list(codes = drawn:::cluster_codes(d$cl),
+         pi = inclusion_prob(d, design_cluster("cl", n_clusters = 2)))
+  }
+  for (utf8 in c(FALSE, TRUE)) {
+    out <- with_ctype(run(), utf8 = utf8)
+    expect_identical(out$codes, rep(1:3, each = 9))
+    expect_equal(out$pi, rep(2 / 3, 27))
+  }
+})
+
 test_that("text of unknown encoding is keyed by its bytes", {
   # read.csv() and readLines() leave text unmarked unless told the file's
   # encoding. A radix sort refuses unmarked non-ASCII text, which stopped
@@ -231,4 +250,28 @@ test_that("text of unknown encoding is keyed by its bytes", {
   s <- draw(d, strat, seed = 1, weights = TRUE)
   expect_equal(survey::SE(survey::svytotal(~y, as_svydesign(s)))[[1]],
                out$se)
+
+  # read.csv() of a Windows-1252 file in a UTF-8 session gives Latin-1
+  # bytes, which are not valid UTF-8. Labels are made from them by byte.
+  latin <- c("Z\xfcrich", "Bern", "Gen\xe8ve", "Basel")
+  l <- d
+  l$site <- rep(latin, times = sizes)
+  keyed <- latin[c(4, 2, 3, 1)]
+  with_ctype({
+    s <- draw(l, strat, seed = 1, weights = TRUE)
+    expect_identical(s$id, out$strat)
+    tot <- ht_total(s, "y", by = "site")
+    expect_identical(tot$site, keyed)
+    expect_identical(tot$se, out$by_se)
+    expect_identical(ht_mean(s, "site")$level, keyed)
+    expect_output(print(ht_mean(s, "y", by = "site")), "Basel",
+                  useBytes = TRUE)
+    cs <- draw(l, design_cluster("site", n_clusters = 2), seed = 1,
+               weights = TRUE)
+    expect_output(print(sample_summary(cs)), "in frame", useBytes = TRUE)
+    svy <- as_svydesign(s)
+    expect_equal(survey::SE(survey::svytotal(~y, svy))[[1]], out$se)
+    by_svy <- survey::svyby(~y, ~site, svy, survey::svytotal)
+    expect_equal(unname(by_svy$se[match(keyed, by_svy$site)]), tot$se)
+  })
 })

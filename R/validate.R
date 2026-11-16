@@ -231,7 +231,7 @@ format_bad <- function(x, value = FALSE) {
   if (value && is.character(x) && length(x) == 1L && !is.na(x)) {
     return(paste0("the string \"", x, "\""))
   }
-  if (is.character(x)) {
+  if (is.character(x) && length(x)) {
     return(paste0("`", x, "`", collapse = ", "))
   }
   # A function, a name or an environment has no value to show, and is.na()
@@ -541,12 +541,15 @@ stack_values <- function(a, b) {
 #'
 #' Columns are separated by ` . ` and an empty value is shown as `(blank)`.
 #' Two groups can share a display label; `unique_labels()` gives labels that
-#' cannot.
+#' cannot. Both patterns are ASCII, so they are matched by byte. Text that is
+#' not valid in the session's encoding, such as Latin-1 read in a UTF-8
+#' session, keeps its bytes and its encoding mark.
 #'
 #' @noRd
 group_label <- function(x) {
-  x <- gsub("(?<![^\r])(?![^\r])", "(blank)", as.character(x), perl = TRUE)
-  gsub("\r", " . ", x, fixed = TRUE)
+  x <- gsub("(?<![^\r])(?![^\r])", "(blank)", as.character(x), perl = TRUE,
+            useBytes = TRUE)
+  gsub("\r", " . ", x, fixed = TRUE, useBytes = TRUE)
 }
 
 #' Display labels for a key's levels, or their codes where two would match

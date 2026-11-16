@@ -210,7 +210,38 @@ test_that("a frame of one cluster gives a simple random sample's variance", {
     expect_equal(r$method, "analytic")
     expect_equal(r$variance, 30^2 * (1 - 6 / 30) * var(s$y) / 6)
     expect_false(any(grepl("at least two clusters", r$note)))
+    # The Hajek mean and a ratio were declined as if the cluster were the
+    # only unit, though its rows were drawn at random.
+    m <- ht_mean(s, "y")
+    expect_equal(m$method, "analytic")
+    expect_equal(m$variance, (1 - 6 / 30) * var(s$y) / 6)
+    expect_equal(ht_mean(s, "y", estimator = "ht")$variance, m$variance)
+    expect_true(is.finite(ht_ratio(s, "y", "id")$se))
   }
+})
+
+test_that("a domain inside one cluster of a census of clusters has an se", {
+  skip_if_not_installed("survey")
+  # Stage one takes both clusters, so each is a stratum whose rows were drawn
+  # at random, and a domain in one of them still varies.
+  d <- data.frame(id = 1:40, cl = rep(c("A", "B"), each = 20))
+  d$y <- c(sin(1:20) * 5 + 10, cos(1:20) * 3 + 20)
+  s <- draw(d, design_multistage("cl", n_clusters = 2, n = 12), seed = 5,
+            weights = TRUE)
+  m <- ht_mean(s, "y", by = "cl")
+  expect_equal(m$method, c("analytic", "analytic"))
+  for (k in c("A", "B")) {
+    yk <- s$y[s$cl == k]
+    expect_equal(m$variance[m$cl == k], (1 - 6 / 20) * var(yk) / 6)
+  }
+  theirs <- survey::svyby(~y, ~cl, as_svydesign(s), survey::svymean)
+  expect_equal(m$se, unname(survey::SE(theirs)[match(m$cl, theirs$cl)]))
+  # A domain of one sampled row is still declined, naming the row.
+  s$solo <- ifelse(seq_len(nrow(s)) == 1L, "solo", "rest")
+  one <- ht_mean(s, "y", by = "solo")
+  expect_true(is.na(one$se[one$solo == "solo"]))
+  expect_match(attr(one, "notes"), "The domain `solo` has one sampled row",
+               fixed = TRUE, all = FALSE)
 })
 
 test_that("the jackknife fallback says when it inflates the between-cluster part", {

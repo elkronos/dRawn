@@ -226,18 +226,22 @@
 #' A domain's Hajek mean ([ht_mean()]) needs sampled rows in at least two
 #' primary sampling units, rows or clusters. Its linearised residuals sum to
 #' zero inside the unit that holds the whole domain, so with one unit every
-#' estimator gives a standard error of about 0, and `survey` does the same.
-#' Such a domain gets no standard error, with a note. Rows taken with
+#' estimator gives a standard error of about 0, and `survey` does the same. Such
+#' a domain gets no standard error, with a note. When stage one of a cluster
+#' design takes every cluster, the units are rows, since each cluster is then in
+#' every sample and only its rows were drawn at random. Rows taken with
 #' certainty count as one unit, since every estimator holds them fixed and
-#' `as_svydesign()` hands them to `survey` together, so a domain whose
-#' sampled rows were all taken with certainty gets no standard error either,
-#' unless every row of it that the design could reach is certain, which
-#' makes its mean exact. Totals and the `estimator = "ht"` mean are not
-#' affected. A domain with a handful of sampled rows has a standard error
-#' that is itself unreliable, and the interval covers less often than
-#' `level` says. In one simulation of a skewed variable, a 95% interval for
-#' the mean of a domain with two or three sampled rows covered 65% of the
-#' time, and 85% with four or five.
+#' `as_svydesign()` hands them to `survey` together, so a domain whose sampled
+#' rows were all taken with certainty gets no standard error either, unless
+#' every row of it that the design could reach is certain, which makes its mean
+#' exact. A domain total, and the `estimator = "ht"` mean, keep the standard
+#' error of 0 their estimators give such a domain, since those estimators are
+#' unbiased over samples, and a note says the interval has no width because the
+#' sampled rows were all certain. A domain with a handful of sampled rows has a
+#' standard error that is itself unreliable, and the interval covers less often
+#' than `level` says. In one simulation of a skewed variable, a 95% interval for
+#' the mean of a domain with two or three sampled rows covered 65% of the time,
+#' and 85% with four or five.
 #'
 #' A sample grouped with `dplyr::group_by()` is estimated as a whole, with a
 #' warning of class `drawn_grouped_df`; the groups play no part. Use `by`.
@@ -727,7 +731,7 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
   }
 
   jk <- jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
-  first <- sub("\n.*", "", reason)
+  first <- sub("\n.*", "", reason, useBytes = TRUE)
   if (is.na(jk$variance)) {
     # The jackknife declined too. Say so, and keep its reason rather than
     # claiming a fallback that did not happen.
@@ -799,10 +803,12 @@ sub_context <- function(ctx, name) {
 #' interval. `survey` gives the same 0.
 #'
 #' Units are counted over the sampled rows in `member` as `sample_units()`
-#' gives them: clusters or rows, as the jackknife deletes them, with the units
-#' taken with certainty counted together as one. The jackknife holds those
-#' fixed and every other estimator gives them no variance, so a domain whose
-#' sampled rows are all certain gets a variance of 0 however many there are.
+#' gives them: clusters or rows, with the units taken with certainty counted
+#' together as one. The rows of a cluster that stage one was certain to take
+#' are units of their own, since that cluster's rows were drawn at random.
+#' The jackknife holds certain units fixed and every other estimator gives
+#' them no variance, so a domain whose sampled rows are all certain gets a
+#' variance of 0 however many there are.
 #' The mean is exact, and a variance of 0 right, only when every unit of the
 #' domain that the design can reach was taken with certainty. That is read
 #' from the draw-time probabilities over `frame`, which marks the domain's
@@ -824,12 +830,13 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                           }, estimate = "Hajek mean") {
   u <- psu[member]
   if (length(unique(u)) >= 2L) return(NULL)
-  if (certain_domain(parts, frame)) return(NULL)
+  pi_all <- frame_pi(parts)
+  if (certain_domain(parts, frame, pi_all)) return(NULL)
   if (length(u) && all(u == 0L)) {
     return(list(variance = NA_real_, method = "none",
-                note = certain_only_note(subject, parts, frame)))
+                note = certain_only_note(subject, parts, frame, pi_all)))
   }
-  unit <- unit_noun(parts$design)
+  unit <- unit_noun(parts$design, parts$pop)
   core <- paste0("A ", estimate, "'s linearised residuals sum to zero over ",
                  "it, so every variance estimator would give a standard ",
                  "error of about 0, whatever the spread of `y`.")
@@ -856,15 +863,14 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
 #' still changes with how many of the domain's other rows a sample takes.
 #' `subject` is as `ratio_decline()` takes it, `NULL` for the whole sample.
 #' The note says the design could have drawn other rows of the domain only
-#' when the draw-time probabilities show a row below certainty that `frame`
-#' places in the domain.
+#' when the frame's probabilities `pi_all`, from `frame_pi()`, show a row
+#' below certainty that `frame` places in the domain.
 #'
 #' @noRd
-certain_only_note <- function(subject, parts, frame) {
+certain_only_note <- function(subject, parts, frame,
+                              pi_all = frame_pi(parts)) {
   whole <- is.null(subject)
-  pi_all <- parts$pi_all
-  known <- !is.null(pi_all) &&
-    any(reachable(pi_all) & !(is_certain(pi_all) %in% TRUE) & frame %in% TRUE)
+  known <- could_draw_others(pi_all, frame)
   paste0(
     if (whole) "Every sampled row was taken with certainty" else
       paste0(subject, " has sampled rows taken with certainty only"),
@@ -881,20 +887,68 @@ certain_only_note <- function(subject, parts, frame) {
     " below certainty.")
 }
 
-#' Whether every frame row of a domain the design can reach was certain
+#' Whether the design could have drawn rows of a domain below certainty
 #'
-#' Read from the draw-time probabilities over `frame`, which marks the
-#' domain's frame rows as `domain_frame()` does. Then every such row is in
-#' every sample, and an estimate over the domain is exact. A row the frame
-#' cannot place, or a whole frame that cannot say (`NA`), may belong to the
-#' domain and is counted in it, so a domain the frame cannot place is exact
-#' only when every row the design can reach is certain, as in a census.
-#' `FALSE` for a sample saved by drawn 0.2.0, which records no
-#' probabilities.
+#' `TRUE` when the frame's probabilities `pi_all` show a row the design can
+#' reach, below certainty, that `frame` places in the domain. `FALSE` when
+#' there is none, or the probabilities or the domain's rows are unknown.
 #'
 #' @noRd
-certain_domain <- function(parts, frame) {
-  pi_all <- parts$pi_all
+could_draw_others <- function(pi_all, frame) {
+  !is.null(pi_all) &&
+    any(reachable(pi_all) & !(is_certain(pi_all) %in% TRUE) & frame %in% TRUE)
+}
+
+#' Domains whose standard error of 0 comes from certain rows only
+#'
+#' For a domain total or a Horvitz-Thompson domain mean. Every sampled row of
+#' such a domain is in a unit taken with certainty, which every variance
+#' estimator holds fixed, so its variance is 0, while the design could have
+#' drawn other rows of it. The estimator is unbiased over samples, so the
+#' estimate keeps its variance, and `certain_total_note()` says why it is 0.
+#' `variances` holds each domain's variance. Returns positions in
+#' `dom$levels_in`.
+#'
+#' @noRd
+certain_only_domains <- function(parts, dom, variances) {
+  pi_all <- frame_pi(parts)
+  if (is.null(pi_all)) return(integer(0))
+  psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows,
+                      parts$pi)
+  which(vapply(seq_along(dom$levels_in), function(j) {
+    u <- psu[dom$idx[[j]]]
+    length(u) > 0L && all(u == 0L) && is.finite(variances[[j]]) &&
+      could_draw_others(pi_all, domain_frame(dom, j))
+  }, logical(1)))
+}
+
+#' Why the domains of `certain_only_domains()` have a standard error of 0
+#' @noRd
+certain_total_note <- function(domains) {
+  many <- length(domains) > 1L
+  paste0(
+    "The domain", if (many) "s", " ", quote_labels(domains),
+    if (many) " have" else " has", " sampled rows taken with certainty ",
+    "only, and the design could have drawn other rows of ",
+    if (many) "them" else "it", " in a different sample. Every variance ",
+    "estimator holds certain rows fixed, so the standard error is 0 and the ",
+    "interval has no width, though the estimate varies from sample to ",
+    "sample. Measuring that variation needs a sampled row of ",
+    if (many) "each" else "the", " domain below certainty.")
+}
+
+#' Whether every frame row of a domain the design can reach was certain
+#'
+#' Read from the frame's probabilities `pi_all`, from `frame_pi()`, over
+#' `frame`, which marks the domain's frame rows as `domain_frame()` does.
+#' Then every such row is in every sample, and an estimate over the domain
+#' is exact. A row the frame cannot place, or a whole frame that cannot say
+#' (`NA`), may belong to the domain and is counted in it, so a domain the
+#' frame cannot place is exact only when every row the design can reach is
+#' certain, as in a census. `FALSE` when the probabilities are unknown.
+#'
+#' @noRd
+certain_domain <- function(parts, frame, pi_all = frame_pi(parts)) {
   if (is.null(pi_all)) return(FALSE)
   # A conditional sample's unselected clusters have no recorded
   # probability, and were not taken with certainty.
@@ -902,18 +956,33 @@ certain_domain <- function(parts, frame) {
   !anyNA(pi_all[reach]) && all(is_certain(pi_all[reach]))
 }
 
+#' The inclusion probability of every frame row
+#'
+#' The draw-time probabilities the sample records. A sample saved by drawn
+#' 0.2.0 records none, so they are worked out again from the design, as
+#' `ratio_parts()` does. `NULL` for such a sample whose design has no closed
+#' form.
+#'
+#' @noRd
+frame_pi <- function(parts) {
+  parts$pi_all %||% tryCatch(exact_inclusion(parts$design, parts$pop),
+                             drawn_declined = function(e) NULL)
+}
+
 #' Each sampled row's primary sampling unit, as the variance sees it
 #'
 #' Clusters for a cluster or multistage design, as the jackknife deletes
 #' them, the replicates of a systematic design with several starts, and
-#' otherwise rows. Under a certainty design the rows below the threshold are
-#' grouped as `rest` groups them. A unit whose every sampled row is certain,
-#' given the sampled rows' inclusion probabilities `pi`, is in every sample
-#' and adds nothing to a variance: the jackknife holds such units fixed and
-#' `as_svydesign()` hands them to `survey` as one unit. They share the code
-#' 0 here, and every other unit has a positive integer code. `pop` is the
-#' frame and `rows` the sampled frame rows, which place a systematic
-#' sample's rows on its walk.
+#' otherwise rows. A cluster design whose stage one takes every cluster has
+#' rows as its units, each cluster a stratum of them, as
+#' `clusters_all_taken()` sets out. Under a certainty design the rows below
+#' the threshold are grouped as `rest` groups them. A unit whose every
+#' sampled row is certain, given the sampled rows' inclusion probabilities
+#' `pi`, is in every sample and adds nothing to a variance: the jackknife
+#' holds such units fixed and `as_svydesign()` hands them to `survey` as one
+#' unit. They share the code 0 here, and every other unit has a positive
+#' integer code. `pop` is the frame and `rows` the sampled frame rows, which
+#' place a systematic sample's rows on its walk.
 #'
 #' @noRd
 sample_units <- function(design, units, pop, rows, pi) {
@@ -934,6 +1003,7 @@ design_units <- function(design, units, pop, rows) {
     return(systematic_replicates(design, systematic_positions(design, pop),
                                  rows))
   }
+  if (clusters_all_taken(design, pop)) return(seq_len(nrow(units)))
   if (!inherits(design, "drawn_design_certainty")) {
     return(jackknife_groups(design, units, pop))
   }
@@ -949,11 +1019,32 @@ design_units <- function(design, units, pop, rows) {
   out
 }
 
-#' What a design's primary sampling unit is called in a message
+#' Does stage one of an equal-probability cluster design take every cluster?
+#'
+#' Then every cluster is in every sample, and so is a stratum of its own
+#' whose units are its sampled rows, as `cluster_units()` lays out a cluster
+#' taken with certainty under `size`. Nothing varies between clusters, and
+#' only the variation within them is left to measure. `pop` is the frame.
+#'
 #' @noRd
-unit_noun <- function(design) {
+clusters_all_taken <- function(design, pop) {
+  inherits(design, c("drawn_design_cluster", "drawn_design_multistage")) &&
+    is.null(design$size) &&
+    design$n_clusters >= count_clusters(design, pop)$total
+}
+
+#' What a design's primary sampling unit is called in a message
+#'
+#' A row for a cluster design whose stage one takes every cluster of the
+#' frame `pop`, when `pop` is given.
+#'
+#' @noRd
+unit_noun <- function(design, pop = NULL) {
   clustered <- c("drawn_design_cluster", "drawn_design_multistage")
-  if (inherits(design, clustered)) return("cluster")
+  if (inherits(design, clustered)) {
+    taken <- !is.null(pop) && clusters_all_taken(design, pop)
+    return(if (taken) "row" else "cluster")
+  }
   if (replicated(design)) return("replicate")
   if (inherits(design, "drawn_design_certainty") &&
       (inherits(design$rest, clustered) || replicated(design$rest))) {

@@ -72,6 +72,16 @@ test_that("the HT domain mean divides by the domain's known size", {
   N_a <- sum(d$site == "a")
   expect_equal(r$mean[r$site == "a"],
                sum(s$y[s$site == "a"] * s$.weight[s$site == "a"]) / N_a)
+
+  # A frame row with `site` missing could be in any domain, and leaving it
+  # out of the count overstated the mean.
+  gap <- d
+  gap$site[setdiff(seq_len(nrow(d)), s$id)[1:10]] <- NA
+  s2 <- as_drawn(s, attr(s, "drawn_design"), gap, by = "id")
+  expect_error(ht_mean(s2, "y", by = "site", estimator = "ht"), paste0(
+    "the `by` column `site` is missing in 10 of the frame's ", nrow(d),
+    " rows"), fixed = TRUE)
+  expect_true(all(is.finite(ht_mean(s2, "y", by = "site")$se)))
 })
 
 test_that("by accepts several columns and validates them", {
@@ -208,8 +218,19 @@ test_that("a Hajek domain mean of certain rows only has no se unless exact", {
   b <- ht_mean(s, "y", by = "big")
   expect_identical(b$se[b$big == "big"], 0)
   expect_equal(b$ci_lower[b$big == "big"], mean(pop$y[99:100]))
-  # The domain total is still estimated, as for a domain of one row.
-  expect_true(all(is.finite(ht_total(s, "y", by = "x")$se)))
+  # The domain total keeps the 0 its unbiased estimator gives, with a note
+  # that says why the interval has no width.
+  tot <- ht_total(s, "y", by = "x")
+  expect_true(all(is.finite(tot$se)))
+  expect_match(attr(tot, "notes"), paste0(
+    "The domain `d` has sampled rows taken with certainty only, and the ",
+    "design could have drawn other rows of it"), fixed = TRUE, all = FALSE)
+  ht <- ht_mean(s, "y", by = "x", estimator = "ht")
+  expect_match(attr(ht, "notes"), "Measuring that variation needs",
+               fixed = TRUE, all = FALSE)
+  # A domain of the rows the design always takes gets no such note.
+  expect_false(any(grepl("taken with certainty only",
+                         attr(ht_total(s, "y", by = "big"), "notes"))))
 
   # Under a certainty design, two rows above the threshold are one unit too.
   pop2 <- data.frame(id = 1:60, w = c(rep(10, 55), 200, 300, 150, 400, 500))
@@ -236,6 +257,37 @@ test_that("a Hajek domain mean of certain rows only has no se unless exact", {
   # A census stays exact.
   cen <- draw(pop3, design_simple(n = 30), seed = 1, weights = TRUE)
   expect_identical(ht_mean(cen, "y")$se, 0)
+})
+
+test_that("certain rows of a sample saved by drawn 0.2.0 stay exact", {
+  # Such a sample records no probabilities, and every mean of certain rows
+  # only, a census included, was declined as if the frame could not say
+  # whether other rows could have been drawn. The design says.
+  as_legacy <- function(s) {
+    s$.row <- NULL
+    attr(s, "drawn_pi") <- NULL
+    s
+  }
+  d <- data.frame(id = 1:30, st = rep(c("a", "b", "c"), each = 10),
+                  y = (1:30 * 7) %% 11 + 1)
+  cen <- as_legacy(draw(d, design_simple(n = 30), seed = 1, weights = TRUE))
+  m <- ht_mean(cen, "y")
+  expect_identical(m$se, 0)
+  expect_equal(m$ci, rep(mean(d$y), 2))
+  mb <- ht_mean(cen, "y", by = "st")
+  expect_identical(mb$se, c(0, 0, 0))
+  expect_identical(ht_quantile(cen, "y")$se, 0)
+  expect_identical(ht_ratio(cen, "y", "id")$se, 0)
+
+  # A stratum taken whole is exact, and the others are estimated.
+  d2 <- data.frame(id = 1:50, st = rep(c("a", "b", "c"), times = c(20, 20, 10)),
+                   y = (1:50 * 7) %% 13 + 1)
+  s <- draw(d2, design_stratified("st", allocation = c(a = 5, b = 5, c = 10)),
+            seed = 2, weights = TRUE)
+  old <- ht_mean(as_legacy(s), "y", by = "st")
+  expect_identical(old$se, ht_mean(s, "y", by = "st")$se)
+  expect_identical(old$se[old$st == "c"], 0)
+  expect_equal(old$method, rep("analytic", 3))
 })
 
 lonely_pop <- function() {

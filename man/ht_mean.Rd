@@ -171,6 +171,11 @@ sampled row of the domain, so a Hajek mean over one unit, such as a domain
 with one sampled row or a Poisson sample of one row, gets no standard
 error. The "Domains" section of \code{\link[=ht_total]{ht_total()}} says more.
 
+With \code{estimator = "ht"} each domain's total is divided by the domain's
+number of rows in the frame, read from the frame's \code{by} columns. A frame
+row with a \code{by} value missing could be in any domain, so such a frame is
+refused.
+
 \code{contrast} gives a weighted sum of domain means, such as the difference
 between two, with its standard error; see "Contrasts" in \code{\link[=ht_total]{ht_total()}}.
 Its interval is symmetric whatever \code{proportion} and \code{ci_method} say.

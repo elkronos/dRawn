@@ -138,6 +138,19 @@ format_duration <- function(seconds) {
          if (x != 1) "s")
 }
 
+#' The number of characters in each string, for padding printed columns
+#'
+#' Text that is not valid in the session's encoding, such as Latin-1 read in
+#' a UTF-8 session, has no character count, so its bytes are counted.
+#'
+#' @noRd
+text_width <- function(x) {
+  w <- nchar(x, allowNA = TRUE)
+  bad <- is.na(w)
+  w[bad] <- nchar(x[bad], type = "bytes")
+  w
+}
+
 #' Subset rows of a frame
 #'
 #' `drop = FALSE` matters: without it a one-column frame collapses to a vector.
