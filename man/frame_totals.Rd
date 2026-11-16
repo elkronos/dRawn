@@ -13,7 +13,9 @@ frame_totals(sample, formula, table = FALSE)
 \code{~ w + site}, as \code{\link[survey:calibrate]{survey::calibrate()}} takes it. A name in it that is
 not a column of the frame, such as \code{cutoff} in \code{~ I(w > cutoff)}, is
 read from the environment of \code{formula}, as \code{\link[stats:model.frame]{stats::model.frame()}}
-reads it.}
+reads it. A term with no frame column in it, as in \code{~ cutoff}, has no
+value for each row and is refused, and so is one that gives a single
+value for the frame, such as \code{I(sum(w))}.}
 
 \item{table}{\code{FALSE}, the default, for the column totals of the model
 matrix of \code{formula}, which \code{\link[survey:calibrate]{survey::calibrate()}} takes. \code{TRUE} for the

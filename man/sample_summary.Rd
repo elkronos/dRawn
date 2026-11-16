@@ -46,7 +46,11 @@ put at probability 1 by a size measure, in \code{\link[=design_weighted]{design_
 in \code{\link[=design_spread]{design_spread()}} or \code{\link[=design_multistage]{design_multistage()}} with \code{size}, which
 includes the rows of a cluster put at 1 by its size and then taken
 whole; and \code{whole}, in a stratum, interval or cluster taken whole,
-or a census, with a size measure or without.}
+or a census, with a size measure or without. Under a size measure a
+group counts as taken whole when the design gives every row of it
+probability 1, or every cluster of a multistage design a
+first-stage probability of 1, so a Poisson sample that holds every
+row of a stratum by chance files its certain rows under \code{size}.}
 \item{\code{conditional}}{The number of clusters selected, when the
 weights are conditional on them, as for \code{\link[=design_cluster]{design_cluster()}} with
 \code{balanced = TRUE} (see "Design weights" in \code{\link[=draw]{draw()}}); otherwise

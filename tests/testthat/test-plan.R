@@ -940,6 +940,32 @@ test_that("sample_summary counts a group a size design took whole as whole", {
                c(threshold = 0L, size = 5L, whole = 0L))
 })
 
+test_that("sample_summary files certain rows by the design, not the draw", {
+  # Eight rows are certain by size. Seed 3 draws all 12 rows by chance and
+  # seed 1 draws 11; the four rows below 1 keep the frame from being whole.
+  d <- data.frame(id = 1:12, w = c(100, 90, 5:14))
+  des <- design_weighted("w", n = 11, method = "poisson")
+  full <- draw(d, des, seed = 3, weights = TRUE)
+  part <- draw(d, des, seed = 1, weights = TRUE)
+  expect_equal(nrow(full), 12L)
+  expect_equal(nrow(part), 11L)
+  for (s in list(full, part)) {
+    expect_equal(sample_summary(s)$certain_by,
+                 c(threshold = 0L, size = 8L, whole = 0L))
+  }
+  # Stratum b is allocated all its rows; seed 9 draws every row of a too.
+  d$w <- c(100, 90, 5:8, 1:6)
+  d$site <- rep(c("a", "b"), each = 6)
+  des <- design_weighted("w", n = 10, method = "poisson", strata = "site",
+                         allocation = c(a = 4, b = 6))
+  full <- draw(d, des, seed = 9, weights = TRUE)
+  expect_equal(sum(full$site == "a"), 6L)
+  for (s in list(full, draw(d, des, seed = 1, weights = TRUE))) {
+    expect_equal(sample_summary(s)$certain_by,
+                 c(threshold = 0L, size = 2L, whole = 6L))
+  }
+})
+
 test_that("sample_summary gives the expected size of a sample of random size", {
   pop <- data.frame(id = 1:240)
   s <- draw(pop, design_systematic(interval = 7), seed = 1, weights = TRUE)

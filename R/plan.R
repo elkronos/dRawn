@@ -977,7 +977,11 @@ deff_cluster <- function(m, icc) {
 #'       in [design_spread()] or [design_multistage()] with `size`, which
 #'       includes the rows of a cluster put at 1 by its size and then taken
 #'       whole; and `whole`, in a stratum, interval or cluster taken whole,
-#'       or a census, with a size measure or without.}
+#'       or a census, with a size measure or without. Under a size measure a
+#'       group counts as taken whole when the design gives every row of it
+#'       probability 1, or every cluster of a multistage design a
+#'       first-stage probability of 1, so a Poisson sample that holds every
+#'       row of a stratum by chance files its certain rows under `size`.}
 #'     \item{`conditional`}{The number of clusters selected, when the
 #'       weights are conditional on them, as for [design_cluster()] with
 #'       `balanced = TRUE` (see "Design weights" in [draw()]); otherwise
@@ -1171,10 +1175,11 @@ summary_groups <- function(design, pop, rows) {
 #' frame rows. Rows above a certainty design's threshold count as
 #' `threshold`; the others are put there by the design below it, a size
 #' measure (`size`) or a group taken whole (`whole`). Under a design with a
-#' size measure, a certain row counts as `whole` when its group was taken
-#' whole (see `groups_taken_whole()`), since the size measure then made no
-#' difference. `pi_all`, the frame's probabilities, says which rows the
-#' design could reach; `NULL` counts every row.
+#' size measure, a certain row counts as `whole` when the design takes its
+#' group whole (see `groups_taken_whole()`), since the size measure then
+#' made no difference. `pi_all`, the frame's probabilities, says which rows
+#' the design could reach and which it takes with certainty; `NULL` counts
+#' every row as reachable.
 #'
 #' @noRd
 certain_counts <- function(design, pop, rows, certain, pi_all = NULL) {
@@ -1193,27 +1198,33 @@ certain_counts <- function(design, pop, rows, certain, pi_all = NULL) {
   by_size <- inherits(design, "drawn_design_weighted") ||
     (inherits(design, c("drawn_design_spread", "drawn_design_multistage")) &&
        !is.null(design$size))
-  whole <- if (by_size) groups_taken_whole(design, pop, rows, pi_all) else TRUE
+  whole <- if (by_size) {
+    groups_taken_whole(design, pop, rows, certain, pi_all)
+  } else {
+    TRUE
+  }
   out[["whole"]] <- out[["whole"]] + sum(certain & whole)
   out[["size"]] <- out[["size"]] + sum(certain & !whole)
   out
 }
 
-#' Whether each sampled row's group was taken whole, under a size measure
+#' Whether the design takes each sampled row's group whole, under a size measure
 #'
-#' A multistage design takes its clusters whole when it selects every
-#' cluster it could reach. A weighted or spread design takes a stratum
-#' whole, or the frame when it has no strata, when the sample holds every
-#' row of it the design could reach.
+#' The answer comes from the design's probabilities, so every sample of a
+#' design files its certain rows alike. A multistage design takes its
+#' clusters whole when every cluster it could reach has a stage-one
+#' probability of 1. A weighted or spread design takes a stratum whole, or
+#' the frame when it has no strata, when every row of it the design could
+#' reach has probability 1. A Poisson draw can hold every row of a stratum
+#' by chance; its rows below 1 keep the stratum from counting as whole.
+#' Without `pi_all` the certain rows of the frame are the sampled rows
+#' marked `certain`, since a row at probability 1 is always drawn.
 #'
 #' @noRd
-groups_taken_whole <- function(design, pop, rows, pi_all) {
-  reach <- if (is.null(pi_all)) rep(TRUE, nrow(pop)) else reachable(pi_all)
+groups_taken_whole <- function(design, pop, rows, certain, pi_all) {
   if (inherits(design, "drawn_design_multistage")) {
-    code <- count_clusters(design, pop)$code
-    all_drawn <- length(unique(code[rows])) ==
-      length(unique(code[reach & !is.na(code)]))
-    return(rep(all_drawn, length(rows)))
+    pi1 <- cluster_stage(design, pop)$pi1
+    return(rep(all(is_certain(pi1)), length(rows)))
   }
   code <- if (is.null(design$strata)) {
     rep(1L, nrow(pop))
@@ -1221,9 +1232,15 @@ groups_taken_whole <- function(design, pop, rows, pi_all) {
     as.integer(group_key(pop, design$strata))
   }
   k <- max(c(0L, code), na.rm = TRUE)
-  got <- tabulate(code[rows], k)
-  have <- tabulate(code[reach], k)
-  (got == have)[code[rows]]
+  if (is.null(pi_all)) {
+    sure <- tabulate(code[rows[certain]], k)
+    have <- tabulate(code, k)
+  } else {
+    reach <- reachable(pi_all)
+    sure <- tabulate(code[which(reach & is_certain(pi_all))], k)
+    have <- tabulate(code[reach], k)
+  }
+  (sure == have)[code[rows]]
 }
 
 #' @export

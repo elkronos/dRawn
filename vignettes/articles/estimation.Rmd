@@ -146,16 +146,17 @@ standard approximations for high-entropy designs. It equals
 
 ### Systematic sampling: successive differences
 
-A systematic sample has one random start. At an interval of 2 or more,
-neighbouring rows and many other pairs can never be drawn together
-($\pi_{kl} = 0$), so no design-unbiased variance estimator exists at all.
+A systematic sample has one random start. At an interval $k$ of 2 or more,
+neighbouring rows and many other pairs can never be drawn together, so their
+joint probability is 0 and no design-unbiased variance estimator exists at
+all.
 The successive-difference estimator compares each sampled row with its
 neighbour in the order the design walked (Wolter 2007):
 
 $$\hat V = (1 - f)\, \frac{n}{2(n-1)} \sum_{j=2}^{n}
 \left(\frac{y_{(j)}}{\pi} - \frac{y_{(j-1)}}{\pi}\right)^2.$$
 
-When the interval $k$ does not divide the $N$ rows the design walks, the sample
+When $k$ does not divide the $N$ rows the design walks, the sample
 holds $\lfloor N/k \rfloor$ or $\lfloor N/k \rfloor + 1$ rows, and the total
 moves with that count. Successive differences cannot see it, so
 $\bar u^2 (r/k)(1 - r/k)$ is added, with $\bar u$ the mean of $y/\pi$ over the

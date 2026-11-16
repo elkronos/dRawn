@@ -1056,9 +1056,10 @@
   and Poisson designs `as_svydesign()` hands over, which is a limitation
   of `survey` that `?as_svydesign` now states, for a systematic sample
   builds a jackknife that ignores the walk, and for balanced clusters
-  keeps a first-stage correction the jackknife of `ht_total()` leaves
-  out. Poisson sampling, which the jackknife understates, is refused, and
-  so are replicate weights that would take more than about 1 GB.
+  and `design_multistage()` without `size` keeps a first-stage correction
+  the jackknife of `ht_total()` leaves out. Poisson sampling, which the
+  jackknife understates, is refused, and so are replicate weights that
+  would take more than about 1 GB.
 * `frame_totals()` gives the population totals `survey::calibrate()` takes,
   the column totals of `model.matrix(formula)` over the rows of the stored
   frame that the design could reach, or with `table = TRUE` the counts
@@ -1067,7 +1068,8 @@
   `na_rm` are left out, and a missing value in the rows counted is
   refused. A name in `formula` that is not a column of the frame, such as
   `cutoff` in `~ I(w > cutoff)`, is read from where the formula was
-  written.
+  written; a term with no frame column in it, such as `~ cutoff`, has no
+  value per row and is refused.
   Calibrating a design from `as_svydesign()` needed the totals built by
   hand. The estimation article has an example; calibration itself stays
   with `survey`.
@@ -1089,9 +1091,9 @@
   `sum(w)^2 / sum(w^2)`; `n_certain`, the sampled rows taken with certainty,
   with `certain_by` splitting them into those above a `design_certainty()`
   threshold, those a size measure put at probability 1 and those in a group
-  taken whole; and `expected_n`, the sum of the inclusion probabilities,
-  printed beside `n` when the sample size is random, as under Poisson
-  sampling.
+  the design takes whole, whichever rows a Poisson draw happened to hold;
+  and `expected_n`, the sum of the inclusion probabilities, printed beside
+  `n` when the sample size is random, as under Poisson sampling.
 * `plot(type = "map")` of a `design_spatial()` design draws the outline of
   `region`, with each edge of a longitude/latitude region along its great
   circle under spherical geometry, which is how the design decides which
@@ -1509,9 +1511,10 @@
   `N_h / n_h - 1` apart, and at a step of 3.33 rows two rows 3 apart are
   drawn together one time in five. `?design_systematic` says that
   `as_svydesign()` refuses a replicated sample with a replicate that drew
-  no rows. The estimation article no longer uses one letter for both a row
-  and the interval, and the README's table of designs gives the
-  successive-difference variance of `design_stratified(within =)`.
+  no rows. The estimation article's sections on systematic samples no
+  longer use one letter for both a row and the interval, and the README's
+  table of designs gives the successive-difference variance of
+  `design_stratified(within =)`.
 
 # drawn 0.2.0
 

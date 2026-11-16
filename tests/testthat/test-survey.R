@@ -958,6 +958,28 @@ test_that("survey's jackknife of balanced clusters keeps a stage-one fpc", {
   expect_equal(se^2, (1 - 6 / 40) * jk$se^2, tolerance = 1e-8)
 })
 
+test_that("survey's jackknife keeps a stage-one fpc for two stages without size", {
+  skip_if_not_installed("survey")
+  d <- svy_pop()
+  s <- draw(d, design_multistage("cl", n_clusters = 6, n = 24), seed = 2,
+            weights = TRUE)
+  jk <- ht_total(s, "spend", variance = "jackknife")
+  expect_warning(rep <- survey::as.svrepdesign(as_svydesign(s)),
+                 "after first stage")
+  se <- as.numeric(survey::SE(survey::svytotal(~spend, rep)))
+  expect_equal(se^2, (1 - 6 / 40) * jk$se^2, tolerance = 1e-8)
+
+  # A spread sample without `size` gets the jackknife's standard error.
+  d$x <- d$id %% 20
+  d$yy <- d$id %/% 20
+  s <- draw(d, design_spread(c("x", "yy"), n = 30, scale = FALSE), seed = 2,
+            weights = TRUE)
+  rep <- survey::as.svrepdesign(as_svydesign(s))
+  expect_equal(as.numeric(survey::SE(survey::svytotal(~spend, rep))),
+               ht_total(s, "spend", variance = "jackknife")$se,
+               tolerance = 1e-8)
+})
+
 test_that("rows above a certainty threshold keep their weight in every replicate", {
   skip_if_not_installed("survey")
   d <- svy_pop()
@@ -1161,6 +1183,25 @@ test_that("frame_totals() reads values defined where the formula was written", {
                c(`(Intercept)` = 40, `I(w > cut_at)TRUE` = sum(d$w > 6)))
   over <- function(k) frame_totals(s, ~ I(w > k), table = TRUE)
   expect_equal(c(over(9)), c(`FALSE` = sum(d$w <= 9), `TRUE` = sum(d$w > 9)))
+})
+
+test_that("frame_totals() refuses a term with no value per frame row", {
+  d <- data.frame(id = 1:40, w = 1 + (1:40 * 7) %% 13)
+  s <- draw(d, design_simple(n = 8), seed = 1, weights = TRUE)
+  # model.frame() builds one row from a value alone, which would total one
+  # row in place of 40.
+  n <- 8
+  for (tab in c(FALSE, TRUE)) {
+    expect_error(frame_totals(s, ~n, table = tab),
+                 "`formula` has `n`, which names no column", fixed = TRUE)
+    expect_error(frame_totals(s, ~ w + n, table = tab),
+                 "`formula` has `n`, which names no column", fixed = TRUE)
+  }
+  expect_error(frame_totals(s, ~ I(n + 1) + T), "`I(n + 1)` and `T`, which",
+               fixed = TRUE)
+  expect_error(frame_totals(s, ~ w + I(sum(w))),
+               "`I(sum(w))`, which gives 1 value where the 40 frame rows",
+               fixed = TRUE)
 })
 
 test_that("frame_totals() counts a region's rows only", {

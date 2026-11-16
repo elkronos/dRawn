@@ -156,20 +156,22 @@
 #' `survey::as.svrepdesign()` turns the design returned here into one with
 #' replicate weights. For samples from [design_simple()],
 #' [design_stratified()] without `within`, [design_cluster()] without
-#' `balanced`, [design_temporal()] and [design_spatial()], its jackknife
-#' gives the standard errors of `ht_total(variance = "jackknife")`. It stops
-#' with an error on the designs handed over with Brewer's approximation or
-#' as Poisson sampling, those of [design_weighted()], [design_spread()] and
-#' [design_multistage()] with `size`, and [design_certainty()] over them,
-#' because `survey` builds no replicates for its own
-#' probability-proportional-to-size and Poisson designs. That is a
+#' `balanced`, [design_temporal()], [design_spatial()] and [design_spread()]
+#' without `size`, its jackknife gives the standard errors of
+#' `ht_total(variance = "jackknife")`. It stops with an error on the
+#' designs handed over with Brewer's approximation or as Poisson sampling,
+#' those of [design_weighted()], [design_spread()] and [design_multistage()]
+#' with `size`, and [design_certainty()] over them, because `survey` builds
+#' no replicates for its own probability-proportional-to-size and Poisson
+#' designs. That is a
 #' limitation of `survey`. For a systematic sample, alone or within strata,
 #' it builds a jackknife that ignores the order of the walk. For
-#' [design_cluster()] with `balanced = TRUE` it keeps the finite population
-#' correction of the first stage, which `ht_total(variance = "jackknife")`
-#' leaves out, and warns that it dropped the corrections after the first
-#' stage. Its variance is then the jackknife's times `1 - n / N`, for `n`
-#' of the `N` clusters selected.
+#' [design_cluster()] with `balanced = TRUE` and [design_multistage()]
+#' without `size` it keeps the finite population correction of the first
+#' stage, which `ht_total(variance = "jackknife")` leaves out, and warns
+#' that it dropped the corrections after the first stage. Its variance is
+#' then the jackknife's times `1 - n / N`, for `n` of the `N` clusters
+#' selected.
 #'
 #' [replicate_weights()] builds replicate weights from the sample itself,
 #' for [survey::svrepdesign()]: the jackknife of
@@ -336,11 +338,12 @@ as_svydesign <- function(sample, ...) {
 #'
 #' The matrix of weights takes `8 * n * R` bytes for `n` sampled rows and
 #' `R` replicates, and building it about twice that. The jackknife has a
-#' replicate for each sampled unit, and successive differences have a
-#' power of 2 above the number of rows, so the size grows with the square
-#' of the sample. Past about 1 GB, `replicate_weights()` refuses: from
-#' about 11,200 rows for a jackknife over rows, and about 8,200 for
-#' successive differences. Such a sample can still be estimated with
+#' replicate for each sampled unit, and successive differences have the
+#' first power of 2 above the number of pairs of neighbours in the walks,
+#' counting one more for each walk of random size, so the size grows with
+#' the square of the sample. Past about 1 GB, `replicate_weights()`
+#' refuses: from about 11,200 rows for a jackknife over rows, and about
+#' 8,200 for successive differences. Such a sample can still be estimated with
 #' [ht_total()], or handed to `survey` with [as_svydesign()].
 #'
 #' @param sample A data frame returned by [draw()] with `weights = TRUE`.
@@ -477,7 +480,9 @@ check_replicate_base <- function(sample) {
 #'   `~ w + site`, as [survey::calibrate()] takes it. A name in it that is
 #'   not a column of the frame, such as `cutoff` in `~ I(w > cutoff)`, is
 #'   read from the environment of `formula`, as [stats::model.frame()]
-#'   reads it.
+#'   reads it. A term with no frame column in it, as in `~ cutoff`, has no
+#'   value for each row and is refused, and so is one that gives a single
+#'   value for the frame, such as `I(sum(w))`.
 #' @param table `FALSE`, the default, for the column totals of the model
 #'   matrix of `formula`, which [survey::calibrate()] takes. `TRUE` for the
 #'   count of rows in each cell of the variables in `formula`, as a table,
@@ -563,6 +568,7 @@ frame_totals <- function(sample, formula, table = FALSE) {
   pi_all <- state$pi_all %||% exact_inclusion(state$design, pop)
   reach <- which(reachable(pi_all))
   rows <- as.data.frame(pop)[reach, , drop = FALSE]
+  check_total_terms(formula, rows)
   mf <- stats::model.frame(formula, rows, na.action = stats::na.pass)
   gaps <- vapply(mf, function(x) anyNA(x), logical(1))
   if (any(gaps)) {
@@ -576,6 +582,49 @@ frame_totals <- function(sample, formula, table = FALSE) {
   }
   if (table) return(stats::xtabs(formula, data = rows))
   colSums(stats::model.matrix(formula, mf))
+}
+
+#' Refuse a `frame_totals()` formula without one value per frame row
+#'
+#' Each variable of `formula` has to be an expression of frame columns that
+#' gives one value for each of the `rows` the design could reach. A value
+#' from where the formula was written, alone, is not tied to the frame's
+#' rows: model.frame() builds a frame of one row from a single value, so
+#' `~ n` would total one row, and stops with its own message when such a
+#' value sits next to a column. An expression such as `I(sum(w))` gives one
+#' value for the frame and is refused the same way.
+#'
+#' @noRd
+check_total_terms <- function(formula, rows) {
+  tt <- stats::terms(formula, data = rows)
+  vars <- as.list(attr(tt, "variables"))[-1L]
+  if (!length(vars)) return(invisible(NULL))
+  shown <- vapply(vars, deparse1, character(1))
+  lone <- !vapply(vars, function(v) any(all.vars(v) %in% names(rows)),
+                  logical(1))
+  if (any(lone)) {
+    many <- sum(lone) > 1L
+    stop("`formula` has ", quote_names(shown[lone]), ", which ",
+         if (many) "name" else "names", " no column of the frame `sample` ",
+         "was drawn from, so ", if (many) "they have" else "it has",
+         " no value for each frame row to total. Use a value from where ",
+         "`formula` was written inside an expression of frame columns, as ",
+         "in `I(w > cutoff)`.", call. = FALSE)
+  }
+  env <- environment(formula) %||% baseenv()
+  len <- vapply(vars, function(v) NROW(eval(v, rows, env)), numeric(1))
+  off <- len != nrow(rows)
+  if (any(off)) {
+    many <- sum(off) > 1L
+    stop("`formula` has ", quote_names(shown[off]), ", which ",
+         if (many) "give" else "gives", " ",
+         paste(unique(len[off]), collapse = " or "), " value",
+         if (all(len[off] == 1)) "" else "s", " where the ", nrow(rows),
+         " frame rows the design could reach need one each. Write each ",
+         "term as an expression that gives one value per row, as ",
+         "`I(w > cutoff)` does.", call. = FALSE)
+  }
+  invisible(NULL)
 }
 
 #' Backticked names for a message: "`a`", "`a` and `b`", "`a`, `b` and `c`"

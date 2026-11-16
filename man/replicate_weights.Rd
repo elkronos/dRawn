@@ -86,11 +86,12 @@ made again within each replicate.
 
 The matrix of weights takes \code{8 * n * R} bytes for \code{n} sampled rows and
 \code{R} replicates, and building it about twice that. The jackknife has a
-replicate for each sampled unit, and successive differences have a
-power of 2 above the number of rows, so the size grows with the square
-of the sample. Past about 1 GB, \code{replicate_weights()} refuses: from
-about 11,200 rows for a jackknife over rows, and about 8,200 for
-successive differences. Such a sample can still be estimated with
+replicate for each sampled unit, and successive differences have the
+first power of 2 above the number of pairs of neighbours in the walks,
+counting one more for each walk of random size, so the size grows with
+the square of the sample. Past about 1 GB, \code{replicate_weights()}
+refuses: from about 11,200 rows for a jackknife over rows, and about
+8,200 for successive differences. Such a sample can still be estimated with
 \code{\link[=ht_total]{ht_total()}}, or handed to \code{survey} with \code{\link[=as_svydesign]{as_svydesign()}}.
 }
 \examples{
