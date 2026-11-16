@@ -977,7 +977,7 @@ test_that("ht_mean(na_rm = TRUE) says which domains have y missing throughout", 
   expect_match(attr(m, "notes"), "rows with `spend` present", all = FALSE)
   expect_error(ht_mean(s, "spend", by = "site", na_rm = TRUE,
                        contrast = c(a = 1, c = -1)),
-               "`c`, whose sampled rows all have `y` missing")
+               "`c`, whose sampled rows all have `spend` missing")
   expect_error(ht_mean(s, "spend", by = "site", na_rm = TRUE,
                        contrast = c(a = 1, d = -1)),
                "`d`, which is not a domain")
@@ -1436,6 +1436,10 @@ test_that("ht_quantile() refuses what it cannot read", {
   expect_error(ht_quantile(s, "big"),
                "`y` names `big`, a logical column, and the quantiles")
   expect_error(ht_quantile(s, s$big), "`y` is logical.*Use ht_mean\\(\\)")
+  s$none <- NA
+  expect_error(ht_quantile(s, "none"), "`y` is missing in 40 of the 40")
+  expect_error(ht_quantile(s, rep(NA, nrow(s))),
+               "`y` is missing in 40 of the 40")
   expect_error(ht_quantile(s, c("y", "w")), "one column name or a numeric")
   expect_error(ht_quantile(s, "y", probs = 1.5),
                "`probs` must be one or more numbers from 0 to 1")

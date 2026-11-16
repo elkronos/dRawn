@@ -1105,6 +1105,7 @@ stack_estimates <- function(sample, base, parts, what, variance, level, by,
                    notes = several_notes(group_label(values), notes),
                    unreachable = base$unreachable, variable = variable,
                    by = c(lead, by), lead = lead)
+  attr(out, "unavailable") <- base$unavailable
   if (!is.null(aux)) attr(out, "x") <- aux$name
   nm <- domain_names(out)
   # A proportion's interval is on the scale of `ci_method`, any other
@@ -1335,6 +1336,7 @@ estimate_by <- function(parts, by, variance, level, df, what,
                    ci_scale = if (proportion) ci_method else "linear",
                    notes = notes, unreachable = parts$unreachable,
                    variable = parts$y_name, by = by)
+  attr(out, "unavailable") <- parts$unavailable
   if (what == "ratio") attr(out, "x") <- parts$x_name
   # The beta interval's sample size, kept by domain name rather than by
   # position so that it still matches after rows are selected.
@@ -1691,7 +1693,7 @@ srs_domains <- function(parts, dom, z, ctx) {
 #' @noRd
 estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
                               what, estimator, alternative, ctx) {
-  w <- contrast_weights(contrast, dom)
+  w <- contrast_weights(contrast, dom, parts$y_name)
   used <- which(w != 0)
   value <- sum(w[used] * est$est[used])
   w_row <- w[dom$pos]
@@ -1749,10 +1751,11 @@ check_contrast_by <- function(contrast, by) {
 #' Check a contrast against the domains, and spread it over them
 #'
 #' Returns one weight per domain in `dom$levels_in`, 0 for a domain the
-#' contrast leaves out.
+#' contrast leaves out. `y_name` is the column `y` names, for the message
+#' about a domain with `y` missing in every sampled row, `NULL` for a vector.
 #'
 #' @noRd
-contrast_weights <- function(contrast, dom) {
+contrast_weights <- function(contrast, dom, y_name = NULL) {
   ticks <- function(x) paste0("`", x, "`", collapse = ", ")
   if (!is.numeric(contrast) || !length(contrast) || is.null(names(contrast))) {
     stop("`contrast` must be a named numeric vector of weights, one per ",
@@ -1784,8 +1787,9 @@ contrast_weights <- function(contrast, dom) {
     blank <- miss[miss %in% dom$labels[dom$blank]]
     if (length(blank)) {
       stop("`contrast` names ", ticks(blank), ", whose sampled rows all ",
-           "have `y` missing, so ", if (length(blank) > 1L) "they have" else
-             "it has", " no estimate under `na_rm = TRUE`. Leave ",
+           "have ", ticks(y_name %||% "y"), " missing, so ",
+           if (length(blank) > 1L) "they have" else "it has",
+           " no estimate under `na_rm = TRUE`. Leave ",
            if (length(blank) > 1L) "them" else "it", " out of `contrast`.",
            call. = FALSE)
     }
@@ -1859,7 +1863,8 @@ print.drawn_by <- function(x, ...) {
   y <- plain_frame(x)
   y$variance <- NULL
   print(y, digits = 4, row.names = FALSE)
-  print_unreachable(attr(x, "unreachable"), "these estimates")
+  print_unreachable(attr(x, "unreachable"), "these estimates",
+                    attr(x, "unavailable"))
   notes <- attr(x, "notes")
   notes <- notes[nzchar(notes) &
                    !grepl("^Variance not requested", notes, useBytes = TRUE)]
@@ -1912,13 +1917,20 @@ scale_label <- function(scale) {
 #' A line for frame rows the design could never select
 #'
 #' `draw()` warns about them by name; this keeps them in view on the
-#' estimate, which says nothing about them.
+#' estimate, which says nothing about them. `found` is the number of them
+#' use_reserves() found unavailable, `NULL` for a sample that used no
+#' reserves. Its weights count every frame row not found unavailable as
+#' available, those nobody visited included, and a second line says so.
 #'
 #' @noRd
-print_unreachable <- function(n, what) {
+print_unreachable <- function(n, what, found = NULL) {
   if (!isTRUE(n > 0)) return(invisible(NULL))
   cat("  unreachable  ", fmt_n(n), " frame row", if (n > 1) "s",
       " at probability 0, not covered by ", what, "\n", sep = "")
+  if (isTRUE(found > 0)) {
+    cat("               (", fmt_n(found), " found unavailable; rows not ",
+        "visited are taken as available)\n", sep = "")
+  }
 }
 
 #' Design effect
@@ -1948,7 +1960,10 @@ print_unreachable <- function(n, what) {
 #'
 #' The design effect is `NA` when there is no variance, and when `y` takes
 #' one value in every sampled row, where there is no spread for a simple
-#' random sample to be measured by.
+#' random sample to be measured by. It is `NA` too for a mean from
+#' `ht_mean(na_rm = TRUE)` with `y` missing in some sampled rows, since the
+#' rows with `y` are a domain of the sample, and a domain's design effect is
+#' not estimated.
 #'
 #' A table of domain estimates from `by`, of several variables, of the
 #' levels of a factor or of quantiles carries no design effect, and `deff()`
@@ -1970,9 +1985,10 @@ print_unreachable <- function(n, what) {
 #' @param ... Passed to `survey::deff()` for an object from `survey`, such as
 #'   its `quietly`. Not used for an estimate made here.
 #'
-#' @return A single number, or `NA` when the design has no variance estimate
-#'   or `y` is constant in the sample. For an object from `survey`, what
-#'   `survey::deff()` returns.
+#' @return A single number, or `NA` when the design has no variance
+#'   estimate, `y` is constant in the sample, or the estimate is a mean from
+#'   `ht_mean(na_rm = TRUE)` with `y` missing in some sampled rows. For an
+#'   object from `survey`, what `survey::deff()` returns.
 #'
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley.
@@ -2112,8 +2128,10 @@ prepare_sample <- function(sample, level, df = NULL) {
   # time, or none recorded because the sample is conditional on clusters
   # that left them out. A sample saved by drawn 0.2.0 has no such record, so
   # its count is read from the design's columns and the unreachable rows are
-  # unknown.
+  # unknown. `unavailable` counts the rows among them that use_reserves()
+  # found unavailable, and is NULL for a sample that used no reserves.
   pi_all <- state$pi_all
+  gone <- length(state$design[["unavailable"]])
   list(design = state$design, rows = state$rows, pop = state$pop,
        units = state$units, pi_all = pi_all, pi = sample$.prob,
        sample = sample, compact = state$compact,
@@ -2126,7 +2144,8 @@ prepare_sample <- function(sample, level, df = NULL) {
          NA_integer_
        } else {
          sum(!reachable(pi_all))
-       })
+       },
+       unavailable = if (gone > 0L) gone)
 }
 
 #' Read one `y` into the parts of a sample
@@ -2502,6 +2521,7 @@ finish_estimate <- function(est, var_out, parts, level, df, what, class,
                 deff_value(v, y, parts$pi, parts$reach, n, what, divide_by),
               method = var_out$method %||% "analytic", note = note,
               unreachable = parts$unreachable)
+  out$unavailable <- parts$unavailable
   out[[what]] <- est
   structure(out, class = class)
 }
@@ -2625,7 +2645,7 @@ print_estimate <- function(x, field, label, lines = NULL) {
           else "about the same as", " simple random sampling)\n", sep = "")
     }
   }
-  print_unreachable(x$unreachable, "this estimate")
+  print_unreachable(x$unreachable, "this estimate", x$unavailable)
   # A standard error of 0 always has a reason worth stating: rows taken with
   # certainty, a constant `y`, or a proportion of 0 or 1. So does a
   # proportion's interval, whose shape can rest on the sampled values.

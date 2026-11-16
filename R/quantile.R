@@ -198,7 +198,15 @@ add_quantile_variable <- function(parts, y) {
   } else {
     y
   }
+  refuse_gap <- function(n_gap, n) {
+    stop("`y` is missing in ", n_gap, " of the ", n, " sampled ",
+         "rows. A quantile needs `y` in every sampled row. ",
+         "survey::svyquantile(na.rm = TRUE) on as_svydesign() estimates it ",
+         "over the rows that have one.", call. = FALSE)
+  }
   if (is.logical(col) && length(col) == nrow(sample)) {
+    # A `y` of NA alone is logical by R's default type only.
+    if (length(col) && all(is.na(col))) refuse_gap(length(col), length(col))
     what <- if (is.character(y)) {
       paste0("names `", y, "`, a logical column")
     } else {
@@ -210,12 +218,7 @@ add_quantile_variable <- function(parts, y) {
   }
   v <- read_variable(sample, y, "y", logical = FALSE)
   gap <- is.na(v$values) & !is.nan(v$values)
-  if (any(gap)) {
-    stop("`y` is missing in ", sum(gap), " of the ", length(gap), " sampled ",
-         "rows. A quantile needs `y` in every sampled row. ",
-         "survey::svyquantile(na.rm = TRUE) on as_svydesign() estimates it ",
-         "over the rows that have one.", call. = FALSE)
-  }
+  if (any(gap)) refuse_gap(sum(gap), length(gap))
   check_finite_values(v$values, gap, "`y`",
                       "A quantile needs a finite `y` for every sampled row.")
   parts$y <- v$values
@@ -363,7 +366,7 @@ quantile_result <- function(parts, cell, level) {
              if (cell$top) top_note(),
              if (cell$open) open_note(),
              if (cell$no_df) df_note(cell$df))
-  structure(list(
+  out <- list(
     quantile = cell$quantile, prob = cell$prob, variable = parts$y_name,
     cdf = cell$cdf, cdf_se = cell$cdf_se, variance = cell$se^2,
     se = cell$se, ci = cell$ci, level = level, alternative = "two.sided",
@@ -372,7 +375,9 @@ quantile_result <- function(parts, cell, level) {
     deff = NA_real_, method = cell$method,
     note = if (length(notes)) paste(notes, collapse = " "),
     unreachable = parts$unreachable, steps = cell$steps
-  ), class = "drawn_quantile")
+  )
+  out$unavailable <- parts$unavailable
+  structure(out, class = "drawn_quantile")
 }
 
 #' Quantiles at several probabilities, or by domain, as a `drawn_by` table
@@ -419,6 +424,7 @@ quantile_table <- function(parts, probs, by, variance, level, df, ctx) {
                    design = design_type(parts$design), ci_scale = "woodruff",
                    unreachable = parts$unreachable, variable = parts$y_name,
                    by = c(by, "prob"))
+  attr(out, "unavailable") <- parts$unavailable
   nm <- domain_names(out)
   flag <- function(name) nm[field(name, logical(1))]
   notes <- unique(unlist(lapply(cells, `[[`, "note")))

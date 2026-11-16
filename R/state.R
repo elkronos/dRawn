@@ -300,12 +300,15 @@ check_selection <- function(sample, design, pop, arg = "sample") {
 #' Do two vectors of probabilities agree, element by element?
 #'
 #' To a relative tolerance of `sqrt(.Machine$double.eps)`, the one
-#' `all.equal()` uses. Zeros must match exactly, and so must `NA`s.
+#' `all.equal()` uses. Zeros must match exactly, and so must `NA`s. An
+#' infinite value agrees with the same infinity only, since `Inf - Inf` is
+#' `NaN` and every finite number is within any tolerance of `Inf`.
 #'
 #' @noRd
 same_prob <- function(a, b) {
   both_na <- is.na(a) & is.na(b)
-  close <- abs(a - b) <= sqrt(.Machine$double.eps) * pmax(abs(a), abs(b))
+  close <- a == b | (is.finite(a) & is.finite(b) &
+    abs(a - b) <= sqrt(.Machine$double.eps) * pmax(abs(a), abs(b)))
   both_na | (!is.na(close) & close)
 }
 
@@ -621,13 +624,18 @@ sample_rows <- function(sample, drawn, N, arg) {
 #' the frame rows `.row` names, and a column whose values differ is refused.
 #' Numbers need to agree to about eight significant digits, fewer than a CSV
 #' file keeps, and a number read back from text, such as `"007"`, is compared
-#' as the number 7. A missing value on either side is not compared, so a
-#' frame column that fieldwork fills in is accepted. Nor is a date that a
-#' file gave back as text, whose format a spreadsheet may have changed. A
-#' column changed after the draw, such as a corrected address, is refused
-#' too; rename it in `data`, or match on an id. A `data` that shares no
-#' column with `frame` besides those [draw()] adds cannot be checked, so
-#' keep an id column in the file.
+#' as the number 7. Text such as `"F"` or `"T"` that a file gave back as a
+#' logical column is compared as the logical value [as.logical()] reads from
+#' it. A date-time read back in another time zone agrees when it is the same
+#' instant or shows the same clock time, since `readr::read_csv()` and
+#' `data.table::fread()` read the clock time a CSV file holds as UTC. A
+#' missing value on either side is not compared, so a frame column that
+#' fieldwork fills in is accepted. Nor is a date that a file gave back as
+#' text, whose format a spreadsheet may have changed. A column changed after
+#' the draw, such as a corrected address, is refused too; rename it in
+#' `data`, or match on an id. A `data` that shares no column with `frame`
+#' besides those [draw()] adds cannot be checked, so keep an id column in
+#' the file.
 #'
 #' With `by`, rows are matched on the values of one or more id columns that
 #' `data` and `frame` share. Values are compared as [match()] compares them,
@@ -1019,23 +1027,33 @@ check_row_values <- function(data, frame, rows, design) {
 #' same rows. Numbers and logical values are compared as numbers, with the
 #' tolerance of `same_prob()`, since a CSV file keeps 15 significant digits.
 #' A number that came back as text, such as an id written `"007"`, is
-#' compared as a number too, and other text and factors as text. Two columns
-#' of one class, such as two `Date` columns, are compared as numbers.
-#' Returns `NULL` for a pair it does not compare: a list or matrix column,
-#' or a classed column, such as a `Date`, on one side only, since a
-#' spreadsheet the file went through may have changed its format.
+#' compared as a number too, and other text and factors as text. Text such
+#' as `"F"` or `"T"` that came back as a logical column is compared as the
+#' logical value `as.logical()` reads from it. Two columns of one class,
+#' such as two `Date` columns, are compared as numbers. Two date-times in
+#' different time zones agree when they are the same instant or show the
+#' same clock time, since `readr::read_csv()` and `data.table::fread()` read
+#' the clock time a CSV file holds as UTC. Returns `NULL` for a pair it does
+#' not compare: a list or matrix column, or a classed column, such as a
+#' `Date`, on one side only, since a spreadsheet the file went through may
+#' have changed its format.
 #'
 #' @noRd
 row_values_agree <- function(a, b) {
   v <- comparable_values(a, b)
   if (is.null(v)) return(NULL)
-  if (is.numeric(v$a)) same_prob(v$a, v$b) else v$a == v$b
+  agree <- if (is.numeric(v$a)) same_prob(v$a, v$b) else v$a == v$b
+  if (other_time_zones(a, b)) {
+    agree <- agree | same_prob(as.numeric(a), as.numeric(b))
+  }
+  agree
 }
 
 #' Two columns as plain numbers or text, the way row_values_agree() compares
 #'
 #' A list with `a` and `b`, both numeric or both character, or `NULL` for a
-#' pair that is not compared.
+#' pair that is not compared. Date-times in different time zones are given
+#' as their clock times.
 #'
 #' @noRd
 comparable_values <- function(a, b) {
@@ -1048,24 +1066,65 @@ comparable_values <- function(a, b) {
     if (!identical(class(a), class(b)) || !is.numeric(unclass(a))) {
       return(NULL)
     }
+    if (other_time_zones(a, b)) {
+      return(list(a = clock_time(a), b = clock_time(b)))
+    }
     a <- unclass(a)
     b <- unclass(b)
   }
   number <- function(x) is.numeric(x) || is.logical(x)
+  text <- function(x) is.character(x) || is.factor(x)
   as_number <- function(x) suppressWarnings(as.numeric(as.character(x)))
+  as_flag <- function(x) as.numeric(as.logical(as.character(x)))
   if (number(a) && number(b)) {
     return(list(a = as.numeric(a), b = as.numeric(b)))
   }
   if (is.numeric(a)) return(list(a = as.numeric(a), b = as_number(b)))
   if (is.numeric(b)) return(list(a = as_number(a), b = as.numeric(b)))
+  if (is.logical(a) && text(b)) {
+    return(list(a = as.numeric(a), b = as_flag(b)))
+  }
+  if (text(a) && is.logical(b)) {
+    return(list(a = as_flag(a), b = as.numeric(b)))
+  }
   list(a = as.character(a), b = as.character(b))
 }
 
+#' Are `a` and `b` date-times with different time zones?
+#'
+#' A date-time with no `tzone` attribute, or an empty one, is in the
+#' session's zone.
+#'
+#' @noRd
+other_time_zones <- function(a, b) {
+  zone <- function(x) {
+    z <- attr(x, "tzone")
+    if (length(z)) z[[1L]] else ""
+  }
+  inherits(a, "POSIXct") && inherits(b, "POSIXct") && zone(a) != zone(b)
+}
+
+#' The clock time a date-time shows in its own zone, as seconds
+#'
+#' Read as if it were UTC, so two zones' clock times compare as numbers.
+#'
+#' @noRd
+clock_time <- function(x) {
+  lt <- as.POSIXlt(x)
+  as.numeric(ISOdatetime(lt$year + 1900, lt$mon + 1, lt$mday, lt$hour,
+                         lt$min, lt$sec, tz = "UTC"))
+}
+
 #' One value of a column, for a message
+#'
+#' A date-time shows its zone, since two columns can hold the same clock
+#' time in different zones.
+#'
 #' @noRd
 shown_value <- function(x) {
   if (is.factor(x)) x <- as.character(x)
   if (is.character(x)) return(encodeString(x, quote = "\""))
+  if (inherits(x, "POSIXct")) return(format(x, usetz = TRUE))
   if (is.numeric(x)) return(as.character(unclass(x)))
   format(x)
 }
@@ -1301,7 +1360,9 @@ add_fieldwork <- function(sample, field, by) {
 #' available. A frame that holds more unavailable units than were found has
 #' fewer than `N - u` units that can be reached, and the totals are too high
 #' by about the share of the frame those units make up. The Hajek mean of
-#' [ht_mean()] does not depend on `N - u` and is not affected.
+#' [ht_mean()] does not depend on `N - u` and is not affected. An estimate
+#' from the sample keeps `u` in `unavailable`, and its printed `unreachable`
+#' line adds that the units nobody visited are taken as available.
 #'
 #' For [design_simple()] the weighting is exact under that assumption, when
 #' the reserves suffice. The list is one random draw in random order, so its

@@ -43,7 +43,9 @@ The probabilities assume that every unit of the frame nobody visited is
 available. A frame that holds more unavailable units than were found has
 fewer than \code{N - u} units that can be reached, and the totals are too high
 by about the share of the frame those units make up. The Hajek mean of
-\code{\link[=ht_mean]{ht_mean()}} does not depend on \code{N - u} and is not affected.
+\code{\link[=ht_mean]{ht_mean()}} does not depend on \code{N - u} and is not affected. An estimate
+from the sample keeps \code{u} in \code{unavailable}, and its printed \code{unreachable}
+line adds that the units nobody visited are taken as available.
 
 For \code{\link[=design_simple]{design_simple()}} the weighting is exact under that assumption, when
 the reserves suffice. The list is one random draw in random order, so its

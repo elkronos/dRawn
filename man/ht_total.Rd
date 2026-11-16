@@ -83,6 +83,10 @@ cleanly.}
 \item{\code{unreachable}}{Rows of the frame with inclusion probability 0,
 which the estimate does not cover; \code{NA} for a sample saved by drawn
 0.2.0. See "Rows the design cannot reach".}
+\item{\code{unavailable}}{For a sample from \code{\link[=use_reserves]{use_reserves()}} only, the
+number of those rows found unavailable. The estimate takes every
+frame row nobody visited as available; see "What the estimates
+describe" in \code{\link[=use_reserves]{use_reserves()}}.}
 }
 With \code{ratio}, the list also holds \code{ratio}, the estimated ratio of \code{y}
 to \code{x}, \code{x}, the column's name, and \code{frame_total}, its total over the

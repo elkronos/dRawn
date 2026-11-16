@@ -708,7 +708,8 @@ strata_size <- function(st, bound) {
 #' since a mean's design effect and a total's differ for the same sample.
 #' Any other object is refused by class, also one that is a number
 #' underneath, such as an estimate from `survey`, whose value is the
-#' estimate rather than its design effect. An `NA`, which `deff()` gives for
+#' estimate rather than its design effect. A number marked with [I()] is
+#' a plain number and is taken as one. An `NA`, which `deff()` gives for
 #' a pilot without a variance, is refused with that reason. Any other number
 #' is left to `plan_size()`'s own check.
 #'
@@ -744,9 +745,14 @@ plan_deff <- function(deff, target) {
     }
     return(value)
   }
+  if (identical(oldClass(deff), "AsIs") && is.numeric(unclass(deff))) {
+    deff <- unclass(deff)
+  }
   if (is.object(deff) || !is.atomic(deff)) {
     from_survey <- inherits(deff, c("svystat", "svrepstat"))
-    stop("`deff` is a `", class(deff)[1], "`", if (from_survey) {
+    cls <- class(deff)[1]
+    stop("`deff` is ", with_article(cls, paste0("`", cls, "`")),
+    if (from_survey) {
       ", whose value is the survey estimate, not its design effect"
     }, ". Give a design effect as a positive number, a vector of them for ",
     "several plans, or the result of ht_mean() or ht_total() for one ",

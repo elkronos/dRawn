@@ -500,6 +500,10 @@
 #'     \item{`unreachable`}{Rows of the frame with inclusion probability 0,
 #'       which the estimate does not cover; `NA` for a sample saved by drawn
 #'       0.2.0. See "Rows the design cannot reach".}
+#'     \item{`unavailable`}{For a sample from [use_reserves()] only, the
+#'       number of those rows found unavailable. The estimate takes every
+#'       frame row nobody visited as available; see "What the estimates
+#'       describe" in [use_reserves()].}
 #'   }
 #'   With `ratio`, the list also holds `ratio`, the estimated ratio of `y`
 #'   to `x`, `x`, the column's name, and `frame_total`, its total over the

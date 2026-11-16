@@ -296,6 +296,42 @@ test_that("as_drawn() refuses a frame in another order through `.row`", {
   expect_equal(as_drawn(back, des, pop)$.row, s$.row)
 })
 
+test_that("as_drawn() reads infinities, T/F text and other zones as equal", {
+  pop <- data.frame(id = 1:60, site = rep(c("a", "b"), times = c(40, 20)),
+                    sex = "F", logx = log((1:60) %% 5))
+  pop$at <- as.POSIXct("2024-03-01 08:00", tz = "America/Chicago") +
+    3600 * (0:59)
+  des <- design_stratified("site", n = 12)
+  s <- draw(pop, des, seed = 1, weights = TRUE)
+  expect_true(any(s$logx == -Inf))
+  expect_equal(as_drawn(s, des, pop)$.row, s$.row)
+
+  # read.csv() and readr::read_csv() read a column of "F" back as FALSE, and
+  # readr::read_csv() and data.table::fread() read the clock time a CSV file
+  # holds as UTC.
+  back <- as.data.frame(s)[, c(".prob", ".weight", ".row", "sex", "at")]
+  back$sex <- as.logical(back$sex)
+  back$at <- as.POSIXct(format(s$at), tz = "UTC")
+  expect_equal(as_drawn(back, des, pop)$.row, s$.row)
+  instant <- back
+  instant$at <- as.POSIXct(format(s$at, tz = "UTC"), tz = "UTC")
+  expect_equal(as_drawn(instant, des, pop)$.row, s$.row)
+
+  # A frame in another order is still refused.
+  shuffled <- pop[c(seq(2, 60, by = 2), seq(1, 59, by = 2)), ]
+  expect_error(as_drawn(back, des, shuffled),
+               "UTC where `frame` row [0-9]+ has 2024-03-0[1-3] [0-9:]+ CST")
+  expect_error(as_drawn(as.data.frame(s)[, c(".prob", ".weight", ".row",
+                                             "logx")], des, shuffled),
+               "`logx` values that differ")
+  males <- pop
+  males$sex <- "M"
+  expect_error(as_drawn(back, des, males),
+               "such as FALSE where `frame` row [0-9]+ has \"M\"")
+  back$sex <- TRUE
+  expect_error(as_drawn(back, des, pop), "`sex` values that differ")
+})
+
 test_that("as_drawn() refuses clusters and certain rows left out", {
   pop <- field_pop()
   pop$cl <- rep(sprintf("c%02d", 1:12), times = rep(c(6, 10, 14), 4))

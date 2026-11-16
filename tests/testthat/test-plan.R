@@ -340,7 +340,12 @@ test_that("deff takes the estimate it came from, of the kind target plans", {
                "survey::deff() reads the design effect", fixed = TRUE)
   expect_error(plan_size(margin = 3, sd = 10, N = 400,
                          deff = structure(2, class = "other")),
-               "`deff` is a `other`. Give a design effect", fixed = TRUE)
+               "`deff` is an `other`. Give a design effect", fixed = TRUE)
+  # I() marks a plain number.
+  expect_equal(plan_size(margin = 3, sd = 10, N = 400, deff = I(2)),
+               plan_size(margin = 3, sd = 10, N = 400, deff = 2))
+  expect_equal(plan_size(margin = 3, sd = 10, N = 400, deff = I(c(1, 2)))$n,
+               plan_size(margin = 3, sd = 10, N = 400, deff = c(1, 2))$n)
   skip_if_not_installed("survey")
   sm <- survey::svymean(~y, as_svydesign(pilot), deff = TRUE)
   expect_error(plan_size(margin = 3, sd = 10, N = 400, deff = sm),

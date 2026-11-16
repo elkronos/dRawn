@@ -116,6 +116,14 @@ test_that("use_reserves() takes the first available reserves, in order", {
   r <- ht_total(u, "value")
   expect_equal(r$se, 97 * sqrt((1 - 10 / 97) * stats::var(u$value) / 10))
   expect_equal(r$unreachable, 3L)
+  expect_equal(r$unavailable, 3L)
+  expect_output(print(r), paste0("unreachable  3 frame rows at probability ",
+                                 "0, not covered by this estimate\n +\\(3 ",
+                                 "found unavailable; rows not visited are ",
+                                 "taken as available\\)"))
+  expect_equal(attr(ht_mean(u, "value", by = "site"), "unavailable"), 3L)
+  expect_null(ht_total(draw(df, design_simple(n = 10), seed = 1,
+                            weights = TRUE), "value")$unavailable)
   expect_equal(sample_summary(u)$N_reachable, 97L)
   expect_equal(ht_mean(u, "value")$mean, mean(u$value))
   skip_if_not_installed("survey")

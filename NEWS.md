@@ -312,7 +312,8 @@
   underneath, the estimated mean, so the plan was inflated by the mean of
   `y` without a word. `plan_size()` now refuses any object other than the
   result of `ht_mean()` or `ht_total()` by its class, and for a `survey`
-  estimate points to `survey::deff()`.
+  estimate points to `survey::deff()`. A number marked with `I()` is still
+  taken as a number.
 * **`plot(type = "probability")` on a frame larger than `max_dots` left out
   unreachable and take-all rows.** It drew and summarised an evenly spaced
   subset of the rows, so rows with probability 0 or 1 between them were
@@ -1106,12 +1107,14 @@
   frame reordered since the draw, which shows in the columns the rows share
   with it, and a sample short of the rows drawn, such as the rows that
   responded, part of a cluster or a row taken with certainty, are refused.
-  `add_fieldwork()` joins fieldwork results keyed by an id to a sample, in
-  the sample's own order and keeping its design, and refuses repeated or
-  unknown ids and columns the sample already has; a sampled row with no
-  result gets a missing value. A sample that had been through a file could
-  not be estimated from, and `merge()` dropped the design. The refusal of a
-  sample without its design names both.
+  Text such as `"F"` read back as `FALSE`, a date-time read back in UTC and
+  an infinite value are not taken for a reordered frame. `add_fieldwork()`
+  joins fieldwork results keyed by an id to a sample, in the sample's own
+  order and keeping its design, and refuses repeated or unknown ids and
+  columns the sample already has; a sampled row with no result gets a
+  missing value. A sample that had been through a file could not be
+  estimated from, and `merge()` dropped the design. The refusal of a sample
+  without its design names both.
 * `compact_sample()` replaces the copy of the frame a weighted sample holds
   with the columns its design reads, plus any named in `keep`. Each sample
   holds its own copy of the whole frame, in memory and in every file it is
@@ -1149,7 +1152,9 @@
   them with the first available reserves, and returns a sample weighted at
   `n / (N - u)` over the frame without the `u` units found unavailable. Its
   estimates describe the units that can be reached, and `?use_reserves` says
-  what that assumes. `as_drawn()` rebuilds a list read back from a file
+  what that assumes. Every unit nobody visited is taken as available, which
+  the printed `unreachable` line of an estimate says; the estimate keeps `u`
+  in `unavailable`. `as_drawn()` rebuilds a list read back from a file
   through its `.reserve` column.
 * `ht_ratio()` estimates the ratio of two population totals,
   `sum(y / pi) / sum(x / pi)`, such as audited value per unit of book

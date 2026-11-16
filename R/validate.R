@@ -249,11 +249,12 @@ format_bad <- function(x, value = FALSE) {
 
 #' A word with its indefinite article
 #'
-#' "an" before a vowel, so a class reads "an integer" and "a list".
+#' "an" before a vowel, so a class reads "an integer" and "a list". `shown`
+#' is the word as the message shows it, such as in backticks.
 #'
 #' @noRd
-with_article <- function(word) {
-  paste(if (grepl("^[aeiouAEIOU]", word)) "an" else "a", word)
+with_article <- function(word, shown = word) {
+  paste(if (grepl("^[aeiouAEIOU]", word)) "an" else "a", shown)
 }
 
 #' The class of `x`, with its article, for messages

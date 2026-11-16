@@ -14,9 +14,10 @@ deff(object, ...)
 its \code{quietly}. Not used for an estimate made here.}
 }
 \value{
-A single number, or \code{NA} when the design has no variance estimate
-or \code{y} is constant in the sample. For an object from \code{survey}, what
-\code{survey::deff()} returns.
+A single number, or \code{NA} when the design has no variance
+estimate, \code{y} is constant in the sample, or the estimate is a mean from
+\code{ht_mean(na_rm = TRUE)} with \code{y} missing in some sampled rows. For an
+object from \code{survey}, what \code{survey::deff()} returns.
 }
 \description{
 How much precision the design costs against simple random sampling of the
@@ -45,7 +46,10 @@ design effect is the total's.
 
 The design effect is \code{NA} when there is no variance, and when \code{y} takes
 one value in every sampled row, where there is no spread for a simple
-random sample to be measured by.
+random sample to be measured by. It is \code{NA} too for a mean from
+\code{ht_mean(na_rm = TRUE)} with \code{y} missing in some sampled rows, since the
+rows with \code{y} are a domain of the sample, and a domain's design effect is
+not estimated.
 
 A table of domain estimates from \code{by}, of several variables, of the
 levels of a factor or of quantiles carries no design effect, and \code{deff()}
