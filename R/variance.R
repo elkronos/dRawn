@@ -1581,8 +1581,10 @@ known_domain <- function(domain, n) {
 #'
 #' @noRd
 domain_groups <- function(code, domain, k) {
-  sure <- tabulate(code[domain %in% TRUE], k) > 0L
-  list(sure = sure, maybe = sure | tabulate(code[is.na(domain)], k) > 0L)
+  sure <- tabulate(code[which(domain)], k) > 0L
+  maybe <- sure
+  if (anyNA(domain)) maybe <- maybe | tabulate(code[is.na(domain)], k) > 0L
+  list(sure = sure, maybe = maybe)
 }
 
 #' Variance within the groups of `srs_groups()`, refusing a lonely group
@@ -2455,13 +2457,15 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
                 fpc = jackknife_fpc(design, pop, m, n_fixed, ctx),
                 in_domain = TRUE, sure = TRUE))
   }
-  lev <- unique(grp$sample[!fixed])
-  N_h <- tabulate(match(grp$pop, lev), length(lev))
+  # The same for every domain of a sample, so `ctx` keeps it and a table of
+  # many domains reads the frame once.
+  frame <- from_context(ctx, "jackknife_frame", jackknife_frame(grp, fixed))
+  lev <- frame$lev
   n_h <- tabulate(match(grp$sample[!fixed], lev), length(lev))
-  free_h <- N_h - tabulate(match(grp$sample[fixed], lev), length(lev))
+  free_h <- frame$N_h - tabulate(match(grp$sample[fixed], lev), length(lev))
   in_domain <- sure <- rep(TRUE, length(lev))
   if (known_domain(domain, length(grp$pop))) {
-    hold <- domain_groups(match(grp$pop, lev), domain, length(lev))
+    hold <- domain_groups(frame$code, domain, length(lev))
     in_domain <- hold$maybe
     sure <- hold$sure
   }
@@ -2470,6 +2474,20 @@ jackknife_strata <- function(design, units, pop, psu, fixed, domain = NULL,
   list(stratum = grp$sample, levels = lev, labels = grp$labels[lev],
        fpc = fpc, in_domain = in_domain, sure = sure,
        between = grp$between)
+}
+
+#' The jackknife's strata over the frame
+#'
+#' `lev` lists the strata of `grp`, as `jackknife_strata()` builds it, that
+#' hold a sampled unit not `fixed`. Returns `lev`, each frame row's stratum
+#' as a position in it (`code`, `NA` for a row in none of them), and each
+#' stratum's rows in the frame (`N_h`).
+#'
+#' @noRd
+jackknife_frame <- function(grp, fixed) {
+  lev <- unique(grp$sample[!fixed])
+  code <- match(grp$pop, lev)
+  list(lev = lev, code = code, N_h = tabulate(code, length(lev)))
 }
 
 #' The share of primary sampling units NOT taken

@@ -150,6 +150,34 @@ test_that("an instant paired with a clock time is ordered in the data's zone", {
   expect_error(design_temporal("ts", from = from, to = "2024-01-01 12:00",
                                interval = 1, per_interval = 1, tz = "UTC"),
                "`to` must be after `from`")
+
+  # A mixed pair a day or more out of order is out of order in every zone,
+  # since no offset from UTC reaches a day, so it is refused when built.
+  # Under a day it can still be in order somewhere, and waits for the data.
+  utc <- function(x) as.POSIXct(x, tz = "UTC")
+  expect_error(design_temporal("ts", from = utc("2024-06-01"),
+                               to = "2024-01-01", interval = 1,
+                               per_interval = 1),
+               "`to` must be after `from`")
+  expect_error(design_temporal("ts", from = "2024-01-02 10:00",
+                               to = utc("2024-01-01 10:00"), interval = 1,
+                               per_interval = 1),
+               "`to` must be after `from`")
+  expect_error(design_temporal("ts", from = "2024-01-02",
+                               to = "2024-01-01T00:00:00Z", interval = 1,
+                               per_interval = 1),
+               "`to` must be after `from`")
+  # Read in UTC, 09:00 on 2 January comes 13 hours after `to`. In Kiritimati,
+  # 14 hours ahead of UTC, it is 19:00 UTC on 1 January, an hour before `to`,
+  # so the pair is kept until the zone is known.
+  east <- design_temporal("ts", from = "2024-01-02 09:00",
+                          to = utc("2024-01-01 20:00"), interval = 1,
+                          per_interval = 1)
+  kiri <- data.frame(ts = as.POSIXct("2024-01-02 09:30",
+                                     tz = "Pacific/Kiritimati"))
+  expect_equal(inclusion_prob(kiri, east), 1)
+  expect_error(inclusion_prob(data.frame(ts = utc("2024-01-01 19:30")), east),
+               "`to` must be after `from`")
 })
 
 test_that("a column mixing dates with date-times keeps both", {

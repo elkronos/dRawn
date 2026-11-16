@@ -1404,6 +1404,8 @@ check_table_names <- function(by, own) {
 #'
 #' Returns `key`, each sampled row's domain as a code into `labels`;
 #' `pop_key`, each frame row's, or `NULL` when the frame lacks a `by` column;
+#' `pop_pos`, each frame row's position in `levels_in`, 0 for a row of no
+#' domain there and `NA` where `pop_key` is, or `NULL` with `pop_key`;
 #' `levels_in`, the codes of the domains with a sampled row, in key order;
 #' `blank`, the codes of those whose sampled rows all have `y` missing under
 #' `na_rm = TRUE`, which `levels_in` leaves out; `pos`, each sampled row's
@@ -1451,8 +1453,17 @@ domain_keys <- function(parts, by) {
   idx <- split(seq_along(key)[use],
                structure(pos[use], levels = as.character(seq_along(levels_in)),
                          class = "factor"))
-  list(by = by, key = key, pop_key = pop_key, labels = labels,
-       levels_in = levels_in, blank = blank, pos = pos, idx = unname(idx),
+  # Each frame row's position in `levels_in`, 0 for a domain with no
+  # sampled row and `NA` for a row whose `by` value is missing, so that
+  # domain_frame() marks one domain with a single comparison.
+  pop_pos <- if (!is.null(pop_key)) {
+    out <- match(pop_key, levels_in, nomatch = 0L)
+    out[is.na(pop_key)] <- NA_integer_
+    out
+  }
+  list(by = by, key = key, pop_key = pop_key, pop_pos = pop_pos,
+       labels = labels, levels_in = levels_in, blank = blank, pos = pos,
+       idx = unname(idx),
        aligned = !is.null(pop_key) && identical(pop_key[parts$rows], key))
 }
 
@@ -1487,8 +1498,9 @@ compact_domain_note <- function(parts, dom) {
 #' @noRd
 domain_frame <- function(dom, j) {
   if (!dom$aligned) return(NA)
-  out <- dom$pop_key %in% dom$levels_in[j]
-  out[is.na(dom$pop_key)] <- NA
+  if (length(j) == 1L) return(dom$pop_pos == j)
+  out <- dom$pop_pos %in% j
+  out[is.na(dom$pop_pos)] <- NA
   out
 }
 

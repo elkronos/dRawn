@@ -464,9 +464,12 @@
 * `design_temporal()` checks its zone and bounds when it is built. `tz` must
   be a name from `OlsonNames()`, and `from` and `to` must each be one
   date-time, date or string that parses, with `to` after `from`. Without
-  `tz`, a date-time paired with a date or a string without an offset has its
-  order checked when the design is used, in the zone of the `time` column,
-  since the order can depend on that zone. The message names the argument
+  `tz`, a bound that names an instant (a date-time, or a string ending in
+  `Z` or an offset) paired with a clock time (a date, or a string without
+  an offset) can fall in either order depending on the zone. Such a pair is
+  refused when the design is built if it is a day or more out of order,
+  which no zone's offset can undo, and otherwise when the design is used,
+  in the zone the window is laid out in. The message names the argument
   and gives its value. An unknown zone gave a raw CCTZ error from every
   function that used the design, and an unparseable `from` reached
   `inclusion_prob()` as "'to' must be a finite number". The message for an
@@ -1296,8 +1299,10 @@
   `design_certainty()`, come from one pass over all the domains. 200 domains
   of a stratified sample of 1,000 from 100,000 rows took about 50 seconds
   and now take 0.1; 200 domains of a spread sample of 1,000 from 20,000 rows
-  took 16 seconds and now take 0.3. The standard errors agree with the old
-  ones to rounding error.
+  took 16 seconds and now take 0.3. `variance = "jackknife"` places the
+  frame's rows in its strata once per call too: 200 domains of a stratified
+  sample of 300 from a million rows took 21 seconds and now take 1.2. The
+  standard errors agree with the old ones to rounding error.
 * `inclusion_prob()`, `draw(weights = TRUE)` and the estimators of a
   `design_temporal()` sample count the rows of every interval in one pass,
   where they went over the rows once per interval. 200,000 rows in hourly
@@ -1411,12 +1416,15 @@
   bow under spherical geometry, how to keep them on their straight lines in
   degrees, and how to pass a region larger than a hemisphere as a list of
   parts.
-* `?design_bootstrap` says that resampling rows suits independent rows, and
-  points a sample drawn with strata or clusters to
-  `survey::as.svrepdesign()`, which resamples clusters within strata. It said
-  the bootstrap was the tool for any statistic the estimators do not cover.
-  It also says that `n = 0` gives a frame with no rows that keeps its
-  `.replicate` column.
+* `?design_bootstrap` and the choosing-a-design article say that resampling
+  rows suits independent rows, and point a sample drawn with strata or
+  clusters to `survey::as.svrepdesign()`, which resamples clusters within
+  strata. The help page said the bootstrap was the tool for any statistic
+  the estimators do not cover, and the article that it estimates the
+  sampling distribution of whatever you like. `?design_bootstrap` also says
+  that `n = 0` gives a frame with no rows that keeps its `.replicate`
+  column, and the README's table of designs lists the circular block
+  bootstrap.
 * `?design_reservoir` says that each line of a connection is an item, a CSV
   header included, and shows how to read the header off an open connection
   before drawing. It said that items past `max_items` were never read; one

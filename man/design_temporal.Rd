@@ -28,8 +28,11 @@ partial intervals are dropped. Both are checked when the design is
 built, and \code{to} must come after \code{from}. Without \code{tz}, a bound that names
 an instant (a \code{POSIXct}, or a string ending in \code{Z} or an offset) paired
 with a clock time (a \code{Date}, or a string without an offset) can fall in
-either order depending on the zone, so their order is checked when the
-design is used, in the zone of the \code{time} column.}
+either order depending on the zone. Such a pair is refused when the
+design is built if, with the clock time read in UTC, \code{to} comes a day or
+more before \code{from}, since no zone's offset from UTC can undo that.
+Otherwise its order is checked when the design is used, in the zone the
+window is laid out in (see "Time zones and calendar steps").}
 
 \item{interval}{Interval width, in units of \code{unit}.}
 

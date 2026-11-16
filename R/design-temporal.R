@@ -43,8 +43,11 @@
 #'   built, and `to` must come after `from`. Without `tz`, a bound that names
 #'   an instant (a `POSIXct`, or a string ending in `Z` or an offset) paired
 #'   with a clock time (a `Date`, or a string without an offset) can fall in
-#'   either order depending on the zone, so their order is checked when the
-#'   design is used, in the zone of the `time` column.
+#'   either order depending on the zone. Such a pair is refused when the
+#'   design is built if, with the clock time read in UTC, `to` comes a day or
+#'   more before `from`, since no zone's offset from UTC can undo that.
+#'   Otherwise its order is checked when the design is used, in the zone the
+#'   window is laid out in (see "Time zones and calendar steps").
 #' @param interval Interval width, in units of `unit`.
 #' @param per_interval Rows to draw from each interval. Intervals holding fewer
 #'   rows contribute all of them.
@@ -85,12 +88,18 @@ design_temporal <- function(time, from, to, interval, per_interval,
   # The bounds are read in `tz`, or in UTC until a column supplies the zone.
   # Whether they parse does not depend on the zone. Their order does not
   # either when both are instants or both are clock times, but it can for a
-  # pair that mixes the two, so without `tz` the order of such a pair is
-  # checked only when the window is laid out in the column's zone.
+  # pair that mixes the two. The clock time's instant then moves with the
+  # zone by the zone's offset from UTC, which is under a day in every zone,
+  # so such a pair is refused here only when it is a day or more out of
+  # order read in UTC, and otherwise when the window is laid out.
   zone <- tz %||% "UTC"
   lo <- time_bound(from, zone, "from")
   hi <- time_bound(to, zone, "to")
-  if (!is.null(tz) || lo$instant == hi$instant) check_window(lo$at, hi$at)
+  if (!is.null(tz) || lo$instant == hi$instant) {
+    check_window(lo$at, hi$at)
+  } else {
+    check_window(lo$at, hi$at + 86400)
+  }
   # `from` and `to` are stored as given, so the design prints what was
   # written, and are read again in the zone in force when it is used.
   new_design("temporal", list(

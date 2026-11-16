@@ -104,7 +104,7 @@ sample_summary(s)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
 #>   effective n        60  (Kish, from the weights alone)
-#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-14
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-16
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate
@@ -150,7 +150,7 @@ survey::svyglm(value ~ site, des)
 | `design_temporal()`   | a fixed number per time interval                                                                  | `per_interval`                      | analytic                                                                          |
 | `design_spatial()`    | a simple random sample inside a region                                                            | `n`                                 | analytic                                                                          |
 | `design_reservoir()`  | a fixed-size sample from a stream, in one pass                                                    | `n`                                 | analytic                                                                          |
-| `design_bootstrap()`  | resampled replicates, simple or block                                                             | `n_replicates`                      | not a survey design                                                               |
+| `design_bootstrap()`  | resampled replicates of rows (simple) or of runs of rows (block or circular)                      | `n_replicates`                      | not a survey design                                                               |
 
 Every estimate says in `method` which estimator produced its variance,
 under the names in this table, which are also the ones a printed

@@ -45,11 +45,12 @@ allocate <- function(n, sizes, allocation, min_per_stratum, cap = TRUE,
   lower <- group_floor(min_per_stratum, sizes, cap)
   if (sum(lower) > n) {
     small <- sum(sizes < min_per_stratum)
-    where <- if (k == 1L) {
-      paste0(" rows in the one ", noun[1])
-    } else {
-      paste0(" rows across these ", k, " ", noun[2])
-    }
+    where <- paste0(if (sum(lower) == 1) " row" else " rows",
+                    if (k == 1L) {
+                      paste0(" in the one ", noun[1])
+                    } else {
+                      paste0(" across these ", k, " ", noun[2])
+                    })
     stop("`", min_arg, "` = ", min_per_stratum, " needs at least ", sum(lower),
          where,
          if (cap && small > 0L) {

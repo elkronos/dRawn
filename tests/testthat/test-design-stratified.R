@@ -256,6 +256,10 @@ test_that("a floor larger than a stratum asks only for that stratum's rows", {
     draw(d[d$g == "d", ], design_stratified("g", n = 3, min_per_stratum = 5),
          seed = 1),
     "needs at least 5 rows in the one stratum, but `n` is 3.", fixed = TRUE)
+  expect_error(
+    draw(d[d$g == "d", ], design_stratified("g", n = 0, min_per_stratum = 1),
+         seed = 1),
+    "needs at least 1 row in the one stratum, but `n` is 0.", fixed = TRUE)
 })
 
 test_that("Neyman refuses an infinite allocation_by", {

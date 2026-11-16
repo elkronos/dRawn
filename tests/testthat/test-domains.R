@@ -618,6 +618,27 @@ test_that("by works out a stratified allocation as often as one estimate does", 
                count(ht_total(s, "y", variance = "jackknife")))
 })
 
+test_that("a jackknife by table places the frame's rows in strata once", {
+  # Every domain matched the frame's rows to the jackknife's strata again
+  # and counted them, so 50 domains made 50 passes over the frame.
+  N <- 5000
+  pop <- data.frame(id = seq_len(N), st = sprintf("s%d", seq_len(N) %% 5),
+                    dom = sprintf("d%02d", (seq_len(N) * 7919) %% 50))
+  pop$y <- 100 + (pop$id * 37) %% 101
+  s <- draw(pop, design_stratified("st", n = 500), seed = 1, weights = TRUE)
+  calls <- 0L
+  strata <- jackknife_frame
+  local_mocked_bindings(jackknife_frame = function(...) {
+    calls <<- calls + 1L
+    strata(...)
+  })
+  tot <- ht_total(s, "y", by = "dom", variance = "jackknife")
+  expect_equal(calls, 1L)
+  expect_equal(nrow(tot), 50L)
+  expect_equal(tot$se^2, domain_loop(s, "y", "dom", variance = "jackknife"),
+               tolerance = 1e-10)
+})
+
 test_that("a contrast of domain totals is the total of the weighted variable", {
   d <- contrast_pop()
   w <- c(a = 1, b = -1, d = 0.5)

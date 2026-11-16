@@ -670,8 +670,11 @@ that returns a data frame gives whole data frames as items.
 ## Bootstrap, for the uncertainty of a statistic
 
 The other designs estimate a population total. The bootstrap estimates the
-sampling distribution of whatever you like — here the median, which has no
-convenient closed form:
+sampling distribution of a statistic computed on independent rows, here the
+median of the invoice values, which has no convenient closed form. A sample
+drawn with strata or clusters is not made of independent rows, and
+`?design_bootstrap` shows how to resample its clusters within strata with
+`survey::as.svrepdesign()` instead.
 
 ```{r}
 reps <- draw(invoices, design_bootstrap(n_replicates = 400), seed = 1)
