@@ -1,6 +1,6 @@
 # Fixture for `Rscript tools/check-duplicates.R --self-test`. Not package
-# code: every definition below is repeated in b.R, in a form a line-based
-# match misses, except `chained`, `once` and `not_a_function`.
+# code. Every definition below except `chained`, `once` and `not_a_function`
+# is repeated in b.R, mostly in forms a line-based match misses.
 plain <- function(x) x
 `%or%` <- function(a, b) if (is.null(a)) b else a
 equals = function(x) x

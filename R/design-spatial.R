@@ -47,9 +47,10 @@
 #'
 #' An edge 0.1 degrees long bows by about a metre at most. The CRS has to come
 #' off for the middle step: on a region that keeps it,
-#' [sf::st_segmentize()] places the new vertices along the great circles,
-#' under either s2 setting, and the bow stays. A region larger than a
-#' hemisphere needs splitting first; see the next section.
+#' [sf::st_segmentize()] needs the lwgeom package and places the new vertices
+#' along the great circles, under either s2 setting, and the bow stays. A
+#' region larger than a hemisphere needs splitting first; see the next
+#' section.
 #'
 #' @section Regions that cross the antimeridian:
 #' With spherical geometry enabled ([sf::sf_use_s2()], the default), consecutive
@@ -404,20 +405,72 @@ check_region_type <- function(g, arg) {
 #' geometry, or with projected coordinates, the edges are the straight lines
 #' between the corners.
 #'
+#' The vertices are placed here rather than by sf::st_segmentize(), which
+#' needs the lwgeom package for longitude/latitude geometry, and follow the
+#' sphere's great circles, as s2's edges do, where lwgeom follows the
+#' ellipsoid.
+#'
 #' @noRd
 region_outline <- function(design, data) {
   crs <- spatial_crs(design, data)
   region <- region_geometry(design$region, crs)
-  if (isTRUE(sf::st_is_longlat(crs)) && isTRUE(sf::sf_use_s2())) {
-    region <- sf::st_segmentize(region, 50000)
-  }
+  arcs <- isTRUE(sf::st_is_longlat(crs)) && isTRUE(sf::sf_use_s2())
   cs <- sf::st_coordinates(sf::st_cast(region, "MULTIPOLYGON"))
   ring <- cs[, intersect(c("L1", "L2", "L3"), colnames(cs)), drop = FALSE]
   id <- do.call(paste, c(unname(as.data.frame(ring)), sep = "."))
   pieces <- split(seq_len(nrow(cs)), factor(id, levels = unique(id)))
-  at <- unlist(lapply(pieces, function(i) c(i, NA)), use.names = FALSE)
-  at <- at[-length(at)]
-  list(x = unname(cs[at, "X"]), y = unname(cs[at, "Y"]))
+  parts <- lapply(pieces, function(i) {
+    x <- unname(cs[i, "X"])
+    y <- unname(cs[i, "Y"])
+    if (arcs) great_circle_path(x, y, km = 50) else list(x = x, y = y)
+  })
+  gap <- function(v) v[-length(v)]
+  list(x = gap(unlist(lapply(parts, function(p) c(p$x, NA)),
+                      use.names = FALSE)),
+       y = gap(unlist(lapply(parts, function(p) c(p$y, NA)),
+                      use.names = FALSE)))
+}
+
+#' Vertices along the great-circle arcs between consecutive points
+#'
+#' `lon` and `lat` are in degrees. Each arc between consecutive points gets
+#' evenly spaced vertices at most `km` kilometres apart on a sphere of radius
+#' 6,371 km, by spherical linear interpolation, and the points themselves
+#' are kept as given. Each new vertex's longitude is put within 180 degrees
+#' of the straight-line interpolation between the arc's ends, so an arc from
+#' longitude 190 to 200 stays in that range. Ends that coincide or lie
+#' opposite each other fix no single arc and are joined directly.
+#'
+#' @noRd
+great_circle_path <- function(lon, lat, km = 50) {
+  n <- length(lon)
+  if (n < 2L) return(list(x = lon, y = lat))
+  u <- unit_vector(lon, lat)
+  a <- u[-n, , drop = FALSE]
+  b <- u[-1L, , drop = FALSE]
+  across <- cbind(a[, 2] * b[, 3] - a[, 3] * b[, 2],
+                  a[, 3] * b[, 1] - a[, 1] * b[, 3],
+                  a[, 1] * b[, 2] - a[, 2] * b[, 1])
+  sin_w <- sqrt(rowSums(across^2))
+  w <- atan2(sin_w, rowSums(a * b))
+  steps <- ifelse(sin_w < 1e-12, 1, pmax(1, ceiling(w * 6371 / km)))
+  dx <- lon[-1L] - lon[-n]
+  dx <- dx - 360 * round(dx / 360)
+
+  x <- vector("list", n)
+  y <- vector("list", n)
+  for (k in seq_len(n - 1L)) {
+    t <- seq_len(steps[k] - 1L) / steps[k]
+    p <- (sin((1 - t) * w[k]) %o% a[k, ] + sin(t * w[k]) %o% b[k, ]) /
+      sin_w[k]
+    ref <- lon[k] + t * dx[k]
+    turn <- atan2(p[, 2], p[, 1]) * 180 / pi - ref
+    x[[k]] <- c(lon[k], ref + turn - 360 * round(turn / 360))
+    y[[k]] <- c(lat[k], asin(pmax(-1, pmin(1, p[, 3]))) * 180 / pi)
+  }
+  x[[n]] <- lon[n]
+  y[[n]] <- lat[n]
+  list(x = unlist(x, use.names = FALSE), y = unlist(y, use.names = FALSE))
 }
 
 # ---- warnings about the region's edges --------------------------------------

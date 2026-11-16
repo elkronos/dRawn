@@ -521,8 +521,8 @@ test_that("a warning each draw raises is given once, with the count", {
 test_that("a long simulation says how long it will take", {
   df <- data.frame(id = 1:20)
   des <- design_simple(n = 3)
-  # Each reading of the clock is 10 seconds after the last, so the first draw
-  # takes 10 seconds and 40 draws project 400.
+  # Each reading of the clock is 10 seconds after the last, so every timed
+  # draw takes 10 seconds and 40 draws project 400.
   clock <- 0
   local_mocked_bindings(elapsed_time = function() {
     clock <<- clock + 10
@@ -543,6 +543,34 @@ test_that("a long simulation says how long it will take", {
   shown <- capture.output(suppressMessages(
     inclusion_prob(df, des, simulate = TRUE, R = 40, seed = 1)))
   expect_match(paste(shown, collapse = ""), "100%", fixed = TRUE)
+})
+
+test_that("the time of a run leaves out the first two draws", {
+  # The clock moves only when a draw runs, by the cost given for that draw.
+  clock <- 0
+  local_mocked_bindings(elapsed_time = function() clock)
+  run <- function(cost, R) {
+    i <- 0L
+    simulate_draws(R, seed = 1, function() {
+      i <<- i + 1L
+      clock <<- clock + cost[min(i, length(cost))]
+    })
+  }
+
+  # Two slow draws, as when a package loads and code compiles, then fast
+  # ones: 100 draws take under 2 seconds in all.
+  expect_silent(run(c(1, 1, 0.001), R = 100))
+
+  # Later draws set the rate, not the slow first ones.
+  expect_message(run(c(5, 5, 1), R = 100),
+                 "Simulating 100 draws will take about 1.7 minutes, at 1 second a draw.",
+                 fixed = TRUE)
+
+  # Draws faster than the clock's millisecond steps are timed over enough of
+  # them to measure.
+  expect_message(run(c(0.5, 0.2, 0.001), R = 50000),
+                 "will take about 50 seconds, at 0.001 seconds a draw.",
+                 fixed = TRUE)
 })
 
 test_that("a short simulation is quiet", {

@@ -79,9 +79,10 @@
 #' times as long as one [draw()]. Most designs draw from a frame of 10,000
 #' rows in well under a second. The local pivotal method of [design_spread()]
 #' does work in proportion to `N^2` on every draw, so at 10,000 rows each
-#' draw takes seconds and the default `R` takes hours. When the first draws
-#' project a run of more than 30 seconds, a message says how long it will
-#' take, and an interactive session shows a progress bar. Lower `R` for a
+#' draw takes seconds and the default `R` takes hours. When the draws after
+#' the first two, which carry one-off costs, project a run of more than 30
+#' seconds, a message says how long it will take, and an interactive session
+#' shows a progress bar. Lower `R` for a
 #' quicker answer with more Monte Carlo error: its standard error is
 #' `sqrt(p * (1 - p) / R)`, at most 0.007 for `R = 5000`.
 #'
@@ -281,8 +282,15 @@ drawn_ids <- function(s, key, design) {
 #' once per draw. The first message of a kind is the one shown. When the
 #' draws worded it differently, as when it names the cluster or the start of
 #' the draw, the count is given for warnings like it, since the details shown
-#' are the first draw's alone. A run is timed over its first five draws, or
-#' over the draws of its first two seconds when they are slower, and one
+#' are the first draw's alone.
+#'
+#' A run is timed over the draws that follow its first two. Those two carry
+#' one-off costs, such as loading a package on the first call or compiling a
+#' function that was not byte-compiled on its second. Under
+#' devtools::load_all() a second draw took a hundred times as long as the
+#' third. The timing lasts until five draws have taken 0.05 seconds or more,
+#' which keeps the clock's millisecond steps small against the time
+#' measured, or until any number of draws have taken two seconds. A run
 #' projected to take more than 30 seconds says so with a message and, in an
 #' interactive session, shows a progress bar.
 #'
@@ -315,16 +323,22 @@ simulate_draws <- function(R, seed, one) {
 
   bar <- NULL
   on.exit(if (!is.null(bar)) close(bar), add = TRUE)
-  start <- elapsed_time()
+  warm <- 2L
+  start <- NA_real_
   timed <- FALSE
   with_seed(seed, withCallingHandlers({
     for (i in seq_len(R)) {
       one()
-      if (!timed) {
-        spent <- elapsed_time() - start
-        if (i >= min(5L, R) || spent >= 2) {
-          timed <- TRUE
-          bar <- announce_run(R, i, spent)
+      if (!timed && i >= warm) {
+        now <- elapsed_time()
+        if (i == warm) {
+          start <- now
+        } else {
+          spent <- now - start
+          if ((i - warm >= 5L && spent >= 0.05) || spent >= 2) {
+            timed <- TRUE
+            bar <- announce_run(R, i, spent / (i - warm))
+          }
         }
       }
       if (!is.null(bar)) utils::setTxtProgressBar(bar, i)
@@ -347,15 +361,15 @@ simulate_draws <- function(R, seed, one) {
 
 #' Say how long a simulation will take, when that is more than 30 seconds
 #'
-#' `done` draws took `spent` seconds. Returns a progress bar, already at
-#' `done`, in an interactive session, else `NULL`.
+#' `done` draws have been made, and one takes `per_draw` seconds. Returns a
+#' progress bar, already at `done`, in an interactive session, else `NULL`.
 #'
 #' @noRd
-announce_run <- function(R, done, spent) {
-  total <- spent / done * R
+announce_run <- function(R, done, per_draw) {
+  total <- per_draw * R
   if (done >= R || total <= 30) return(NULL)
   message("Simulating ", fmt_n(R), " draws will take about ",
-          format_duration(total), ", at ", format_duration(spent / done),
+          format_duration(total), ", at ", format_duration(per_draw),
           " a draw. A smaller `R` takes less time, with more Monte Carlo ",
           "error.")
   if (!is_interactive()) return(NULL)

@@ -54,8 +54,9 @@
 #'     and on the estimation article's example it was 1.6 times the true
 #'     variance. No estimator from a single systematic sample escapes its
 #'     limits. A frame that cycles with a period equal to the step, or one
-#'     that divides it, such as 5 rows at a step of 10, shows every start the
-#'     same phase of the cycle, and the variance is understated, to under
+#'     that divides it, such as 5 rows at a step of 10, puts every row of one
+#'     sample at the same phase of the cycle, and the variance is
+#'     understated, to under
 #'     0.001 of the truth in one simulation. A period of twice the step puts
 #'     neighbouring sampled rows at opposite phases, and the variance is
 #'     overstated, 29-fold in the same simulation. When a smooth trend so
@@ -155,17 +156,21 @@
 #' The t interval assumes the estimate is close to normally distributed over
 #' repeated samples. When `y / pi` is skewed and the sample small it is not,
 #' and the interval covers less often than `level` says, even where the
-#' variance estimate is close to unbiased. Drawing 30 of 240 rows in
-#' proportion to a size whose coefficient of variation was 0.66, with `y`
-#' close to proportional to size, the 95% interval for the total covered 91%
-#' of the time under systematic PPS, and that for the Hajek mean 91% under
-#' systematic and Poisson PPS. The mean with `estimator = "ht"`, which
-#' [ht_mean()] recommends for precision in that case, covered no more often.
-#' The same happens with equal probabilities. A simple random sample of 30
-#' from 600 lognormal values with a coefficient of variation of 1.5 covered
-#' 87%. A larger sample brings the coverage closer to `level`. The
-#' audit-sampling article checks a bound's coverage by drawing the design
-#' many times, which is how to check it on a frame of your own.
+#' variance estimate is close to unbiased. In 2,000 draws with `n = 30` from
+#' 240 rows in proportion to a size whose coefficient of variation was 0.66,
+#' with `y` close to proportional to size, the 95% interval for the total
+#' covered 90% of the time under systematic PPS and 94% under Poisson PPS.
+#' The mean with `estimator = "ht"`, which [ht_mean()] recommends in that
+#' case, is the total divided by `N` and covered as often. The default Hajek
+#' mean covered 91% under both methods. Skew is one reason. The Hajek mean
+#' also has a ratio bias, here 1.5% of the mean under systematic PPS and
+#' 1.8% under Poisson PPS, and its estimated variance averaged 0.89 and 0.88
+#' times the variance of the mean over the draws. Skew lowers coverage under
+#' equal probabilities too. A simple random sample of 30 from 600 lognormal values with a
+#' coefficient of variation of 1.5 covered 87%. A larger sample brings the
+#' coverage closer to `level`. The audit-sampling article checks a bound's
+#' coverage by drawing the design many times, which is how to check it on a
+#' frame of your own.
 #'
 #' `alternative = "less"` gives a one-sided upper bound, the figure an auditor
 #' signs off against, and `"greater"` a lower bound. The other end of `ci` is

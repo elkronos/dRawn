@@ -125,9 +125,10 @@ replicate, so the count converges to 1 for all of them.
 times as long as one \code{\link[=draw]{draw()}}. Most designs draw from a frame of 10,000
 rows in well under a second. The local pivotal method of \code{\link[=design_spread]{design_spread()}}
 does work in proportion to \code{N^2} on every draw, so at 10,000 rows each
-draw takes seconds and the default \code{R} takes hours. When the first draws
-project a run of more than 30 seconds, a message says how long it will
-take, and an interactive session shows a progress bar. Lower \code{R} for a
+draw takes seconds and the default \code{R} takes hours. When the draws after
+the first two, which carry one-off costs, project a run of more than 30
+seconds, a message says how long it will take, and an interactive session
+shows a progress bar. Lower \code{R} for a
 quicker answer with more Monte Carlo error: its standard error is
 \code{sqrt(p * (1 - p) / R)}, at most 0.007 for \code{R = 5000}.
 

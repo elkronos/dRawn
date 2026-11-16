@@ -128,6 +128,50 @@ test_that("a spatial map draws the region's outline as the design reads it", {
   expect_false("C_polygon" %in% calls)
 })
 
+test_that("a map outline follows the sphere's great circles without lwgeom", {
+  skip_if_not_installed("sf")
+  skip_if_not(sf::sf_use_s2(), "spherical geometry is switched off")
+  # sf::st_segmentize() needs lwgeom, which sf only suggests, for
+  # longitude/latitude geometry. Here it fails as it does without lwgeom.
+  local_mocked_bindings(
+    st_segmentize = function(x, ...) {
+      stop("package lwgeom required, please install it first")
+    },
+    .package = "sf")
+  box <- sf::st_sfc(sf::st_polygon(list(cbind(c(-50, 50, 50, -50, -50),
+                                             c(-30, -30, 30, 30, -30)))),
+                    crs = 4326)
+  d <- data.frame(id = 1:200, lon = (1:200 * 37) %% 120 - 60,
+                  lat = (1:200 * 53) %% 90 - 45)
+  des <- design_spatial(c("lon", "lat"), box, n = 20)
+  outline <- drawn:::region_outline(des, d)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_warning(plot(des, d, type = "map", seed = 1),
+                 class = "drawn_geodesic_edges")
+
+  # The corners are kept, and every vertex of the top edge lies on the great
+  # circle through its corners, at most 50 km from the next.
+  expect_equal(outline$x[1], -50)
+  expect_equal(outline$y[1], -30)
+  expect_true(all(c(50, -50) %in% outline$x[outline$y == 30]))
+  u <- drawn:::unit_vector(outline$x, outline$y)
+  a <- drawn:::unit_vector(50, 30)
+  b <- drawn:::unit_vector(-50, 30)
+  normal <- c(a[2] * b[3] - a[3] * b[2], a[3] * b[1] - a[1] * b[3],
+              a[1] * b[2] - a[2] * b[1])
+  top <- outline$y >= 30
+  expect_gt(sum(top), 100)
+  expect_lt(max(abs(u[top, ] %*% normal)), 1e-12)
+  apart <- acos(pmin(1, rowSums(u[-1, ] * u[-nrow(u), ]))) * 6371
+  expect_lte(max(apart), 50)
+
+  # Longitudes from 0 to 360 stay in that range across 180.
+  east <- drawn:::great_circle_path(c(170, 200), c(10, 10), km = 500)
+  expect_true(all(east$x >= 170 & east$x <= 200))
+  expect_true(all(diff(east$x) > 0))
+})
+
 test_that("a design with reserves is plotted by its main sample", {
   pop <- data.frame(id = 1:100, x = (1:100) %% 10, y = (1:100) %/% 10)
   f <- tempfile(fileext = ".png")

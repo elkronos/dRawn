@@ -28,8 +28,9 @@
 #'   changes which rows can appear together, so [inclusion_prob()] and
 #'   [joint_prob()] compute against the sorted order too. Text is sorted byte
 #'   by byte, as in the C locale, so the walk is the same in every session;
-#'   ties keep frame order, so a seed draws the same rows only from a frame
-#'   with its rows in the same order, as for every design. One column: to
+#'   ties keep frame order, so where the column has ties a seed is sure to
+#'   draw the same rows only from a frame with its rows in the same order.
+#'   Without ties the walk does not depend on frame order. One column: to
 #'   walk by several, add a column of ranks built from them and give its
 #'   name, as in the examples.
 #' @param na_rm When `order_by` is given, drop rows whose sort key is `NA`

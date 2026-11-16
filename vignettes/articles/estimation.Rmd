@@ -195,7 +195,8 @@ truth changes from one frame to the next.
 
 Its limits are shared by every estimator from a single systematic sample. A
 frame that cycles with a period equal to the interval, or one that divides it,
-shows every start the same phase of the cycle, and the estimate runs far low.
+puts every row of one sample at the same phase of the cycle, and the estimate
+runs far low.
 A period of twice the interval puts neighbouring sampled rows at opposite
 phases, and it runs high, 29 times the truth in one simulation. A trend so
 smooth that the random start is almost the only source of variation makes it

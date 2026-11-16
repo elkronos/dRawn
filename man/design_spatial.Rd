@@ -76,9 +76,10 @@ region <- sf::st_set_crs(flat, 4326)
 
 An edge 0.1 degrees long bows by about a metre at most. The CRS has to come
 off for the middle step: on a region that keeps it,
-\code{\link[sf:geos_unary]{sf::st_segmentize()}} places the new vertices along the great circles,
-under either s2 setting, and the bow stays. A region larger than a
-hemisphere needs splitting first; see the next section.
+\code{\link[sf:geos_unary]{sf::st_segmentize()}} needs the lwgeom package and places the new vertices
+along the great circles, under either s2 setting, and the bow stays. A
+region larger than a hemisphere needs splitting first; see the next
+section.
 }
 
 \section{Regions that cross the antimeridian}{

@@ -123,10 +123,16 @@ jobs:
 
       # The incoming checks are off because a first submission always gets
       # the "New submission" NOTE; every other NOTE fails this leg.
+      # --as-cran turns on the check for files dated in the future, which
+      # asks worldtimeapi.org for the time and gives the NOTE "unable to
+      # verify current time" when that service does not answer. Turning off
+      # _R_CHECK_SYSTEM_CLOCK_ keeps the file check against the runner's own
+      # clock and drops the call to the service.
       - uses: r-lib/actions/check-r-package@v2
         if: ${{ matrix.config.strict }}
         env:
           _R_CHECK_CRAN_INCOMING_: false
+          _R_CHECK_SYSTEM_CLOCK_: false
         with:
           upload-snapshots: true
           args: 'c("--as-cran")'

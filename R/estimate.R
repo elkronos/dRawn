@@ -71,7 +71,11 @@
 #' knowing: when `y` is close to proportional to the size measure that drove
 #' selection, `y / pi` is nearly constant, the Horvitz-Thompson numerator
 #' barely moves, and dividing it by the known `N` beats dividing by an
-#' estimate.
+#' estimate. The Hajek mean's ratio bias also lowers the coverage of its
+#' interval there. Drawing with `n = 30` from 240 rows by Poisson PPS, its 95%
+#' interval covered 91% of the time and that of `"ht"` 94%. By systematic PPS
+#' both covered about 90%. "Confidence intervals" in [ht_total()] gives the
+#' figures and the reasons.
 #'
 #' One caveat on `"ht"`. It is unbiased for the frame mean *provided every row
 #' could have been selected*. Rows with inclusion probability 0, such as rows
