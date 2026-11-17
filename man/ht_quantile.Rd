@@ -86,7 +86,7 @@ weights it is \code{stats::quantile(type = 1)}, apart from the tolerance
 below. \code{p = 0} gives the smallest sampled value and \code{p = 1} the largest.
 
 A share of the weight equal to \code{p} can come out of the sums a rounding
-error below \code{p}, so a share within 1e-9 below \code{p} counts as reaching it.
+error below \code{p}, so a share within \code{1e-9} below \code{p} counts as reaching it.
 A \code{p} that is a rounding error above a share therefore gives the value
 at that share. \code{seq(0, 1, 0.01)[71]}, which is 0.7 plus a rounding error,
 gives the 21st of 30 equally weighted values, where
@@ -149,7 +149,7 @@ that end and the standard error, where \code{ht_quantile()} gives \code{NA}.
 \item For a \code{p}, or an end of the interval for \code{F(q)}, below the share of the
 weight held by the smallest sampled value, survey's rule gives the
 second smallest value and \code{ht_quantile()} the smallest.
-\item For a \code{p} within 1e-9 above a share of the weight, \code{ht_quantile()}
+\item For a \code{p} within \code{1e-9} above a share of the weight, \code{ht_quantile()}
 gives the value at that share and survey the next one, as "The quantile
 rule" describes.
 \item With \code{by}, \code{survey::svyby()} with \code{survey::svyquantile()} forms each

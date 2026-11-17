@@ -82,6 +82,11 @@ test_that("the HT domain mean divides by the domain's known size", {
     "the `by` column `site` is missing in 10 of the frame's ", nrow(d),
     " rows"), fixed = TRUE)
   expect_true(all(is.finite(ht_mean(s2, "y", by = "site")$se)))
+  # With several `by` columns, one missing value is enough.
+  expect_error(ht_mean(s2, "y", by = c("site", "region"), estimator = "ht"),
+               paste0("the `by` columns `site` and `region` have a missing ",
+                      "value in 10 of the frame's ", nrow(d), " rows"),
+               fixed = TRUE)
 })
 
 test_that("by accepts several columns and validates them", {

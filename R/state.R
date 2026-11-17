@@ -471,10 +471,21 @@ check_legacy_prob <- function(sample, design, pop, drawn, arg = "sample") {
 #' as are columns that `row_values_agree()` does not compare. A sample that
 #' keeps no frame column cannot be checked.
 #'
+#' A column that holds a different value in every frame row, such as an id,
+#' and agrees with the drawn rows position by position shows that the rows
+#' are in the order drawn. The check then stops there, so two values swapped
+#' between rows of another column by a later correction are not taken for a
+#' reorder.
+#'
 #' @noRd
 check_legacy_order <- function(sample, pop, drawn, arg = "sample") {
   shared <- setdiff(intersect(names(sample), names(pop)),
                     c(".prob", ".weight", ".row", ".reserve", ".replicate"))
+  for (col in shared) {
+    if (!identifies_rows(pop[[col]])) next
+    v <- comparable_values(sample[[col]], pop[[col]][drawn])
+    if (!is.null(v) && same_values(v$a, v$b)) return(invisible(NULL))
+  }
   sorted <- function(x) sort(x, method = "radix", na.last = TRUE)
   for (col in shared) {
     v <- comparable_values(sample[[col]], pop[[col]][drawn])
@@ -616,26 +627,25 @@ sample_rows <- function(sample, drawn, N, arg) {
 #'
 #' @section Matching rows to the frame:
 #' With `by = NULL`, each row is matched through its `.row` column, the frame
-#' row [draw()] recorded for it. `frame` must then be the frame the sample
-#' was drawn from, with its rows in the same order. A frame in another order,
-#' such as a database table read without `ORDER BY`, holds other rows at
-#' those positions, and its strata and clusters would be wrong for the
-#' sample. Each column `data` shares with `frame` is therefore compared with
-#' the frame rows `.row` names, and a column whose values differ is refused.
-#' Numbers need to agree to about eight significant digits, fewer than a CSV
-#' file keeps, and a number read back from text, such as `"007"`, is compared
-#' as the number 7. Text such as `"F"` or `"T"` that a file gave back as a
-#' logical column is compared as the logical value [as.logical()] reads from
-#' it. A date-time read back in another time zone agrees when it is the same
-#' instant or shows the same clock time, since `readr::read_csv()` and
-#' `data.table::fread()` read the clock time a CSV file holds as UTC. A
-#' missing value on either side is not compared, so a frame column that
-#' fieldwork fills in is accepted. Nor is a date that a file gave back as
-#' text, whose format a spreadsheet may have changed. A column changed after
-#' the draw, such as a corrected address, is refused too; rename it in
-#' `data`, or match on an id. A `data` that shares no column with `frame`
-#' besides those [draw()] adds cannot be checked, so keep an id column in
-#' the file.
+#' row [draw()] recorded for it. `frame` must then be the frame the sample was
+#' drawn from, with its rows in the same order. A frame in another order, such
+#' as a database table read without `ORDER BY`, holds other rows at those
+#' positions, and its strata and clusters would be wrong for the sample. Each
+#' column `data` shares with `frame` is therefore compared with the frame rows
+#' `.row` names, and a column whose values differ is refused. Numbers need to
+#' agree to about eight significant digits, fewer than a CSV file keeps, and a
+#' number read back from text, such as `"007"`, is compared as the number 7.
+#' Text such as `"T"`, `"F"`, `"t"` or `"f"` that a file gave back as a logical
+#' column is compared as `TRUE` or `FALSE`, as `readr::read_csv()` reads it. A
+#' date-time read back in another time zone agrees when it is the same instant
+#' or shows the same clock time, since `readr::read_csv()` and
+#' `data.table::fread()` read the clock time a CSV file holds as UTC. A missing
+#' value on either side is not compared, so a frame column that fieldwork fills
+#' in is accepted. Nor is a date that a file gave back as text, whose format a
+#' spreadsheet may have changed. A column changed after the draw, such as a
+#' corrected address, is refused too; rename it in `data`, or match on an id. A
+#' `data` that shares no column with `frame` besides those [draw()] adds cannot
+#' be checked, so keep an id column in the file.
 #'
 #' With `by`, rows are matched on the values of one or more id columns that
 #' `data` and `frame` share. Values are compared as [match()] compares them,
@@ -1023,20 +1033,20 @@ check_row_values <- function(data, frame, rows, design) {
 
 #' Do two columns hold the same values, row by row?
 #'
-#' `a` is a column of `data` as read back and `b` the frame's column on the
-#' same rows. Numbers and logical values are compared as numbers, with the
-#' tolerance of `same_prob()`, since a CSV file keeps 15 significant digits.
-#' A number that came back as text, such as an id written `"007"`, is
-#' compared as a number too, and other text and factors as text. Text such
-#' as `"F"` or `"T"` that came back as a logical column is compared as the
-#' logical value `as.logical()` reads from it. Two columns of one class,
-#' such as two `Date` columns, are compared as numbers. Two date-times in
-#' different time zones agree when they are the same instant or show the
-#' same clock time, since `readr::read_csv()` and `data.table::fread()` read
-#' the clock time a CSV file holds as UTC. Returns `NULL` for a pair it does
-#' not compare: a list or matrix column, or a classed column, such as a
-#' `Date`, on one side only, since a spreadsheet the file went through may
-#' have changed its format.
+#' `a` is a column of `data` as read back and `b` the frame's column on the same
+#' rows. Numbers and logical values are compared as numbers, with the tolerance
+#' of `same_prob()`, since a CSV file keeps 15 significant digits. A number that
+#' came back as text, such as an id written `"007"`, is compared as a number
+#' too, and other text and factors as text. Text such as `"T"`, `"F"`, `"t"` or
+#' `"f"` that came back as a logical column is compared as `TRUE` or `FALSE`,
+#' read by `as.logical()` in capitals, since `readr::read_csv()` reads `"t"` and
+#' `"f"` as logical. Two columns of one class, such as two `Date` columns, are
+#' compared as numbers. Two date-times in different time zones agree when they
+#' are the same instant or show the same clock time, since `readr::read_csv()`
+#' and `data.table::fread()` read the clock time a CSV file holds as UTC.
+#' Returns `NULL` for a pair it does not compare: a list or matrix column, or a
+#' classed column, such as a `Date`, on one side only, since a spreadsheet the
+#' file went through may have changed its format.
 #'
 #' @noRd
 row_values_agree <- function(a, b) {
@@ -1075,7 +1085,7 @@ comparable_values <- function(a, b) {
   number <- function(x) is.numeric(x) || is.logical(x)
   text <- function(x) is.character(x) || is.factor(x)
   as_number <- function(x) suppressWarnings(as.numeric(as.character(x)))
-  as_flag <- function(x) as.numeric(as.logical(as.character(x)))
+  as_flag <- function(x) as.numeric(as.logical(toupper(as.character(x))))
   if (number(a) && number(b)) {
     return(list(a = as.numeric(a), b = as.numeric(b)))
   }

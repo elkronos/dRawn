@@ -393,6 +393,10 @@ table_ready <- function(out) {
 #' inclusion_prob(df, first_rows, simulate = TRUE, R = 20, seed = 1)
 #' @export
 draw_design <- function(design, data) {
+  # A design saved by drawn 0.2.0 lacks fields added since, and `$` would
+  # match some of them to others by partial name.
+  current <- legacy_design(design)
+  if (!identical(current, design)) return(draw_design(current, data))
   UseMethod("draw_design")
 }
 

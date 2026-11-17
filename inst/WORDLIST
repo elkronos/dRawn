@@ -68,11 +68,13 @@ frac12
 frac1k
 ht
 ids
+ij
 km2
 lat
 lfloor
 lon
 lubridate
+lwgeom
 mathrm
 mean's
 mk
@@ -80,6 +82,7 @@ ne
 nonrespondent
 nonresponse
 nonzero
+plotmath
 py
 reserve's
 reweights

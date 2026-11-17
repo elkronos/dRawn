@@ -226,9 +226,12 @@
 #' zero inside the unit that holds the whole domain, so with one unit every
 #' estimator gives a standard error of about 0, and `survey` does the same. Such
 #' a domain gets no standard error, with a note. When stage one of a cluster
-#' design takes every cluster, the units are rows, since each cluster is then in
-#' every sample and only its rows were drawn at random. Rows taken with
-#' certainty count as one unit, since every estimator holds them fixed and
+#' design takes every cluster, the analytic estimator's units are rows, since
+#' each cluster is then in every sample and only its rows were drawn at random.
+#' The jackknife still deletes whole clusters, so a domain inside one cluster
+#' gets no standard error from it, whether `variance = "jackknife"` asks for it
+#' or `"auto"` turns to it after the analytic estimator declines. Rows taken
+#' with certainty count as one unit, since every estimator holds them fixed and
 #' `as_svydesign()` hands them to `survey` together, so a domain whose sampled
 #' rows were all taken with certainty gets no standard error either, unless
 #' every row of it that the design could reach is certain, which makes its mean
@@ -649,16 +652,18 @@ total_one <- function(parts, variance, level, df, alternative, ctx = NULL) {
 #' from `ratio_decline()`, and no estimator is run. `divide_by` is what a mean
 #' divides its total by, for the design effect. `ctx` is a
 #' `variance_context()` shared with other estimates from the same sample.
+#' `jk_decline` is as `ht_variance_dispatch()` takes it.
 #'
 #' @noRd
 estimate_one <- function(parts, est, z, variance, level, df, what, class,
                          deff_y = NULL, extra = list(), proportion = FALSE,
                          ci_method = "logit", alternative = "two.sided",
                          var_out = NULL, divide_by = parts$reach,
-                         ctx = NULL) {
+                         ctx = NULL, jk_decline = NULL) {
   var_out <- var_out %||% if (nrow(parts$sample)) {
     ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
-                         parts$pi, variance, ctx = ctx)
+                         parts$pi, variance, ctx = ctx,
+                         jk_decline = jk_decline)
   } else {
     empty_sample()
   }
@@ -696,16 +701,25 @@ estimate_one <- function(parts, est, z, variance, level, df, what, class,
 #' `ctx` is a `variance_context()` shared by the calls for one sample, or
 #' `NULL` for an estimator to work out what it needs from the frame itself.
 #'
+#' `jk_decline`, when given, is the decline the jackknife gives in place of
+#' a variance, from `linear_declines()`, and the jackknife is not run.
+#'
 #' @noRd
 ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
-                                 domain = NULL, ctx = NULL) {
+                                 domain = NULL, ctx = NULL,
+                                 jk_decline = NULL) {
   if (variance == "none") {
     return(list(variance = NA_real_, method = "none",
                 note = "Variance not requested."))
   }
   if (variance == "jackknife") {
-    jk <- jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
-    if (is.na(jk$variance)) jk$method <- "none"
+    jk <- jk_decline %||%
+      jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
+    if (is.na(jk$variance)) {
+      jk$method <- "none"
+    } else if (jk$variance > 0) {
+      jk$note <- paste0(jk$note, jackknife_inflation(design, pop, ctx))
+    }
     return(jk)
   }
 
@@ -732,7 +746,8 @@ ht_variance_dispatch <- function(design, units, pop, rows, z, pi_i, variance,
     return(list(variance = NA_real_, method = "none", note = reason))
   }
 
-  jk <- jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
+  jk <- jk_decline %||%
+    jackknife_variance(design, units, pop, z, pi_i, domain, ctx)
   first <- sub("\n.*", "", reason, useBytes = TRUE)
   if (is.na(jk$variance)) {
     # The jackknife declined too. Say so, and keep its reason rather than
@@ -822,6 +837,10 @@ sub_context <- function(ctx, name) {
 #' in "A Hajek mean's linearised residuals". Returns the decline, or `NULL`
 #' when the variance can go ahead.
 #'
+#' With `jackknife = TRUE`, `psu` holds the units of `jackknife_units()`,
+#' and the note speaks of the jackknife alone, since the analytic estimator
+#' counts other units.
+#'
 #' @noRd
 ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                           psu = sample_units(parts$design, parts$units,
@@ -829,7 +848,7 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
                                              parts$pi),
                           subject = if (!is.null(label)) {
                             paste0("The domain `", label, "`")
-                          }, estimate = "Hajek mean") {
+                          }, estimate = "Hajek mean", jackknife = FALSE) {
   u <- psu[member]
   if (length(unique(u)) >= 2L) return(NULL)
   pi_all <- frame_pi(parts)
@@ -838,10 +857,18 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
     return(list(variance = NA_real_, method = "none",
                 note = certain_only_note(subject, parts, frame, pi_all)))
   }
-  unit <- unit_noun(parts$design, parts$pop)
+  # The jackknife deletes whole clusters even where the analytic estimator
+  # takes the rows of a census of clusters as its units.
+  unit <- unit_noun(parts$design, if (!jackknife) parts$pop)
   core <- paste0("A ", estimate, "'s linearised residuals sum to zero over ",
-                 "it, so every variance estimator would give a standard ",
-                 "error of about 0, whatever the spread of `y`.")
+                 "it, so ",
+                 if (jackknife) {
+                   paste0("the jackknife, which deletes whole ", unit, "s,")
+                 } else {
+                   "every variance estimator"
+                 },
+                 " would give a standard error of about 0, whatever the ",
+                 "spread of `y`.")
   note <- if (is.null(subject)) {
     paste0("The sample has one ", unit, ". ", core, " A standard error needs ",
            "at least two.")
@@ -857,6 +884,57 @@ ratio_decline <- function(parts, member, frame = TRUE, label = NULL,
            })
   }
   list(variance = NA_real_, method = "none", note = note)
+}
+
+#' The declines of a linearised estimate, for any estimator and for the
+#' jackknife alone
+#'
+#' `ratio_decline()` over `psu`, the units of `sample_units()`, and over
+#' `jk_psu`, those of `jackknife_units()`, which differ only where stage one
+#' of a cluster design takes every cluster. `member`, `frame`, `label`,
+#' `subject` and `estimate` are as `ratio_decline()` takes them. Returns a
+#' list with `any`, the decline given in place of every variance, and
+#' `jackknife`, the decline given in place of a jackknife variance only, as
+#' `ht_variance_dispatch()` takes it. Each is `NULL` when the variance can
+#' go ahead. With `variance = "jackknife"` only the jackknife's units count.
+#'
+#' @noRd
+linear_declines <- function(parts, member, variance, frame = TRUE,
+                            label = NULL,
+                            subject = if (!is.null(label)) {
+                              paste0("The domain `", label, "`")
+                            }, estimate = "Hajek mean",
+                            psu = sample_units(parts$design, parts$units,
+                                               parts$pop, parts$rows,
+                                               parts$pi),
+                            jk_psu = jackknife_units(parts, psu, variance)) {
+  if (variance == "none") return(list())
+  jk <- function() {
+    if (!is.null(jk_psu)) {
+      ratio_decline(parts, member, frame, label, jk_psu, subject, estimate,
+                    jackknife = TRUE)
+    }
+  }
+  if (variance == "jackknife" && !is.null(jk_psu)) return(list(any = jk()))
+  every <- ratio_decline(parts, member, frame, label, psu, subject, estimate)
+  list(any = every, jackknife = if (is.null(every)) jk())
+}
+
+#' Each sampled row's unit as the jackknife deletes it, where that differs
+#' from `psu`
+#'
+#' A cluster design whose stage one takes every cluster has the sampled rows
+#' as the units of its analytic estimator, as `clusters_all_taken()` sets
+#' out, but the jackknife still deletes whole clusters. `NULL` when
+#' `variance` never runs the jackknife, or when its units are those of
+#' `psu`, from `sample_units()`.
+#'
+#' @noRd
+jackknife_units <- function(parts, psu, variance) {
+  if (!variance %in% c("auto", "jackknife")) return(NULL)
+  jk <- sample_units(parts$design, parts$units, parts$pop, parts$rows,
+                     parts$pi, jackknife = TRUE)
+  if (identical(jk, psu)) NULL else jk
 }
 
 #' Why a domain whose sampled rows are all certain gets no variance
@@ -984,11 +1062,13 @@ frame_pi <- function(parts) {
 #' holds such units fixed and `as_svydesign()` hands them to `survey` as one
 #' unit. They share the code 0 here, and every other unit has a positive
 #' integer code. `pop` is the frame and `rows` the sampled frame rows, which
-#' place a systematic sample's rows on its walk.
+#' place a systematic sample's rows on its walk. With `jackknife = TRUE` the
+#' clusters of a design that takes every cluster stay the units, as the
+#' jackknife deletes them.
 #'
 #' @noRd
-sample_units <- function(design, units, pop, rows, pi) {
-  psu <- design_units(design, units, pop, rows)
+sample_units <- function(design, units, pop, rows, pi, jackknife = FALSE) {
+  psu <- design_units(design, units, pop, rows, jackknife)
   code <- match(psu, unique(psu))
   code[!(psu %in% psu[!is_certain(pi)])] <- 0L
   code
@@ -1000,12 +1080,14 @@ sample_units <- function(design, units, pop, rows, pi) {
 #' certainty design each row at or above the threshold is a unit of its own.
 #'
 #' @noRd
-design_units <- function(design, units, pop, rows) {
+design_units <- function(design, units, pop, rows, jackknife = FALSE) {
   if (replicated(design)) {
     return(systematic_replicates(design, systematic_positions(design, pop),
                                  rows))
   }
-  if (clusters_all_taken(design, pop)) return(seq_len(nrow(units)))
+  if (!jackknife && clusters_all_taken(design, pop)) {
+    return(seq_len(nrow(units)))
+  }
   if (!inherits(design, "drawn_design_certainty")) {
     return(jackknife_groups(design, units, pop))
   }
@@ -1016,7 +1098,8 @@ design_units <- function(design, units, pop, rows) {
     sp <- certainty_split(design, pop)
     out[below] <- design_units(design$rest, units[below, , drop = FALSE],
                                sp$data[sp$rest, , drop = FALSE],
-                               match(rows[below], sp$keep[sp$rest]))
+                               match(rows[below], sp$keep[sp$rest]),
+                               jackknife)
   }
   out
 }
@@ -1946,6 +2029,38 @@ fallback_note <- function(a, A) {
     "jackknife, which has no first-stage finite population correction, puts ",
     "the variance between clusters at ", signif(1 / (1 - f1), 2),
     " times its true size.")
+}
+
+#' What a jackknife asked for does to a multistage variance
+#'
+#' `fallback_note()` for `variance = "jackknife"`, which runs the jackknife
+#' without the analytic estimator declining first. For a multistage design
+#' without `size`, drawn without replacement, the jackknife has no
+#' first-stage finite population correction, so it puts the variance
+#' between clusters at `1 / (1 - f1)` times its size, with
+#' `f1 = n_clusters / A`, and counts it in full when every cluster is
+#' selected, where it is zero by design. The analytic estimator measures
+#' only the variation within clusters then. A certainty design is read
+#' through its `rest`. Returns a sentence starting with a space, or `""`.
+#'
+#' @noRd
+jackknife_inflation <- function(design, pop, ctx = NULL) {
+  if (inherits(design, "drawn_design_certainty")) {
+    sp <- certainty_parts(design, pop, ctx)
+    return(jackknife_inflation(design$rest, sp$rest_data,
+                               sub_context(ctx, "rest")))
+  }
+  if (!inherits(design, "drawn_design_multistage") ||
+      !is.null(design$size) || isTRUE(design$replace)) {
+    return("")
+  }
+  A <- from_context(ctx, "clusters", count_clusters(design, pop))$total
+  if (design$n_clusters < A) return(fallback_note(design$n_clusters, A))
+  paste0(" Every cluster is selected, so the variance between clusters is ",
+         "zero by design, but the delete-a-cluster jackknife counts it in ",
+         "full because it has no first-stage finite population correction. ",
+         "variance = \"analytic\" measures the variation within clusters ",
+         "only.")
 }
 
 #' Variance for the weighted designs

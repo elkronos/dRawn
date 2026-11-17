@@ -244,6 +244,49 @@ test_that("a domain inside one cluster of a census of clusters has an se", {
                fixed = TRUE, all = FALSE)
 })
 
+test_that("the jackknife declines a domain inside one cluster of a census", {
+  # The analytic estimator's units are the rows of each cluster, but the
+  # jackknife deletes whole clusters, and a linearised estimate sums to zero
+  # inside one.
+  d <- data.frame(id = 1:40, cl = rep(c("A", "B"), each = 20))
+  d$y <- c(sin(1:20) * 5 + 10, cos(1:20) * 3 + 20)
+  s <- draw(d, design_multistage("cl", n_clusters = 2, n = 12), seed = 5,
+            weights = TRUE)
+  wording <- "has sampled rows in one cluster only"
+  m <- ht_mean(s, "y", by = "cl", variance = "jackknife")
+  expect_true(all(is.na(m$se)))
+  expect_equal(m$method, c("none", "none"))
+  expect_match(attr(m, "notes"), wording, fixed = TRUE)
+  r <- ht_ratio(s, "y", "id", by = "cl", variance = "jackknife")
+  expect_true(all(is.na(r$se)))
+  q <- ht_quantile(s, "y", probs = 0.25, by = "cl", variance = "jackknife")
+  expect_true(all(is.na(q$se)))
+  k <- ht_mean(s, "y", by = "cl", contrast = c(A = 1, B = -1),
+               variance = "jackknife")
+  expect_true(is.na(k$se))
+  expect_match(k$note, "so it has no standard error either", fixed = TRUE)
+  # The whole sample spans both clusters.
+  expect_true(is.finite(ht_mean(s, "y", variance = "jackknife")$se))
+
+  # Under "auto" the jackknife takes over when the analytic estimator
+  # declines, here for the one row drawn from cluster A.
+  d <- data.frame(id = 1:40, cl = rep(c("A", "B"), c(3, 37)))
+  d$y <- (d$id * 7) %% 13 + 1
+  d$g <- ifelse(d$id %% 2 == 0, "even", "odd")
+  s <- draw(d, design_multistage("cl", 2, 12, allocation = "proportional",
+                                 min_per_cluster = 1),
+            seed = 5, weights = TRUE)
+  expect_identical(sort(unique(s$g[s$cl == "A"])), "odd")
+  by_cl <- ht_mean(s, "y", by = "cl")
+  expect_true(all(is.na(by_cl$se)))
+  expect_match(attr(by_cl, "notes"), "The domain `B` has sampled rows in one",
+               fixed = TRUE, all = FALSE)
+  by_g <- ht_mean(s, "y", by = "g")
+  expect_true(is.na(by_g$se[by_g$g == "even"]))
+  expect_equal(by_g$method[by_g$g == "odd"], "jackknife")
+  expect_true(by_g$se[by_g$g == "odd"] > 0.1)
+})
+
 test_that("the jackknife fallback says when it inflates the between-cluster part", {
   d <- data.frame(id = 1:100, cl = rep(sprintf("k%02d", 1:10), each = 10),
                   y = rep(1:10 * 10, each = 10) + 1:100 %% 7)
@@ -258,6 +301,17 @@ test_that("the jackknife fallback says when it inflates the between-cluster part
   all <- note_for(10)
   expect_match(all, "Every cluster is selected", fixed = TRUE)
   expect_match(all, "design_stratified()", fixed = TRUE)
+
+  # A jackknife asked for is not a fallback, and says the same.
+  asked <- function(a) {
+    ht_total(draw(d, design_multistage("cl", n_clusters = a, n = 2 * a),
+                  seed = 1, weights = TRUE), "y", variance = "jackknife")$note
+  }
+  expect_match(asked(5), "between clusters at 2 times its true size",
+               fixed = TRUE)
+  expect_false(grepl("true size", asked(2)))
+  expect_match(asked(10), "measures the variation within clusters only",
+               fixed = TRUE)
 })
 
 # ---- clusters in proportion to size -----------------------------------------

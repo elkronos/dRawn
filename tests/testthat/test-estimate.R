@@ -352,7 +352,7 @@ test_that("a sample saved by drawn 0.2.0 still estimates, by position", {
 test_that("a sample saved by drawn 0.2.0 and put in another order is refused", {
   # Such a sample is matched to its frame rows by position. Every row of a
   # proportional stratified or systematic sample has the same `.prob`, so a
-  # sort leaves `.prob` as the design gives it and moved `y` onto other rows'
+  # sort leaves `.prob` as the design gives it and moves `y` onto other rows'
   # strata or places in the walk.
   d <- est_pop()
   as_legacy <- function(s) {
@@ -385,6 +385,18 @@ test_that("a sample saved by drawn 0.2.0 and put in another order is refused", {
   edited$site <- toupper(edited$site)
   expect_equal(ht_total(edited, "y")$se, 2 * ht_total(s, "y")$se)
 
+  # Nor is a correction that swaps two values between rows, while `id` still
+  # matches the drawn rows in order.
+  i <- c(match("a", s$site), match("c", s$site))
+  swapped <- as_legacy(s)
+  swapped$site[i] <- swapped$site[rev(i)]
+  swapped$y[i] <- swapped$y[rev(i)]
+  fixed <- s
+  fixed$y[i] <- fixed$y[rev(i)]
+  expect_equal(ht_total(swapped, "y")$se, ht_total(fixed, "y")$se)
+  expect_false(isTRUE(all.equal(ht_total(fixed, "y")$se,
+                                ht_total(s, "y")$se)))
+
   skip_if_not_installed("survey")
   for (r in sorted) {
     expect_error(as_svydesign(r), "in another order", fixed = TRUE)
@@ -399,6 +411,10 @@ test_that("a design saved by drawn 0.2.0 draws as it did", {
   old <- structure(unclass(des)[c("interval", "start", "order_by", "na_rm")],
                    class = class(des))
   expect_identical(draw(d, old, seed = 2), draw(d, des, seed = 2))
+  local_seed(2)
+  direct <- draw_design(old, d)
+  local_seed(2)
+  expect_identical(direct, draw_design(des, d))
   expect_identical(draw(d, old, seed = 2, weights = TRUE)$.row,
                    draw(d, des, seed = 2, weights = TRUE)$.row)
   expect_equal(inclusion_prob(d, old), rep(0.1, nrow(d)))

@@ -13,8 +13,9 @@
   `sample_summary()` refuse a subset, a sample bound to another, or a join
   that repeats rows. A sample saved by drawn 0.2.0 has no `.row` column and
   is still matched by position, so it is refused once the frame columns it
-  keeps show its rows in another order; `as_drawn()` rebuilds it with
-  `.row`.
+  keeps show its rows in another order, unless a column with a different
+  value in every frame row, such as an id, still matches them in order;
+  `as_drawn()` rebuilds it with `.row`.
 * **Editing the frame in place after drawing changed the sample's
   estimates.** The sample kept a reference to the frame, so a data.table
   `setkey()`, `setorder()` or `:=` on it afterwards changed the standard
@@ -383,9 +384,11 @@
   sample does. The note blamed an unlucky sample for a Sen-Yates-Grundy
   estimate that is negative on every such sample, and a constant `y` got an
   exact variance of 0. When stage one takes every cluster, as from a frame
-  of one cluster, each cluster's rows are its units, so totals, means,
-  ratios and domain means inside one cluster get the variance of a simple
-  random sample within it.
+  of one cluster, each cluster's rows are the units of the analytic
+  estimator, so totals, means, ratios and domain means inside one cluster
+  get the variance of a simple random sample within it. The jackknife
+  still deletes whole clusters, so a domain mean, ratio, quantile or
+  contrast inside one cluster gets no standard error from it.
 * `ht_mean(estimator = "ht")` with `by` refuses a frame whose `by` columns
   are missing for some rows, which could be in any domain. Each domain's
   total was divided by its frame rows with those left out, so a domain of
@@ -645,7 +648,10 @@
   jackknife and more than a fifth of the clusters were selected, the note
   gives the factor by which the jackknife inflates the variance between
   clusters. When every cluster was selected, it says that variance is zero by
-  design and points to `design_stratified()`.
+  design and points to `design_stratified()`. `variance = "jackknife"` on a
+  multistage sample without `size` gives the same factor, and when every
+  cluster was selected says that `variance = "analytic"` measures the
+  variation within clusters only.
 * A `by` domain gets a variance when a stratum or interval with one sampled
   row holds none of its units, read from the `by` columns of the frame
   stored with the sample. A domain of strata or intervals taken whole is
@@ -1111,14 +1117,14 @@
   frame reordered since the draw, which shows in the columns the rows share
   with it, and a sample short of the rows drawn, such as the rows that
   responded, part of a cluster or a row taken with certainty, are refused.
-  Text such as `"F"` read back as `FALSE`, a date-time read back in UTC and
-  an infinite value are not taken for a reordered frame. `add_fieldwork()`
-  joins fieldwork results keyed by an id to a sample, in the sample's own
-  order and keeping its design, and refuses repeated or unknown ids and
-  columns the sample already has; a sampled row with no result gets a
-  missing value. A sample that had been through a file could not be
-  estimated from, and `merge()` dropped the design. The refusal of a sample
-  without its design names both.
+  Text such as `"F"` or `"f"` read back as `FALSE`, a date-time read back
+  in UTC and an infinite value are not taken for a reordered frame.
+  `add_fieldwork()` joins fieldwork results keyed by an id to a sample, in
+  the sample's own order and keeping its design, and refuses repeated or
+  unknown ids and columns the sample already has; a sampled row with no
+  result gets a missing value. A sample that had been through a file could
+  not be estimated from, and `merge()` dropped the design. The refusal of a
+  sample without its design names both.
 * `compact_sample()` replaces the copy of the frame a weighted sample holds
   with the columns its design reads, plus any named in `keep`. Each sample
   holds its own copy of the whole frame, in memory and in every file it is
@@ -1208,7 +1214,7 @@
   `ht_total()` uses for them. For a `p` below the share of the weight held
   by the smallest sampled value, `survey`'s rule takes the second smallest
   value as the estimate and `ht_quantile()` the smallest. A `p` within
-  1e-9 above a share of the weight, such as `seq(0, 1, 0.01)[71]`, gives
+  `1e-9` above a share of the weight, such as `seq(0, 1, 0.01)[71]`, gives
   the value at that share, where `survey` and `stats::quantile(type = 1)`
   give the next. A quantile at the largest sampled value, where that
   variance is 0 whatever `y` does, gets no standard error, with a note,

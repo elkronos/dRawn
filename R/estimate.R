@@ -341,16 +341,17 @@ mean_one <- function(parts, estimator, variance, level, df, ci_method,
     est <- yv[1]
     z <- numeric(length(yv))
   }
-  declined <- if (estimator == "hajek" && variance != "none") {
-    ratio_decline(parts, rep(TRUE, length(yv)))
+  declined <- if (estimator == "hajek") {
+    linear_declines(parts, rep(TRUE, length(yv)), variance)
   }
 
   out <- estimate_one(parts, est, z, variance, level, df, what = "mean",
                       class = "drawn_mean", deff_y = yv,
                       extra = list(estimator = estimator),
                       proportion = parts$proportion, ci_method = ci_method,
-                      alternative = alternative, var_out = declined,
-                      divide_by = denom_rows(parts, estimator), ctx = ctx)
+                      alternative = alternative, var_out = declined$any,
+                      divide_by = denom_rows(parts, estimator), ctx = ctx,
+                      jk_decline = declined$jackknife)
   if (constant && identical(out$variance, 0) &&
       !identical(out$ci_scale, "beta") && any(!is_certain(pi_i))) {
     out$note <- paste(c(out$note, constant_note(yv[1], parts$proportion)),
@@ -386,13 +387,12 @@ respondent_mean <- function(parts, variance, level, df, ci_method,
     est <- yv[r][1]
     z[] <- 0
   }
-  var_out <- if (variance != "none") {
-    ratio_decline(parts, which(r), NA,
-                  subject = "The domain of rows with `y` present")
-  }
-  var_out <- var_out %||%
+  declined <- linear_declines(parts, which(r), variance, NA,
+                              subject = "The domain of rows with `y` present")
+  var_out <- declined$any %||%
     ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
-                         pi_i, variance, domain = NA, ctx = ctx)
+                         pi_i, variance, domain = NA, ctx = ctx,
+                         jk_decline = declined$jackknife)
   df <- df %||% design_df(parts$design, parts$units, parts$pop, parts$rows,
                           pi_i)
   # The interval's sample size and `n_random` count the rows behind the
@@ -734,13 +734,12 @@ check_ratio_denominator <- function(parts, total_x, name) {
 ratio_one <- function(parts, variance, level, df, alternative, ctx = NULL) {
   fit <- ratio_fit(parts$y, parts$x, parts$pi)
   check_ratio_denominator(parts, fit$total_x, ratio_name(parts$x_name, "x"))
-  declined <- if (variance != "none") {
-    ratio_decline(parts, rep(TRUE, length(parts$y)), estimate = "ratio")
-  }
+  declined <- linear_declines(parts, rep(TRUE, length(parts$y)), variance,
+                              estimate = "ratio")
   out <- estimate_one(parts, fit$ratio, fit$z, variance, level, df,
                       what = "ratio", class = "drawn_ratio", deff_y = fit$z,
-                      alternative = alternative, var_out = declined,
-                      ctx = ctx)
+                      alternative = alternative, var_out = declined$any,
+                      ctx = ctx, jk_decline = declined$jackknife)
   out$x <- parts$x_name
   out$total_y <- fit$total_y
   out$total_x <- fit$total_x
@@ -759,14 +758,12 @@ ratio_total <- function(parts, variance, level, df, alternative, ctx = NULL) {
   fit <- ratio_fit(parts$y, aux$x, parts$pi)
   check_ratio_denominator(parts, fit$total_x, ratio_name(aux$name, "x"))
   z <- aux$total * fit$z
-  declined <- if (variance != "none") {
-    ratio_decline(parts, rep(TRUE, length(parts$y)),
-                  estimate = "ratio estimator")
-  }
+  declined <- linear_declines(parts, rep(TRUE, length(parts$y)), variance,
+                              estimate = "ratio estimator")
   out <- estimate_one(parts, fit$ratio * aux$total, z, variance, level, df,
                       what = "total", class = "drawn_ht", deff_y = z,
-                      alternative = alternative, var_out = declined,
-                      ctx = ctx)
+                      alternative = alternative, var_out = declined$any,
+                      ctx = ctx, jk_decline = declined$jackknife)
   out$ratio <- fit$ratio
   out$x <- aux$name
   out$frame_total <- aux$total
@@ -1570,8 +1567,9 @@ domain_estimates <- function(parts, dom, what, estimator) {
       several <- length(dom$by) > 1L
       stop("estimator = \"ht\" divides each domain's total by its number ",
            "of frame rows, and the `by` column", if (several) "s", " ",
-           quote_names(dom$by), if (several) " are" else " is",
-           " missing in ", gap, " of the frame's ", length(dom$pop_key),
+           quote_names(dom$by),
+           if (several) " have a missing value" else " is missing",
+           " in ", gap, " of the frame's ", length(dom$pop_key),
            " rows, which could be in any domain. Fill in the frame's `by` ",
            "values, or use estimator = \"hajek\", which needs no domain ",
            "sizes.", call. = FALSE)
@@ -1603,27 +1601,31 @@ domain_estimates <- function(parts, dom, what, estimator) {
 #' The variance of every domain's estimate
 #'
 #' A Hajek mean or a ratio over one primary sampling unit is declined first,
-#' with `ratio_decline()`; `linearised` names the estimate in its note, and
-#' is `NULL` for an estimate that has no such decline. Where the design's
-#' analytic estimator is
-#' `srs_variance()` over strata, intervals or one group, every other domain is
-#' estimated in one pass with `srs_variance_by()`. A domain that pass cannot
-#' settle, because a lonely group holds some of its units or its variance
-#' overflowed, goes through `ht_variance_dispatch()` as every domain of the
-#' other designs does, with the shared `ctx`, and gets the same note and
-#' fallback as an estimate of its own.
+#' with `linear_declines()`; `linearised` names the estimate in its note, and is
+#' `NULL` for an estimate that has no such decline. A domain over one cluster of
+#' a census of clusters is declined only where the jackknife would give its
+#' variance. Where the design's analytic estimator is `srs_variance()` over
+#' strata, intervals or one group, every other domain is estimated in one pass
+#' with `srs_variance_by()`. A domain that pass cannot settle, because a lonely
+#' group holds some of its units or its variance overflowed, goes through
+#' `ht_variance_dispatch()` as every domain of the other designs does, with the
+#' shared `ctx`, and gets the same note and fallback as an estimate of its own.
 #'
 #' @noRd
 domain_variances <- function(parts, dom, est, variance, linearised, ctx) {
   k <- length(dom$levels_in)
   out <- vector("list", k)
+  jk_out <- vector("list", k)
   if (!is.null(linearised) && variance != "none") {
     psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows,
                         parts$pi)
+    jk_psu <- jackknife_units(parts, psu, variance)
     for (j in seq_len(k)) {
-      out[j] <- list(ratio_decline(parts, dom$idx[[j]], domain_frame(dom, j),
-                                   dom$labels[dom$levels_in[j]], psu,
-                                   estimate = linearised))
+      d <- linear_declines(parts, dom$idx[[j]], variance, domain_frame(dom, j),
+                           dom$labels[dom$levels_in[j]], estimate = linearised,
+                           psu = psu, jk_psu = jk_psu)
+      out[j] <- list(d$any)
+      jk_out[j] <- list(d$jackknife)
     }
   }
   open <- which(vapply(out, is.null, logical(1)))
@@ -1640,7 +1642,7 @@ domain_variances <- function(parts, dom, est, variance, linearised, ctx) {
     z[i] <- est$z[i]
     out[[j]] <- ht_variance_dispatch(parts$design, parts$units, parts$pop,
                                      parts$rows, z, parts$pi, variance,
-                                     domain_frame(dom, j), ctx)
+                                     domain_frame(dom, j), ctx, jk_out[[j]])
   }
   out
 }
@@ -1700,26 +1702,33 @@ estimate_contrast <- function(parts, dom, est, contrast, variance, level, df,
   w_row[is.na(w_row)] <- 0
   z <- w_row * est$z
   labels <- dom$labels[dom$levels_in[used]]
-  var_out <- NULL
+  var_out <- jk_decline <- NULL
   if (what == "mean" && estimator == "hajek" && variance != "none") {
     psu <- sample_units(parts$design, parts$units, parts$pop, parts$rows,
                         parts$pi)
-    notes <- unlist(lapply(seq_along(used), function(u) {
-      ratio_decline(parts, dom$idx[[used[u]]], domain_frame(dom, used[u]),
-                    labels[u], psu)$note
-    }))
-    if (length(notes)) {
-      var_out <- list(variance = NA_real_, method = "none", note = paste(
+    jk_psu <- jackknife_units(parts, psu, variance)
+    declines <- lapply(seq_along(used), function(u) {
+      linear_declines(parts, dom$idx[[used[u]]], variance,
+                      domain_frame(dom, used[u]), labels[u], psu = psu,
+                      jk_psu = jk_psu)
+    })
+    weighs <- function(notes) {
+      if (!length(notes)) return(NULL)
+      list(variance = NA_real_, method = "none", note = paste(
         c(notes, paste0("The contrast weighs ",
                         if (length(notes) > 1L) "these domains" else
                           "this domain",
                         ", so it has no standard error either.")),
         collapse = " "))
     }
+    var_out <- weighs(unlist(lapply(declines, function(d) d$any$note)))
+    jk_decline <- weighs(unlist(lapply(declines,
+                                       function(d) d$jackknife$note)))
   }
   var_out <- var_out %||%
     ht_variance_dispatch(parts$design, parts$units, parts$pop, parts$rows, z,
-                         parts$pi, variance, domain_frame(dom, used), ctx)
+                         parts$pi, variance, domain_frame(dom, used), ctx,
+                         jk_decline)
   out <- finish_estimate(value, var_out, parts, level, df, what = "contrast",
                          class = "drawn_contrast", alternative = alternative)
   gap <- if (is.na(out$variance)) compact_domain_note(parts, dom)

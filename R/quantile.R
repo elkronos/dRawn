@@ -16,7 +16,7 @@
 #' below. `p = 0` gives the smallest sampled value and `p = 1` the largest.
 #'
 #' A share of the weight equal to `p` can come out of the sums a rounding
-#' error below `p`, so a share within 1e-9 below `p` counts as reaching it.
+#' error below `p`, so a share within `1e-9` below `p` counts as reaching it.
 #' A `p` that is a rounding error above a share therefore gives the value
 #' at that share. `seq(0, 1, 0.01)[71]`, which is 0.7 plus a rounding error,
 #' gives the 21st of 30 equally weighted values, where
@@ -73,7 +73,7 @@
 #' * For a `p`, or an end of the interval for `F(q)`, below the share of the
 #'   weight held by the smallest sampled value, survey's rule gives the
 #'   second smallest value and `ht_quantile()` the smallest.
-#' * For a `p` within 1e-9 above a share of the weight, `ht_quantile()`
+#' * For a `p` within `1e-9` above a share of the weight, `ht_quantile()`
 #'   gives the value at that share and survey the next one, as "The quantile
 #'   rule" describes.
 #' * With `by`, `survey::svyby()` with `survey::svyquantile()` forms each
@@ -308,6 +308,7 @@ quantile_cells <- function(parts, dom, probs, variance, level, df, ctx) {
     sample_units(parts$design, parts$units, parts$pop, parts$rows,
                  parts$pi)
   }
+  jk_psu <- if (!is.null(psu)) jackknife_units(parts, psu, variance)
   cells <- vector("list", k * length(probs))
   for (h in seq_along(probs)) {
     fits <- lapply(steps, function(st) {
@@ -320,12 +321,13 @@ quantile_cells <- function(parts, dom, probs, variance, level, df, ctx) {
       z[i] <- (as.numeric(yv[i] <= fits[[j]]$q) - fits[[j]]$cdf) / n_hat[j]
     }
     vars <- if (is.null(dom)) {
-      declined <- if (variance != "none") {
-        ratio_decline(parts, rep(TRUE, n), psu = psu, estimate = "quantile")
-      }
-      list(declined %||%
+      declined <- linear_declines(parts, rep(TRUE, n), variance,
+                                  estimate = "quantile", psu = psu,
+                                  jk_psu = jk_psu)
+      list(declined$any %||%
              ht_variance_dispatch(parts$design, parts$units, parts$pop,
-                                  parts$rows, z, pi_i, variance, ctx = ctx))
+                                  parts$rows, z, pi_i, variance, ctx = ctx,
+                                  jk_decline = declined$jackknife))
     } else {
       domain_variances(parts, dom, list(z = z), variance, "quantile", ctx)
     }

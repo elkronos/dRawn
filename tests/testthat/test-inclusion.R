@@ -537,6 +537,10 @@ test_that("messages that differ only inside a draw are not called varied", {
                    paste("Stratum `a` is empty. This happened in 5 of the 5",
                          "simulated draws. Each of them gave the same 2",
                          "warnings like it, and this is the first."))
+  expect_identical(given(1, same_pair),
+                   paste("Stratum `a` is empty. This happened in 1 of the 1",
+                         "simulated draws. That draw gave 2 warnings like it,",
+                         "and this is the first."))
   # A repeat of one message in a draw is still one message.
   twice <- function() {
     warn_drawn("Stratum `a` is empty.", "drawn_empty_stratum")

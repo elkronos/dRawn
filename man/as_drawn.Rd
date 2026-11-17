@@ -34,26 +34,25 @@ them.
 \section{Matching rows to the frame}{
 
 With \code{by = NULL}, each row is matched through its \code{.row} column, the frame
-row \code{\link[=draw]{draw()}} recorded for it. \code{frame} must then be the frame the sample
-was drawn from, with its rows in the same order. A frame in another order,
-such as a database table read without \verb{ORDER BY}, holds other rows at
-those positions, and its strata and clusters would be wrong for the
-sample. Each column \code{data} shares with \code{frame} is therefore compared with
-the frame rows \code{.row} names, and a column whose values differ is refused.
-Numbers need to agree to about eight significant digits, fewer than a CSV
-file keeps, and a number read back from text, such as \code{"007"}, is compared
-as the number 7. Text such as \code{"F"} or \code{"T"} that a file gave back as a
-logical column is compared as the logical value \code{\link[=as.logical]{as.logical()}} reads from
-it. A date-time read back in another time zone agrees when it is the same
-instant or shows the same clock time, since \code{readr::read_csv()} and
-\code{data.table::fread()} read the clock time a CSV file holds as UTC. A
-missing value on either side is not compared, so a frame column that
-fieldwork fills in is accepted. Nor is a date that a file gave back as
-text, whose format a spreadsheet may have changed. A column changed after
-the draw, such as a corrected address, is refused too; rename it in
-\code{data}, or match on an id. A \code{data} that shares no column with \code{frame}
-besides those \code{\link[=draw]{draw()}} adds cannot be checked, so keep an id column in
-the file.
+row \code{\link[=draw]{draw()}} recorded for it. \code{frame} must then be the frame the sample was
+drawn from, with its rows in the same order. A frame in another order, such
+as a database table read without \verb{ORDER BY}, holds other rows at those
+positions, and its strata and clusters would be wrong for the sample. Each
+column \code{data} shares with \code{frame} is therefore compared with the frame rows
+\code{.row} names, and a column whose values differ is refused. Numbers need to
+agree to about eight significant digits, fewer than a CSV file keeps, and a
+number read back from text, such as \code{"007"}, is compared as the number 7.
+Text such as \code{"T"}, \code{"F"}, \code{"t"} or \code{"f"} that a file gave back as a logical
+column is compared as \code{TRUE} or \code{FALSE}, as \code{readr::read_csv()} reads it. A
+date-time read back in another time zone agrees when it is the same instant
+or shows the same clock time, since \code{readr::read_csv()} and
+\code{data.table::fread()} read the clock time a CSV file holds as UTC. A missing
+value on either side is not compared, so a frame column that fieldwork fills
+in is accepted. Nor is a date that a file gave back as text, whose format a
+spreadsheet may have changed. A column changed after the draw, such as a
+corrected address, is refused too; rename it in \code{data}, or match on an id. A
+\code{data} that shares no column with \code{frame} besides those \code{\link[=draw]{draw()}} adds cannot
+be checked, so keep an id column in the file.
 
 With \code{by}, rows are matched on the values of one or more id columns that
 \code{data} and \code{frame} share. Values are compared as \code{\link[=match]{match()}} compares them,

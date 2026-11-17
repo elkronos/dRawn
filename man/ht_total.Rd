@@ -351,9 +351,12 @@ primary sampling units, rows or clusters. Its linearised residuals sum to
 zero inside the unit that holds the whole domain, so with one unit every
 estimator gives a standard error of about 0, and \code{survey} does the same. Such
 a domain gets no standard error, with a note. When stage one of a cluster
-design takes every cluster, the units are rows, since each cluster is then in
-every sample and only its rows were drawn at random. Rows taken with
-certainty count as one unit, since every estimator holds them fixed and
+design takes every cluster, the analytic estimator's units are rows, since
+each cluster is then in every sample and only its rows were drawn at random.
+The jackknife still deletes whole clusters, so a domain inside one cluster
+gets no standard error from it, whether \code{variance = "jackknife"} asks for it
+or \code{"auto"} turns to it after the analytic estimator declines. Rows taken
+with certainty count as one unit, since every estimator holds them fixed and
 \code{as_svydesign()} hands them to \code{survey} together, so a domain whose sampled
 rows were all taken with certainty gets no standard error either, unless
 every row of it that the design could reach is certain, which makes its mean

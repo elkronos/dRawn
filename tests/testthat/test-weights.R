@@ -330,6 +330,18 @@ test_that("as_drawn() reads infinities, T/F text and other zones as equal", {
                "such as FALSE where `frame` row [0-9]+ has \"M\"")
   back$sex <- TRUE
   expect_error(as_drawn(back, des, pop), "`sex` values that differ")
+
+  # readr::read_csv() reads lowercase "t" and "f", as PostgreSQL writes a
+  # boolean, back as TRUE and FALSE.
+  flags <- pop
+  flags$paid <- ifelse(flags$id %% 3 == 0, "t", "f")
+  s <- draw(flags, des, seed = 1, weights = TRUE)
+  read <- as.data.frame(s)[, c(".prob", ".weight", ".row", "paid")]
+  read$paid <- read$paid == "t"
+  expect_equal(as_drawn(read, des, flags)$.row, s$.row)
+  read$paid <- !read$paid
+  expect_error(as_drawn(read, des, flags),
+               "`paid` values that differ from those of the `frame` rows")
 })
 
 test_that("as_drawn() refuses clusters and certain rows left out", {

@@ -370,7 +370,9 @@ simulate_draws <- function(R, seed, one) {
              "with details that differ from draw to draw.")
     } else if (within[k]) {
       paste0(" This happened in ", fmt_n(draws[k]), " of the ", fmt_n(R),
-             " simulated draws. Each of them gave the same ",
+             " simulated draws. ",
+             if (draws[k] == 1L) "That draw gave " else
+               "Each of them gave the same ",
              length(first_set[[k]]),
              " warnings like it, and this is the first.")
     } else {
