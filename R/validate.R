@@ -257,15 +257,7 @@ format_bad <- function(x, value = FALSE) {
   }
   if (is.na(x)) return("NA")
   if (!is.numeric(x)) return(a_class(x))
-  shown <- paste0(x)
-  # Without extended precision, as on Apple silicon, R's 15-digit text can
-  # miss the value: 1e-300 reads 9.99999999999999e-301. The C library's text
-  # is used when it reads back as the number and R's does not.
-  if (is.double(x) && is.finite(x) && as.numeric(shown) != x) {
-    exact <- sprintf("%.15g", x)
-    if (as.numeric(exact) == x) shown <- exact
-  }
-  shown
+  paste0(x)
 }
 
 #' A word with its indefinite article

@@ -213,8 +213,10 @@ test_that("a size too large for a number gives a census or a clear error", {
                240)
   expect_equal(plan_size(margin = 0.03, N = 240, level = 1 - 1e-16,
                          target = "proportion")$n, 240)
+  # Where R has no extended precision, as on Apple silicon, the literal
+  # 1e-300 parses as 9.99999999999999e-301, and the message shows that.
   expect_error(plan_size(margin = 1e-300, sd = 40),
-               "`margin` = 1e-300 with a spread of 40")
+               "`margin` = (1e-300|9\\.9+e-301) with a spread of 40")
   expect_error(plan_size(margin = 1e-300, sd = 40), "finite `N`")
   expect_error(plan_size(margin = 5, sd = 40, level = 1 - 1e-16),
                "lower `level`")
