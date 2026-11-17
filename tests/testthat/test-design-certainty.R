@@ -1,5 +1,5 @@
 cert_pop <- function(N = 400) {
-  set.seed(909)
+  local_seed(909)
   d <- data.frame(
     id    = seq_len(N),
     site  = rep(c("a", "b"), times = c(N * 0.6, N * 0.4)),
@@ -45,7 +45,7 @@ test_that("simulated inclusion matches the closed form", {
   des <- design_certainty("value", 1500, design_stratified("site", n = 20))
   exact <- inclusion_prob(d, des)
 
-  set.seed(21)
+  local_seed(21)
   hits <- integer(nrow(d))
   R <- 3000
   for (i in seq_len(R)) {
@@ -171,6 +171,17 @@ test_that("the design prints its parts", {
   expect_true(any(grepl("20000|20,000", out)))
 })
 
+test_that("a named threshold prints by its value alone", {
+  des <- design_certainty("value", stats::quantile(1:100, 0.9),
+                          design_simple(n = 5))
+  expect_output(print(des), "threshold  90.1\n", fixed = TRUE)
+  expect_match(design_label(des), "threshold = 90.1,", fixed = TRUE)
+  # Counts per stratum keep their names.
+  st <- design_stratified("site", allocation = c(north = 4, south = 6))
+  expect_match(design_label(st), "allocation = c(north = 4, south = 6)",
+               fixed = TRUE)
+})
+
 # ---- composition, which is where the bugs live -----------------------------
 
 test_that("the variance defers to `rest` instead of assuming a fixed size", {
@@ -231,6 +242,64 @@ test_that("every sampled row certain means an exact total, variance 0", {
   expect_match(r$note, "exact rather than estimated")
 })
 
+test_that("a random-size `rest` that drew nothing gives no variance", {
+  # With a Poisson `rest` the rows below the threshold can all be missed.
+  # They went unobserved, and the total was reported as exact with se 0.
+  d <- cert_pop(300)
+  des <- design_certainty("value", 2500,
+                          design_weighted("value", n = 1, method = "poisson"))
+  n_below <- sum(d$value < 2500)
+  for (i in 1:50) {
+    s <- draw(d, des, seed = i, weights = TRUE)
+    if (all(s$.prob == 1)) break
+  }
+  expect_true(all(s$.prob == 1))
+
+  r <- ht_total(s, "value")
+  expect_true(is.na(r$variance))
+  expect_equal(r$method, "none")
+  expect_true(all(is.na(r$ci)))
+  # No degrees of freedom either, where a total with nothing below the
+  # threshold would have Inf
+  expect_equal(r$df, 0)
+  expect_equal(ht_mean(s, "value")$df, 0)
+  expect_match(r$note, paste0("the ", n_below, " rows with `value` below ",
+                              "2,500, because `rest` drew none of them"),
+               fixed = TRUE)
+  # The reason is given once, though both estimators gave it
+  expect_length(gregexpr("drew none", r$note)[[1]], 1L)
+
+  expect_true(is.na(ht_total(s, "value", variance = "analytic")$variance))
+  expect_true(is.na(ht_total(s, "value", variance = "jackknife")$variance))
+  expect_true(is.na(ht_mean(s, "value")$se))
+})
+
+test_that("weights are refused when `rest` can never draw a row", {
+  d <- cert_pop(100)
+  des <- design_certainty("value", 2500, design_simple(n = 0))
+  expect_error(draw(d, des, seed = 1, weights = TRUE),
+               paste0("`rest` gives all ", sum(d$value < 2500), " rows with ",
+                      "`value` below 2,500 an inclusion probability of 0"),
+               fixed = TRUE)
+  expect_error(draw(d, des, seed = 1, weights = TRUE), "weights = FALSE")
+  # Without weights the draw is a cut-off sample of the certainty rows
+  s <- draw(d, des, seed = 1)
+  expect_equal(s$id, d$id[d$value >= 2500])
+})
+
+test_that("an error from `rest` says which rows it was given", {
+  d <- cert_pop(100)
+  n_below <- sum(d$value < 500)
+  des <- design_certainty("value", 500, design_simple(n = n_below + 1))
+  prefix <- paste0("In `rest`, applied to the ", n_below,
+                   " rows with `value` below 500: ")
+  expect_error(draw(d, des, seed = 1), prefix, fixed = TRUE)
+  expect_error(inclusion_prob(d, design_certainty("value", 500,
+                                                  design_weighted("value",
+                                                                  n = 5))),
+               prefix, fixed = TRUE)
+})
+
 test_that("dropping missing sizes does not shift the probabilities", {
   # certainty_split() removes rows, so positions in the reduced frame are not
   # positions in the original one. Getting that wrong shifts every probability
@@ -257,4 +326,48 @@ test_that("dropping missing sizes does not shift the probabilities", {
 
   # And a draw never selects the dropped row
   for (i in 1:20) expect_false(1 %in% draw(d, des, seed = i)$id)
+})
+
+test_that("rows above the threshold carry no degrees of freedom", {
+  d <- cert_pop(200)
+  n_above <- sum(d$value >= 2000)
+  s <- draw(d, design_certainty("value", 2000, design_simple(n = 20)),
+            seed = 1, weights = TRUE)
+  expect_equal(sum(s$.prob == 1), n_above)
+  expect_equal(ht_total(s, "value")$df, 19)
+  s2 <- draw(d, design_certainty("value", 2000,
+                                 design_stratified("site", n = 20)),
+             seed = 1, weights = TRUE)
+  expect_equal(ht_total(s2, "value")$df, 18)
+})
+
+test_that("a `rest` that drew nothing leaves no degrees of freedom", {
+  # The interval has no variance to stand on, and survey would call the total
+  # exact, so as_svydesign() refuses it.
+  d <- data.frame(id = 1:5, v = c(100, 200, 1, 2, 3), y = c(10, 20, 1, 2, 3))
+  des <- design_certainty("v", 50, design_systematic(interval = 10))
+  for (i in 1:50) {
+    s <- suppressWarnings(draw(d, des, seed = i, weights = TRUE))
+    if (nrow(s) == 2L) break
+  }
+  expect_equal(s$id, 1:2)
+  r <- ht_total(s, "y")
+  expect_true(is.na(r$variance))
+  expect_equal(r$df, 0)
+
+  skip_if_not_installed("survey")
+  expect_error(as_svydesign(s), paste0("`sample` holds none of the 3 rows ",
+                                       "with `v` below 50"), fixed = TRUE)
+})
+
+test_that("a frame with the column the draw tags rows with is refused", {
+  d <- data.frame(id = 1:20, w = c(50, 1:19), .drawn_certainty_id = 0)
+  des <- design_certainty("w", 40, design_simple(n = 3))
+  expect_error(draw(d, des, seed = 1),
+               "`data` already has a column called `.drawn_certainty_id`.",
+               fixed = TRUE)
+  names(d)[3] <- "tag"
+  s <- draw(d, des, seed = 1)
+  expect_equal(nrow(s), 4L)
+  expect_true(1L %in% s$id)
 })

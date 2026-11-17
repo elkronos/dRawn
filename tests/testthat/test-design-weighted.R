@@ -1,5 +1,5 @@
 weighted_df <- function() {
-  set.seed(99)
+  local_seed(99)
   data.frame(id = 1:100, weight = stats::runif(100, 0.1, 10))
 }
 
@@ -63,4 +63,124 @@ test_that("over-drawing without replacement is refused", {
   d <- data.frame(id = 1:5, w = 1:5)
   expect_error(draw(d, design_weighted("w", n = 10), seed = 1),
                "cannot exceed the number of rows")
+})
+
+test_that("weights draw() refuses are refused on every path, naming the column", {
+  # inclusion_prob() accepted logical weights and stopped inside base R on a
+  # factor; joint_prob(), draw(weights = TRUE) and plot() followed it.
+  pop <- data.frame(id = 1:20, size = 1:20, other = 1:20)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  bad <- list(logical = rep(TRUE, 20), factor = factor(rep(1:4, 5)),
+              character = as.character(1:20))
+  for (type in names(bad)) {
+    pop$size <- bad[[type]]
+    want <- paste0("`size` must be numeric, not ", type, ".")
+    designs <- list(
+      design_weighted("size", n = 5),
+      design_weighted("size", n = 5, method = "systematic"),
+      design_weighted("size", n = 5, method = "poisson"),
+      design_certainty("other", 18, design_weighted("size", n = 5,
+                                                    method = "poisson"))
+    )
+    for (des in designs) {
+      info <- paste(type, drawn:::design_label(des))
+      expect_error(draw(pop, des, seed = 1), want, fixed = TRUE, info = info)
+      expect_error(inclusion_prob(pop, des), want, fixed = TRUE, info = info)
+      expect_error(sampling_weight(pop, des), want, fixed = TRUE, info = info)
+      expect_error(joint_prob(pop, des, rows = 1:3), want, fixed = TRUE,
+                   info = info)
+      expect_error(draw(pop, des, seed = 1, weights = TRUE), want,
+                   fixed = TRUE, info = info)
+      expect_error(plot(des, pop, type = "probability"), want, fixed = TRUE,
+                   info = info)
+    }
+  }
+})
+
+test_that("a weight of 0 is refused with the column and what to do", {
+  pop <- data.frame(w = c(0, 0, 0, 1:20))
+  for (m in c("successive", "systematic", "poisson")) {
+    des <- design_weighted("w", n = 5, method = m)
+    expect_error(draw(pop, des, seed = 1),
+                 "`w` must be positive, but 3 weight(s) are 0 or negative.",
+                 fixed = TRUE)
+    expect_error(inclusion_prob(pop, des), "Drop those rows from `data`",
+                 fixed = TRUE)
+  }
+  expect_error(inclusion_prob(pop, design_spread("w", n = 5, size = "w")),
+               "`w` must be positive", fixed = TRUE)
+})
+
+test_that("a design without strata draws the rows it drew before", {
+  d <- data.frame(id = 1:30, w = c(1:29, 90))
+  for (m in c("systematic", "poisson")) {
+    des <- design_weighted("w", n = 6, method = m)
+    expect_null(des$strata)
+    expect_null(des$allocation)
+    pi <- pps_pi(d$w, 6)
+    old <- with_seed(4, if (m == "poisson") {
+      which(stats::runif(30) < pi)
+    } else {
+      systematic_pps(pi)
+    })
+    expect_identical(draw(d, des, seed = 4)$id, old)
+  }
+  expect_false(any(grepl("strata|allocation",
+                         utils::capture.output(print(
+                           design_weighted("w", n = 6))))))
+})
+
+test_that("strata and allocation print, and other designs are not stratified", {
+  des <- design_weighted("w", n = 6, method = "systematic", strata = "g",
+                         allocation = "equal")
+  out <- utils::capture.output(print(des))
+  expect_true(any(grepl("strata +\"g\"", out)))
+  expect_true(any(grepl("allocation +\"equal\"", out)))
+  expect_error(allocation_table(data.frame(w = 1:4, g = "a"),
+                                design_weighted("w", n = 2,
+                                                method = "systematic")),
+               "design_weighted() with `strata`", fixed = TRUE)
+})
+
+test_that("strata of a weighted design are summarised from the frame", {
+  d <- data.frame(id = 1:40, g = rep(c("x", "y"), c(30, 10)),
+                  w = rep(1:4, 10))
+  s <- draw(d, design_weighted("w", n = 8, method = "systematic",
+                               strata = "g"), seed = 1, weights = TRUE)
+  sm <- sample_summary(s)
+  expect_identical(sm$group_col, "g")
+  expect_identical(sm$by_group$drawn, c(6L, 2L))
+  expect_identical(sm$by_group$in_frame, c(30L, 10L))
+  s$g <- "renamed"
+  expect_identical(sample_summary(s)$by_group$drawn, c(6L, 2L))
+
+  # Rows dropped for a missing weight are in no stratum, as in
+  # allocation_table().
+  d$w[1:4] <- NA
+  des <- design_weighted("w", n = 8, method = "systematic", strata = "g",
+                         na_rm = TRUE)
+  b <- sample_summary(draw(d, des, seed = 1, weights = TRUE))$by_group
+  expect_identical(b$in_frame, c(26L, 10L))
+  expect_identical(b$in_frame, allocation_table(d, des)$N)
+})
+
+test_that("counts for strata that na_rm empties name that reason", {
+  d <- data.frame(g = rep(c("a", "b", "c", "d"), each = 5), w = 1)
+  d$w[d$g %in% c("b", "d")] <- NA
+  des <- design_weighted("w", method = "poisson", strata = "g", na_rm = TRUE,
+                         allocation = data.frame(g = c("a", "b", "c", "d"),
+                                                 n = c(2, 1, 2, 1)))
+  expect_error(draw(d, des, seed = 1),
+               paste0("`allocation` gives counts for strata `b`, `d`, but ",
+                      "na_rm = TRUE drops every row of them for a missing ",
+                      "weight in `w`. Fill in those values, or leave those ",
+                      "strata out of `allocation`."), fixed = TRUE)
+  expect_error(inclusion_prob(d, des), "drops every row of them",
+               fixed = TRUE)
+  # A stratum the frame does not have is still refused as one.
+  typo <- design_weighted("w", method = "poisson", strata = "g",
+                          na_rm = TRUE, allocation = c(a = 2, c = 2, e = 1))
+  expect_error(draw(d, typo, seed = 1),
+               "names 1 stratum that `data` does not have: `e`", fixed = TRUE)
 })

@@ -24,7 +24,6 @@ reference:
   - designs
   - plot.drawn_design
   - is_design
-  - draw_design
 
 - title: What a design knows before you draw
   desc: The probabilities that make a sample estimable.
@@ -32,22 +31,40 @@ reference:
   - inclusion_prob
   - sampling_weight
   - joint_prob
+  - certainty_set
+  - allocation_table
 
 - title: Estimating from a sample
   desc: >
-    Totals, means and proportions, overall or by domain, with the variance
-    estimator the design calls for and a design effect.
+    Totals, means, ratios, proportions and quantiles, overall or by domain,
+    with the variance estimator the design calls for and a design effect.
   contents:
   - ht_total
   - ht_mean
+  - ht_ratio
+  - ht_quantile
   - deff
+
+- title: From fieldwork to estimate
+  desc: >
+    Join fieldwork results to a sample, replace units found unavailable from
+    a reserve list, rebuild a sample read back from a file, and drop frame
+    columns before saving or sharing one.
+  contents:
+  - add_fieldwork
+  - use_reserves
+  - as_drawn
+  - compact_sample
 
 - title: Planning and checking
   desc: How many rows to draw, what you actually got, and where to go next.
   contents:
   - plan_size
+  - deff_cluster
   - sample_summary
   - as_svydesign
+  - replicate_weights
+  - frame_totals
 
 - title: Equal-probability designs
   desc: Every unit equally likely, or equally likely within a group.
@@ -81,6 +98,11 @@ reference:
 - title: Resampling
   contents:
   - design_bootstrap
+
+- title: Extending
+  desc: A design class of your own, drawn by its own method.
+  contents:
+  - draw_design
 
 articles:
 - title: Guides

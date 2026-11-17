@@ -14,6 +14,7 @@
   main = NULL,
   palette = NULL,
   coords = NULL,
+  sub = NULL,
   ...
 )
 }
@@ -30,18 +31,40 @@ reproducible.}
 \item{ncol}{Dots per row in the \code{"selection"} grid. Defaults to whatever
 fills the panel at its current aspect ratio.}
 
-\item{max_dots}{Frames larger than this are shown as an evenly spaced
-subset, noted under the title. Keeps individual dots visible.}
+\item{max_dots}{The most dots or steps to draw, which keeps them visible.
+A larger frame is shown in runs of consecutive rows: in \code{"selection"} a
+dot stands for a run and is filled when any row in it is selected, and in
+\code{"probability"} a step spans the lowest and highest probability in its
+run. \code{"map"} draws every selected row and at most \code{max_dots} of the
+others, evenly spaced through the frame. The counts under the title
+cover the whole frame.}
 
-\item{main}{Title. Defaults to a description of the design.}
+\item{main}{Title, a single string, or one expression, a call or a name
+such as \code{quote(alpha)} drawn as plotmath. Defaults to a description of
+the design: its constructor and the arguments that differ from their
+defaults.}
 
-\item{palette}{Named list overriding any of \code{surface}, \code{ink}, \code{secondary},
-\code{muted}, \code{recessive}, \code{accent}, \code{fill}, \code{rule}.}
+\item{palette}{Named list, or named character vector, of colours
+overriding any of \code{surface}, \code{ink}, \code{secondary}, \code{muted}, \code{recessive},
+\code{accent}, \code{fill}, \code{rule}. Each entry is one colour, a name from
+\code{\link[grDevices:colors]{grDevices::colors()}} or a code such as \code{"#1B6B52"}. Other names are
+refused.}
 
-\item{coords}{For \code{type = "map"}, the two columns to place rows by, \code{c(x, y)}. Defaults to the design's own \code{across} (\code{\link[=design_spread]{design_spread()}}) or
-\code{coords} (\code{\link[=design_spatial]{design_spatial()}}); required for any other design.}
+\item{coords}{For \code{type = "map"}, the two columns to place rows by, \code{c(x, y)}, or one POINT geometry column. Defaults to the design's own \code{across}
+(\code{\link[=design_spread]{design_spread()}}) or \code{coords} (\code{\link[=design_spatial]{design_spatial()}}); required for any
+other design. Date and date-time columns get date axes.}
 
-\item{...}{Passed to the underlying plot call.}
+\item{sub}{A single string, added to the end of the line under the title,
+after the counts the plot puts there.}
+
+\item{...}{Graphical parameters for the call that sets up the panel, such
+as \code{xlim}, \code{ylim}, \code{asp} or \code{log}. They replace the plot's own: \code{asp = 1}
+gives any map the same scale on both axes, and \code{xlim} and \code{ylim} zoom in,
+with the rules and the mean line of \code{"probability"} following them.
+Axes and labels drawn by base graphics are off (\code{axes = FALSE}, \code{ann = FALSE}) unless turned on here. The dots, steps and titles keep their
+own look, so \code{col}, \code{cex} and \code{pch} here change nothing visible; their
+colours come from \code{palette}. A name that is not a graphical parameter is
+refused.}
 }
 \value{
 \code{x}, invisibly. Called for the plot.
@@ -57,18 +80,36 @@ the selected ones filled in. Designs look distinct: simple random
 sampling scatters, systematic makes a lattice, cluster sampling takes
 solid contiguous runs, and probability-proportional-to-size thickens
 wherever the weight is large. If your frame is sorted by something
-meaningful, an unintended pattern shows up immediately.}
+meaningful, an unintended pattern shows up immediately. A design that
+samples with replacement rings each row it drew more than once, and the
+count under the title gives the draws and the distinct rows. A
+bootstrap is shown by its first replicate.}
 \item{\code{"probability"}}{Each row's inclusion probability across the frame,
-as a step. Flat means every row had the same chance; plateaus mean
-strata; a rise means size-proportional selection. Rows the design can
-never reach sit at zero and are marked, which is usually the thing worth
-finding out.}
+as a step, with frame rows along the axis. Flat means every row had the
+same chance; plateaus mean strata; a rise means size-proportional
+selection. Rows the design can never reach sit at zero and are marked,
+which is usually the thing worth finding out. The count of those rows,
+the count taken with certainty, the range and the mean cover every row
+of the frame.}
 \item{\code{"map"}}{Every row placed by two columns — coordinates, or any
 two numeric variables — with the selected ones filled in. This is the
 view for \code{\link[=design_spread]{design_spread()}} and \code{\link[=design_spatial]{design_spatial()}}, where what matters is
 how evenly the sample covers the space: compare a simple random sample's
-clumps and gaps against a spread one.}
+clumps and gaps against a spread one. For \code{\link[=design_spatial]{design_spatial()}} the
+outline of \code{region} is drawn as well, with each edge of a
+longitude/latitude region following its great circle under spherical
+geometry, which is how the design decides which rows are inside.
+The coordinates of \code{\link[=design_spatial]{design_spatial()}}, and those of \code{\link[=design_spread]{design_spread()}}
+with \code{scale = FALSE}, get the same scale on both axes (\code{asp = 1}, or
+\code{1 / cos()} of the middle latitude for longitude and latitude), so the
+map shows the distances the design works with; other columns fill the
+panel. When \code{across} names more than two columns, the first two place
+the rows. The line under the title names the columns left out, counts
+the selected rows that have no position and so are not drawn, and says
+when the background is thinned.}
 }
+
+A design with \code{reserve} is shown by its main sample, without the reserves.
 
 Base graphics, so there is no plotting dependency to install.
 }

@@ -3,11 +3,21 @@
 ## Test environments
 
 * local: Ubuntu 24.04, R 4.3.3
-* GitHub Actions: macOS, Windows and Ubuntu, on R-release, R-devel and oldrel-1
+* GitHub Actions: macOS and Windows on R-release; Ubuntu on R-devel,
+  R-release, oldrel-1 and R 4.1, the oldest version DESCRIPTION allows. One
+  more Ubuntu run on R-release builds the PDF manual and fails on any NOTE,
+  with the CRAN incoming checks turned off.
 
 ## R CMD check results
 
-0 errors | 0 warnings | 0 notes
+0 errors | 0 warnings | 1 note
+
+* This is a new submission.
+
+If the NOTE also lists possibly misspelled words in DESCRIPTION, they are
+names spelled as published: Grafström, Lundström and Schelin proposed the
+local pivotal method, Deville the variance approximation, and Horvitz is one
+of the two names in Horvitz-Thompson.
 
 ## What this package is for
 
@@ -22,8 +32,10 @@ draw(data, plan, seed = 1, weights = TRUE)
 Twelve designs share one contract: `n` always means the total drawn,
 `allocation` always means how a total is split, `na_rm` always means the same
 thing on both the draw and the probability path, `replace` always rules out
-design weights, the caller's RNG stream is restored on exit, and the result is a
-data frame with the input's class and column order. A design can also report its
+design weights, a `seed` is applied with R's default generator and the caller's
+RNG stream is restored on exit (with `seed = NULL` the draw uses and advances
+that stream), and the result is a data frame with the input's class and column
+order. A design can also report its
 own first- and second-order inclusion probabilities, so `ht_total()` and
 `ht_mean()` return an estimate — overall or by domain — with a standard error
 from the variance estimator the literature recommends for that design, a
@@ -43,9 +55,9 @@ three, provides joint inclusion probabilities for several of them, and adds
 calibration, balanced sampling via the cube method, and ratio and regression
 estimators. Anyone who needs Brewer, Midzuno, Sampford, Tillé, pivotal or
 maximum-entropy sampling should use `sampling`, and the documentation for
-`design_weighted()` and `joint_prob()` says so by name.
+`design_weighted()` says so by name.
 
-`drawn` differs in three ways rather than in statistical novelty:
+`drawn` differs in four ways rather than in statistical novelty:
 
 1. **Interface.** `sampling` is a library of functions over vectors that return
    index tables, which you then join back to your data. `drawn` takes a data
@@ -82,8 +94,10 @@ expresses a `drawn` design in `survey`'s own terms — strata, cluster ids, two
 stages, `survey::poisson_sampling()`, Brewer's PPS approximation, or a
 taken-whole certainty stratum — so that the two packages' totals, standard
 errors, domain estimates, degrees of freedom and proportion intervals agree to
-floating point wherever `survey` models the same design. The tests assert that
-agreement design by design.
+floating point wherever `survey` models the same design. Units taken with
+certainty go to `survey` as one sampling unit per stratum, taken whole, so
+neither package counts them among the degrees of freedom. The tests assert
+that agreement design by design, certainty designs included.
 
 **`spsurvey`** implements GRTS spatially balanced designs and an environmental
 monitoring workflow; it is the deeper tool for that field.
@@ -127,10 +141,21 @@ fails it on a function defined in more than one file.
 Documented in `?as_svydesign` and asserted in the tests:
 
 * systematic PPS — neither package has its joint probabilities; `ht_total()`
-  uses Deville's approximation and `survey` Brewer's, and they agree within
-  about 0.2%;
+  uses Deville's approximation and `survey` Brewer's. The degrees of freedom
+  agree. In simulations on frames of 100 to 300 rows with gamma and
+  lognormal sizes, standard errors of totals agreed within 3%, usually
+  within 0.5%, and those of means differed typically by 3 to 7%, and by up
+  to 12%, at a sampling fraction of one half. Where the probabilities below
+  certainty spread from 0.05 to 0.95, totals differed by up to 9% and means
+  by up to 17%;
+* a census — both packages report a variance of 0, and `survey::degf()`
+  gives `n - 1` where `ht_total()` gives `Inf`;
 * `design_spread()` — `survey` has no estimator for a spatially balanced sample
-  and is given the first-order design, so its standard error is larger;
+  and is given the first-order design. Its standard error is larger than
+  `ht_total()`'s when `y` varies smoothly over the coordinates, and smaller in
+  most samples when `y` has no spatial pattern or the sampling fraction is
+  large, because `ht_total()`'s local mean approximation has no finite
+  population correction;
 * systematic sampling — `survey`, told only `ids = ~1`, returns the
   simple-random variance; `ht_total()` uses the successive-difference
   approximation. Neither is design-unbiased, because no such estimator exists.

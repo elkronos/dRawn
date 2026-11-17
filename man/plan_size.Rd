@@ -12,46 +12,112 @@ plan_size(
   level = 0.95,
   deff = 1,
   response = 1,
-  target = c("mean", "proportion", "total")
+  target = c("mean", "proportion", "total"),
+  strata = NULL,
+  allocation = c("proportional", "equal", "neyman"),
+  min_per_stratum = 2L
 )
 }
 \arguments{
-\item{margin}{Half-width of the confidence interval you want.}
+\item{margin}{Half-width of the confidence interval you want, the
+half-width the plan expects (see "Where the formula comes from"). For a
+proportion it is a proportion, and a \code{margin} of 1 or more is refused.
+Several margins give several plans (see "Several plans at once").}
 
 \item{sd}{Standard deviation of the measure, for \code{target = "mean"} or
-\code{"total"}.}
+\code{"total"}, as \code{\link[stats:sd]{stats::sd()}} computes it. Not used with \code{strata}.}
 
-\item{p}{Expected proportion, for \code{target = "proportion"}.}
+\item{p}{Expected proportion, for \code{target = "proportion"}. Not used with
+\code{strata}.}
 
-\item{N}{Population size. \code{Inf} for an effectively unbounded frame.}
+\item{N}{Population size, at least 1. \code{Inf} for an effectively unbounded
+frame. An estimated \code{N} need not be a whole number; \code{n} is at most
+\code{floor(N)}. Not used with \code{strata}, whose sizes add up to it.}
 
 \item{level}{Confidence level.}
 
-\item{deff}{Design effect to inflate by. \code{1} assumes simple random sampling.}
+\item{deff}{Design effect to inflate by: a positive number, or the result
+of \code{\link[=ht_mean]{ht_mean()}} for a mean or a proportion, or of \code{\link[=ht_total]{ht_total()}} for a
+total, on a pilot sample. \code{1} assumes simple random sampling. A number
+should come from \code{\link[=deff]{deff()}} on the estimator you will report, rounded up,
+or from \code{\link[=deff_cluster]{deff_cluster()}} (see "The corrections"). With \code{strata} it
+inflates the variance of the stratified sample, as for clusters sampled
+within strata.}
 
 \item{response}{Expected response rate, between 0 and 1.}
 
 \item{target}{\code{"mean"}, \code{"proportion"} or \code{"total"}. For \code{"total"} the
 margin is on the population total and \code{N} must be finite.}
+
+\item{strata}{\code{NULL}, or a data frame with a row per stratum, to plan a
+stratified sample (see "Planning a stratified sample"). Its columns
+are those that name the strata; \code{N}, the rows of the frame in each
+stratum; \code{sd}, the standard deviation of the measure within each
+stratum, or for a proportion \code{p}, the expected proportion within it;
+and, with \code{allocation = "neyman"} only, an optional \code{cost}, the cost
+of one row in each stratum.}
+
+\item{allocation}{How \code{n} is split over \code{strata}: \code{"proportional"},
+\code{"equal"} or \code{"neyman"}, as in \code{\link[=design_stratified]{design_stratified()}}. Neyman shares are
+proportional to \code{N_h * S_h}, or \code{N_h * S_h / sqrt(cost_h)} with a
+\code{cost} column.}
+
+\item{min_per_stratum}{The fewest rows a stratum is allocated, as in
+\code{\link[=design_stratified]{design_stratified()}}, 1 or more. A stratum smaller than this is taken
+whole. The default of 2 is the fewest that give each stratum a
+variance, which \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} need from every stratum
+not taken whole. 0, the default of \code{\link[=design_stratified]{design_stratified()}}, is refused,
+since a split without a floor can leave a small stratum without rows,
+and the estimate then leaves it out.}
 }
 \value{
-A list with a \code{print()} method, holding:
+A plan, a list of class \code{drawn_plan} with a \code{print()} method,
+or for several plans a data frame (see "Several plans at once"). A plan
+holds:
 \describe{
-\item{\code{n}}{Draw this many. Never more than \code{N}.}
+\item{\code{n}}{Draw this many. Never more than \code{N}, and without \code{strata}
+at least two when the frame has two rows or more.}
 \item{\code{n_effective}}{What you expect to analyse once \code{response} has
 taken its share.}
-\item{\code{capped}}{\code{TRUE} when the frame is not large enough to reach the
-margin at all, however you sample it.}
-\item{\code{short}}{\code{TRUE} when the frame could reach the margin but not at
-this \code{response} rate, so \code{n} is the whole frame and the margin
-achieved will be wider than the one asked for.}
+\item{\code{capped}}{\code{TRUE} when only a census meets the margin, so \code{n} is
+every row of the frame. A census meets any margin when everyone
+responds.}
+\item{\code{short}}{\code{TRUE} when a sample smaller than the frame would meet
+the margin if everyone responded, but not at this \code{response} rate,
+so \code{n} is the whole frame and the margin achieved will be wider than
+the one asked for. It is never \code{TRUE} with \code{capped}.}
+\item{\code{raised}}{\code{TRUE} when the margin alone needs one row, and
+\code{n_effective} was raised to two, the fewest that give a standard
+error and an interval.}
 \item{\code{margin}, \code{level}, \code{N}, \code{deff}, \code{response}, \code{target}}{The inputs,
-returned so the assumptions travel with the number.}
+returned so the assumptions travel with the number. \code{deff} is the
+number used, also when an estimate was passed.}
+\item{\code{p}}{The expected proportion for a proportion, and \code{NA} for a
+mean or a total.}
 \item{\code{n_needed}}{Rows that would reach the margin if everyone
-responded. Equal to \code{n_effective} unless \code{short} is \code{TRUE}.}
-\item{\code{spread}}{The standard deviation used — \code{sd}, or
-\code{sqrt(p * (1 - p))} for a proportion.}
+responded, two at least as for \code{n_effective}. Equal to \code{n_effective}
+unless the whole frame is drawn at a \code{response} below 1.}
+\item{\code{spread}}{The standard deviation used, \code{sd}, or
+\code{sqrt(p * (1 - p))} for a proportion. \code{NA} with \code{strata}.}
 }
+
+With \code{strata} there are four more, and \code{raised} is always \code{FALSE},
+since \code{min_per_stratum} sets the floor:
+\describe{
+\item{\code{allocation}}{The rows to draw from each stratum, a data frame
+of the strata columns and \code{n}, in the order of \code{strata}. Pass it to
+\code{\link[=design_stratified]{design_stratified()}} as \code{allocation} to draw that split.}
+\item{\code{strata}}{The strata as given, checked, with \code{n} added.}
+\item{\code{rule}, \code{min_per_stratum}}{The \code{allocation} rule and the floor
+used.}
+}
+
+A plan can be passed as \code{n} to any design that takes \code{n}, such as
+\code{design_simple(n = plan)}, which draws \code{plan$n} rows. \code{as.data.frame()}
+turns it into a data frame of one row, with a column for each field
+above, except that a stratified plan has the number of \code{strata} in
+place of the two data frames. Several plans at once give a data frame
+of those rows, one per plan.
 }
 \description{
 Solves for \code{n} given the precision you want, rather than asking you to guess
@@ -67,29 +133,120 @@ varies:
 range divided by four as a rough stand-in.
 \item For a \strong{proportion}, a \code{p}. Leave it at \code{0.5}, the most pessimistic value,
 unless you have a better guess; that is the honest default because it
-maximises the required size.
+maximises the required size. The margin is a proportion too, \code{0.03} for
+3 percentage points.
 }
+
+\code{sd} given for a proportion, or \code{p} for a mean or a total, is not used,
+and \code{plan_size()} warns that it is ignored.
+
+For a stratified sample, give the size and the spread of each stratum in
+\code{strata} instead (see "Planning a stratified sample").
 }
 
 \section{The corrections}{
 
 \code{N} applies a finite population correction: sampling 400 from 500 is very
 different from 400 from 500,000, and past a certain point a bigger frame
-stops mattering. \code{deff} inflates for the design — pass the \code{\link[=deff]{deff()}} from a
-comparable past sample, since a clustered design of 400 may carry the
-information of 100. \code{response} inflates for non-response: at \code{0.6} you draw
+stops mattering. \code{response} inflates for non-response: at \code{0.6} you draw
 enough to end up with what you need.
+
+\code{deff} inflates for the design, since a clustered design of 400 may carry
+the information of 100. Before any pilot, \code{\link[=deff_cluster]{deff_cluster()}} gives the
+design effect of taking \code{m} rows from each cluster from their intraclass
+correlation. Measure it with \code{\link[=deff]{deff()}} on a comparable past
+sample, using the estimator you will report: \code{\link[=ht_mean]{ht_mean()}} for a mean or a
+proportion, and \code{\link[=ht_total]{ht_total()}} for a total. The two design effects differ for
+the same sample, and can differ many times over. In one cluster sample
+with clusters of 2 to 40 rows, the total's design effect was 28 and the
+mean's 0.66, and a total planned with the mean's figure came out a small
+fraction of the size it needed. A total reported as \code{N} times a mean takes
+the mean's design effect, and is planned as a mean with \code{margin / N}. You
+can pass the result of \code{ht_mean()} or \code{ht_total()} itself as \code{deff}, and
+\code{plan_size()} refuses one of the wrong kind for \code{target}.
+
+A design effect from one pilot is an estimate, and a noisy one, which
+comes out below the truth more often than above it. Round it up. \code{\link[=deff]{deff()}}
+gives \code{NA} for a pilot without a variance estimate, such as one taken with
+\code{variance = "none"}, a census, or one with a single cluster, and for one in
+which \code{y} took a single value. It is \code{NA} too for a mean from
+\code{ht_mean(na_rm = TRUE)} with \code{y} missing in some sampled rows, since the
+rows with \code{y} are a domain, whose design effect is not estimated. Such a
+pilot cannot supply a design effect, and \code{plan_size()} refuses an \code{NA}.
+It refuses an estimate from \code{survey} too, such as
+\code{survey::svymean(deff = TRUE)}, whose value is the estimate itself; pass
+\code{survey::deff()} of it instead.
+}
+
+\section{Planning a stratified sample}{
+
+With \code{strata}, \code{plan_size()} plans a stratified simple random sample, as
+\code{\link[=design_stratified]{design_stratified()}} draws one. For each total \code{n} it splits \code{n} over
+the strata as that design would, by the same \code{allocation} rule, the
+floor \code{min_per_stratum} and largest-remainder rounding, with no stratum
+given more rows than it has, and works out the variance of the
+stratified mean,
+\code{deff * sum(W_h^2 * (1 / n_h - 1 / N_h) * S_h^2)} with \code{W_h = N_h / N}
+(Cochran 1977, chapter 5). For a proportion \code{S_h^2} is
+\code{N_h * p_h * (1 - p_h) / (N_h - 1)}. The plan is the smallest \code{n} whose
+variance is at most \code{(margin / z)^2}, with \code{margin / N} for a total.
+\code{min_per_stratum} must be 1 or more, since an estimate leaves a stratum
+without rows out. Without a floor, proportional allocation gives a
+stratum of one row in a frame of 200,000 its first row at \code{n} of about
+100,000, and the plan would be that large. The rounded split can take a
+row from one stratum as \code{n} grows, so the variance does not always fall
+with \code{n}, and the search checks each \code{n} from the first that could meet
+the margin.
+
+\code{response} divides \code{n} as without strata, and the rows to draw are split
+by the same rule. The split is returned as \code{allocation}, which
+\code{\link[=design_stratified]{design_stratified()}} takes as the count for each stratum. Passing the
+plan as \code{n} instead lets the design split \code{n} again by its own rule and
+\code{min_per_stratum}, whose default there is 0, which can leave a small
+stratum without rows.
+}
+
+\section{Several plans at once}{
+
+\code{margin}, \code{sd}, \code{p}, \code{deff} and \code{response} each take one value, or
+several for several plans. Those with one value are used for every plan,
+and those with several must have the same number, one per plan, so
+\code{plan_size(margin = c(3, 5, 10), sd = 40)} plans three margins at the
+same spread. The result is then a data frame with a row per plan, as
+\code{as.data.frame()} gives for each, without the split over strata or the
+printed notes.
 }
 
 \section{Where the formula comes from}{
 
-\code{n0 = (z * spread / margin)^2 * deff}, then Cochran's finite population
-correction \code{n0 / (1 + (n0 - 1) / N)}, then division by \code{response} (Cochran
-1977, section 4.4; Valliant, Dever and Kreuter 2018, chapter 3). \code{z} is the
-normal quantile. The interval \code{\link[=ht_total]{ht_total()}} reports uses t on the design's
-degrees of freedom, which is slightly wider when those are few — with a
-handful of clusters, plan on more clusters rather than trusting the margin
-to the last digit.
+\code{n0 = (z * spread / margin)^2 * deff} is the size for an unbounded frame,
+with \code{z} the normal quantile for \code{level} and, for a total, \code{margin / N} as
+the margin on the mean. For a mean or a total the finite population
+correction gives \code{n0 / (1 + n0 / N)}, the smallest \code{n} with
+\code{(1 / n - 1 / N) * deff * sd^2 <= (margin / z)^2}. For a proportion, whose
+variance \code{p * (1 - p)} has the divisor \code{N} rather than \code{N - 1}, it gives
+\code{n0 / (1 + (n0 - 1) / N)}. The result is rounded up, raised to two when it
+is one, and divided by \code{response} (Cochran 1977, chapter 4; Valliant,
+Dever and Kreuter 2018, chapter 3).
+
+\code{margin} is the half-width the plan expects, the usual convention for
+sizing a sample: the estimate from a sample of size \code{n} lands within
+\code{margin} of the truth with probability about \code{level}. The interval a
+sample reports is built from that sample's own estimate of the variance,
+which comes out above the planned variance about as often as below it, so
+the reported half-width is wider than \code{margin} about half the time.
+
+That interval also uses t on the design's degrees of freedom rather than
+\code{z}, which matters when the primary sampling units are few. With 3, 4 and
+6 clusters in one stratum, which give 2, 3 and 5 degrees of freedom, the
+95\% t quantile is 2.2, 1.6 and 1.3 times \code{z}. \code{plan_size()} counts rows
+and knows nothing of clusters, so when you turn \code{n} into a few clusters,
+plan more of them.
+
+For a proportion, \code{\link[=ht_mean]{ht_mean()}} reports an interval on the logit scale, which
+is asymmetric. When \code{p} is small its upper arm is longer than its lower one,
+and exceeds \code{margin} in most samples even when the estimate is as precise
+as planned.
 }
 
 \examples{
@@ -105,6 +262,35 @@ plan_size(margin = 5, sd = 40, N = 20000, deff = 2.5, response = 0.7)
 # A total, to within 100,000 across a 20,000-row frame
 plan_size(margin = 1e5, sd = 40, N = 20000, target = "total")
 
+# Clusters of ten rows, whose rows correlate at 0.05, before any pilot
+plan_size(margin = 5, sd = 40, N = 20000,
+          deff = deff_cluster(m = 10, icc = 0.05))
+
+# Three margins at once, one plan per row
+plan_size(margin = c(3, 5, 10), sd = 40, N = 20000)
+
+# A plan is a valid `n`
+design_simple(n = plan_size(margin = 5, sd = 40, N = 20000))
+
+# Three strata, with the spread of each from an earlier survey
+bands <- data.frame(band = c("small", "medium", "large"),
+                    N = c(1200, 600, 200), sd = c(10, 25, 80))
+plan <- plan_size(margin = 2, strata = bands, allocation = "neyman")
+plan
+frame <- data.frame(id = 1:2000,
+                    band = rep(bands$band, times = bands$N))
+s <- draw(frame, design_stratified("band", allocation = plan$allocation),
+          seed = 1)
+table(s$band)
+
+# The design effect of a cluster pilot, passed as the estimate itself
+pop <- data.frame(cl = rep(paste0("c", 1:50), each = 8))
+pop$y <- rep(seq(10, 59), each = 8) + rep(c(-3, 3), 200)
+pilot <- draw(pop, design_cluster("cl", n_clusters = 6), seed = 1,
+              weights = TRUE)
+plan_size(margin = 3, sd = sd(pilot$y), N = nrow(pop),
+          deff = ht_mean(pilot, "y"))
+
 }
 \references{
 Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
@@ -115,6 +301,7 @@ Valliant, R., Dever, J. A. and Kreuter, F. (2018). \emph{Practical Tools for
 Designing and Weighting Survey Samples}, 2nd ed. Springer.
 }
 \seealso{
-\code{\link[=deff]{deff()}} to measure the design effect of a past sample, \code{\link[=draw]{draw()}} to
+\code{\link[=deff]{deff()}} to measure the design effect of a past sample,
+\code{\link[=deff_cluster]{deff_cluster()}} for one from an intraclass correlation, \code{\link[=draw]{draw()}} to
 take the sample.
 }

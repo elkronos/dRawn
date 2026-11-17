@@ -18,17 +18,27 @@ sampling_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
 closed form. Required for the designs listed above; allowed for any
 probability design, which is a convenient way to check the exact formulas.}
 
-\item{R}{Number of simulated draws when \code{simulate = TRUE}.}
+\item{R}{Number of simulated draws when \code{simulate = TRUE}. See "What a
+simulation costs".}
 
-\item{seed}{Optional seed for the simulation.}
+\item{seed}{Optional seed for the simulation, applied as in \code{\link[=draw]{draw()}} (see
+"Seeding" there). Checked whether or not \code{simulate} is \code{TRUE}.}
 }
 \value{
 A numeric vector with one element per row of \code{data}.
 
-Rows the design can never select — outside the region, outside the time
-window, at zero weight — get \code{0} from \code{inclusion_prob()} and \code{NA} from
-\code{sampling_weight()}, since no finite number of population rows is
-represented by a row that cannot be drawn. \code{\link[=sample_summary]{sample_summary()}} counts them.
+A row the design can never select gets \code{0} from \code{inclusion_prob()} and
+\code{NA} from \code{sampling_weight()}, since no finite number of population rows
+is represented by a row that cannot be drawn. Such a row lies outside
+the region or the time window, comes past \code{max_items}, or was dropped
+under \code{na_rm = TRUE}.
+\code{\link[=sample_summary]{sample_summary()}} counts them. A weight of 0 is not one of these. The
+designs that select in proportion to size refuse it, so drop such rows
+from \code{data} first.
+
+A design that \code{\link[=draw]{draw()}} refuses, such as an \code{n} larger than the frame or
+than the rows inside a region, is refused here too, with the same
+message, rather than given probabilities above 1 or a census.
 }
 \description{
 \code{inclusion_prob()} returns the first-order inclusion probability of every row
@@ -49,48 +59,82 @@ Most do, and those are computed exactly:
 \tabular{ll}{
 \code{\link[=design_simple]{design_simple()}}      \tab \code{n / N} \cr
 \code{\link[=design_stratified]{design_stratified()}}  \tab \code{n_h / N_h} within each stratum \cr
-\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1 / interval}, for every row, exactly \cr
-\code{\link[=design_cluster]{design_cluster()}}     \tab \code{n_clusters / N_clusters} \cr
-\code{\link[=design_multistage]{design_multistage()}}  \tab \code{(n_clusters / N_clusters) * (n_h / N_h)}, when the per-cluster take is constant \cr
-\code{\link[=design_weighted]{design_weighted()}}    \tab \code{n * p_i} for the \code{"systematic"} and \code{"poisson"} methods \cr
+\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1 / interval} with a random \code{start}, or \code{n / N} with \code{n}, for every row walked, exactly \cr
+\code{\link[=design_cluster]{design_cluster()}}     \tab \code{n_clusters / N_clusters}; with \code{balanced = TRUE}, that times the cluster's average take over its size, worked out exactly (see \code{\link[=design_cluster]{design_cluster()}}) \cr
+\code{\link[=design_multistage]{design_multistage()}}  \tab \code{(n_clusters / N_clusters) * (n_h / N_h)}, when the per-cluster take \code{n_h} is constant; with replacement, \code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)}; with \code{size}, the cluster's \code{pi_h = n_clusters * M_h / sum(M)} in place of \code{n_clusters / N_clusters} \cr
+\code{\link[=design_weighted]{design_weighted()}}    \tab \code{n * p_i} for the \code{"systematic"} and \code{"poisson"} methods, with rows past 1 taken with certainty and the rest rescaled to sum to \code{n}; with \code{strata}, \code{n_h * p_i} within each stratum \cr
 \code{\link[=design_certainty]{design_certainty()}}   \tab \code{1} above the threshold, \code{rest}'s own below it \cr
 \code{\link[=design_reservoir]{design_reservoir()}}   \tab \code{n / min(N, max_items)}, and \code{0} past \code{max_items} \cr
 \code{\link[=design_temporal]{design_temporal()}}    \tab \code{per_interval / N_bucket} within each interval \cr
 \code{\link[=design_spatial]{design_spatial()}}     \tab \code{n / N_in_region} \cr
-\code{\link[=design_spread]{design_spread()}}      \tab \code{n / N}, or \code{n * p_i} with a \code{size} column \cr
+\code{\link[=design_spread]{design_spread()}}      \tab \code{n / N}, or \code{n * p_i} with a \code{size} column; with \code{strata}, the same within each stratum \cr
 }
 
-Five cases have no closed form, and the package refuses to invent one:
+A design with \code{reserve} gives the probabilities of its main sample, which
+the reserves do not change. The design of a sample from \code{\link[=use_reserves]{use_reserves()}}
+gives \code{n / (N - u)}, and \code{0} for the \code{u} rows found unavailable.
+
+Four cases have no closed form, and the package refuses to invent one:
 \itemize{
-\item \code{design_cluster(balanced = TRUE)} — the per-cluster take is the smallest
-\emph{selected} cluster's size, which is itself random. Simulation on clusters of
-2/4/6/8 gives 0.50, 0.41, 0.34, 0.25, against the 0.50 a naive
-\code{n_clusters / N_clusters} would claim for every row.
 \item \code{design_multistage(allocation = "proportional")} — the stage-two allocation
 depends on which clusters were selected. Simulation on clusters of 3/5/7/9
 gives 0.17, 0.20, 0.17, 0.15, against a naive 0.33, 0.20, 0.14, 0.11.
 \item \code{design_multistage()} where the per-cluster take is not constant — \code{n} not
-divisible by \code{n_clusters}, or a cluster smaller than \code{n / n_clusters}. The
-allocation runs over the \emph{selected} clusters, so the remainder goes to the
-largest of them and an undersized cluster is capped with its shortfall
-dealt to whichever clusters came with it. A row's probability then depends
-on the company it keeps. On clusters of 20/10/8/6 with \code{n = 7} over 2
-clusters, the average take is out by up to 17\%, and a cluster smaller than
-the take can push the figure above 1.
+divisible by \code{n_clusters}, or, without replacement, a cluster smaller than
+\code{n / n_clusters}. The allocation runs over the \emph{selected} clusters, so the
+remainder goes to the largest of them and an undersized cluster is capped
+with its shortfall dealt to whichever clusters came with it. A row's
+probability then depends on the company it keeps. On clusters of
+20/10/8/6 with \code{n = 7} over 2 clusters, the average take is out by up to
+17\%, and a cluster smaller than the take can push the figure above 1.
+
+For these two, the exact probability is the probability given the
+clusters selected, averaged over every possible selection, and that
+average has no formula. \code{draw(weights = TRUE)} weights the sample
+conditional on the clusters it selected instead, which gives an
+unbiased total without the average; see "Design weights" in \code{\link[=draw]{draw()}}.
 \item \code{design_weighted(method = "successive")} — the default. Successive sampling
 has no closed-form inclusion probability; this is the whole reason the other
 two methods exist. Note that its realised probabilities are not merely
 unknown but genuinely different from proportional-to-size: for weights
-\code{1:10} at \code{n = 5}, simulation puts them up to 35\% away.
+\code{1:10} at \code{n = 5}, enumerating every ordered draw puts them up to about
+36\% away.
 \item \code{\link[=design_bootstrap]{design_bootstrap()}} — resampling with replacement from the sample is not a
 probability sample of a finite population, so there is no \code{pi} to report.
 }
+
+A \code{\link[=design_systematic]{design_systematic()}} with a fixed \code{start} is refused too, for another
+reason. It is deterministic: each row has probability 0 or 1, and
+\code{simulate = TRUE} reports exactly that. Without \code{simulate} those values
+are refused, because \code{draw(weights = TRUE)} would give every sampled row a
+weight of 1 and \code{\link[=ht_total]{ht_total()}} would report the sum over the sample as the
+total of the frame. So are \code{\link[=sampling_weight]{sampling_weight()}}, \code{\link[=joint_prob]{joint_prob()}},
+\code{draw(weights = TRUE)} and the estimators. Leave \code{start} as \code{NULL} for a
+probability sample.
 
 For all but the bootstrap, pass \code{simulate = TRUE} to estimate them by Monte
 Carlo instead. The estimate carries \code{R}-sized error, which is fine for
 checking a design and not fine for publishing a variance. Simulating a
 bootstrap is refused rather than answered: every row turns up in some
 replicate, so the count converges to 1 for all of them.
+}
+
+\section{What a simulation costs}{
+
+\code{simulate = TRUE} makes \code{R} draws, 5,000 by default, so it takes \code{R}
+times as long as one \code{\link[=draw]{draw()}}. Most designs draw from a frame of 10,000
+rows in well under a second. The local pivotal method of \code{\link[=design_spread]{design_spread()}}
+does work in proportion to \code{N^2} on every draw, so at 10,000 rows each
+draw takes seconds and the default \code{R} takes hours. When the draws after
+the first two, which carry one-off costs, project a run of more than 30
+seconds, a message says how long it will take, and an interactive session
+shows a progress bar. Lower \code{R} for a
+quicker answer with more Monte Carlo error: its standard error is
+\code{sqrt(p * (1 - p) / R)}, at most 0.007 for \code{R = 5000}.
+
+A warning that every draw raises, such as a stratum allocated no rows or
+\code{max_items} cutting a frame short, is given once at the end, with the
+number of draws that raised it.
 }
 
 \examples{

@@ -12,9 +12,10 @@ connection, or a zero-argument generator function.}
 
 \item{design}{A design built by one of the \code{\link[=design_simple]{design_simple()}} family.}
 
-\item{seed}{Optional seed, applied only for this draw.}
+\item{seed}{Optional seed, applied only for this draw. See "Seeding".}
 
-\item{weights}{Attach \code{.prob} and \code{.weight} columns. See "Design weights".}
+\item{weights}{Attach \code{.prob}, \code{.weight} and \code{.row} columns. See "Design
+weights".}
 }
 \value{
 The sampled rows. See "What you get back".
@@ -25,46 +26,126 @@ Applies a sampling design to data.
 \section{What you get back}{
 
 A data frame with the same class and the same columns, in the same order, as
-\code{data}. Two designs qualify that:
+\code{data}. \code{weights = TRUE} prepends three columns (see "Design weights"), and
+some designs qualify it further:
 \itemize{
 \item \code{\link[=design_bootstrap]{design_bootstrap()}} prepends a \code{.replicate} column identifying which
 replicate each row belongs to, so all replicates come back in one frame.
-Split them with \code{split(out, out$.replicate)} if you need a list.
-\item \code{\link[=design_reservoir]{design_reservoir()}} returns a list when \code{data} is a stream rather than a
-data frame, because there is nothing to make a data frame out of.
+Split them with \code{split(out, out$.replicate)} if you need a list. With
+\code{output = "indices"} or \code{"weights"} it returns a matrix of row numbers or
+counts instead, with a column per replicate.
+\item \code{\link[=design_reservoir]{design_reservoir()}} returns a list when \code{data} is a list or a stream
+rather than a data frame, because there is nothing to make a data frame
+out of. With \code{batches = TRUE} it returns the rows sampled from a
+function's data frames as one data frame.
+\item \code{\link[=design_simple]{design_simple()}} and \code{\link[=design_spread]{design_spread()}} with \code{reserve} return a list:
+the main sample, then the reserves, with a leading integer \code{.reserve}
+column that is 0 for the main sample and numbers the reserves 1, 2, ...
+in the order they are used. With \code{weights = TRUE} it follows \code{.row},
+and \code{.prob} is the main sample's probability for every row.
+\code{\link[=use_reserves]{use_reserves()}} turns the list into the sample to estimate from.
 }
+
+Row names of the frame's own, such as the car names of \code{mtcars}, stay with
+their rows. A row drawn more than once, by a design with \code{replace = TRUE}
+or by \code{\link[=design_bootstrap]{design_bootstrap()}}, gets names made unique by \code{\link[=make.unique]{make.unique()}}:
+\code{"Mazda RX4"}, then \code{"Mazda RX4.1"}. The automatic row names 1, 2, ...
+number the sample's rows afresh, and \code{weights = TRUE} records each row's
+place in \code{data} in \code{.row}. A tibble has no row names to keep.
 }
 
 \section{Design weights}{
 
-\code{weights = TRUE} prepends two columns: \code{.prob}, the probability that the row
-was included in the sample, and \code{.weight}, its reciprocal — the number of
-population units the row stands for. Those are what an unbiased estimate
-needs: a Horvitz-Thompson total is \code{sum(y * .weight)}.
+\code{weights = TRUE} prepends three columns: \code{.prob}, the probability that the
+row was included in the sample; \code{.weight}, its reciprocal, the number of
+population units the row stands for; and \code{.row}, the row of \code{data} it came
+from. \code{.prob} and \code{.weight} are what an unbiased estimate needs: a
+Horvitz-Thompson total is \code{sum(y * .weight)}.
 
 They come from the design applied to the population, not from the drawn
 sample, and some designs have no closed form for them. \code{\link[=inclusion_prob]{inclusion_prob()}}
 documents which, why, and what to do instead.
 
-The sample also carries its design, the frame rows it came from and the
-frame itself as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
-\code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone. Two
-consequences: estimate before subsetting (use \code{by} for groups), since
-\code{[} drops the attributes; and saving the sample with \code{\link[=saveRDS]{saveRDS()}} saves the
-frame with it.
+Two kinds of design are weighted conditional on the clusters the draw
+selected: \code{\link[=design_cluster]{design_cluster()}} with \code{balanced = TRUE}, and
+\code{\link[=design_multistage]{design_multistage()}} without \code{size} when the rows taken from a cluster
+depend on which other clusters were selected. With \code{a} of \code{A} clusters
+selected and \code{m_i} of the \code{N_i} rows of cluster \code{i} taken, \code{.prob} is
+\code{(a / A) * m_i / N_i}, the chance of the cluster being selected times the
+chance of the row being drawn given these clusters. The total estimated
+from it is unbiased given the clusters selected, and so over every
+selection. \code{\link[=sample_summary]{sample_summary()}} says when a sample is weighted this way.
+
+Keep \code{.prob} as it is: \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}} and \code{\link[=as_svydesign]{as_svydesign()}} refuse
+a sample whose \code{.prob} was changed. Weights adjusted after the draw, for
+nonresponse say, go in \code{.weight}, and \code{\link[=as_svydesign]{as_svydesign()}} is the way to
+estimate from them; \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} keep to \code{.prob} and warn
+when \code{.weight} no longer matches it.
+
+The sample also carries its design, the frame rows it came from and a copy
+of the frame as attributes, which is what lets \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}},
+\code{\link[=sample_summary]{sample_summary()}} and \code{\link[=as_svydesign]{as_svydesign()}} work from the sample alone.
+\itemize{
+\item The frame is copied when the sample is drawn, every column of it. Later
+edits to \code{data}, including data.table's in-place \verb{:=}, \code{setorder()} and
+\code{setkey()}, do not reach the sample. Each sample holds its own copy, in
+memory and in every file it is saved to with \code{\link[=saveRDS]{saveRDS()}}, so a list of
+samples from a large frame holds the frame once per sample, and a
+sample sent to someone sends them the frame, with any personal data in
+it. \code{\link[=compact_sample]{compact_sample()}} keeps only the columns the design reads.
+\item Reordering the sample by \code{[}, \code{dplyr::arrange()} or
+\code{data.table::setorder()} is safe, because each row finds its frame row
+through \code{.row}.
+\item Estimate from the whole sample and use \code{by} for groups. Row subsets
+(\code{head()}, \code{s[cond, ]}, \code{dplyr::filter()}), \code{\link[=rbind]{rbind()}} of samples and joins
+that repeat rows keep the attributes but no longer match the rows that
+were drawn, and the functions above refuse them. \code{\link[=merge]{merge()}}, column
+selection (\code{s[, cols]}), \code{\link[=subset]{subset()}} and \code{\link[=transform]{transform()}} drop the attributes
+altogether. Add fieldwork results with \code{\link[=add_fieldwork]{add_fieldwork()}}, which matches
+them on an id, or with \code{s$col <- value}.
+\item A CSV or spreadsheet file and a database table keep the rows and the
+\code{.row} column but not the attributes. \code{\link[=as_drawn]{as_drawn()}} rebuilds the sample
+from them, the design and the frame.
+}
 
 \code{weights = TRUE} is not available for a design that samples \strong{with
-replacement}. \code{.prob} there is the probability of being selected \emph{at least
-once}, but the sample holds duplicates, so \code{sum(y * .weight)} over it counts
-each duplicate at the distinct-unit weight and comes out around 15\% high.
-Use \code{replace = FALSE}, or the Hansen-Hurwitz form \code{N / n * sum(y)}.
+replacement}, or a \code{\link[=design_certainty]{design_certainty()}} whose \code{rest} does. \code{.prob} there
+is the probability of being selected \emph{at least once}, but the sample holds
+duplicates, so \code{sum(y * .weight)} over it counts each duplicate at the
+distinct-unit weight. The total comes out high by a factor of
+\code{(n / N) / (1 - (1 - 1 / N)^n)}, which is about 5\% at \code{n = N / 10}, 15\% at
+\code{n = 0.3 * N}, 58\% at \code{n = N} and more beyond, applied within each stratum
+of a stratified design. Use \code{replace = FALSE}, or the Hansen-Hurwitz form
+\code{N / n * sum(y)}, summed over strata as \code{N_h / n_h * sum(y_h)} for a
+stratified design.
 }
 
 \section{Seeding}{
 
-\code{seed} is saved, applied, and unwound: \code{.Random.seed} is restored on exit, so
-drawing a sample inside a simulation does not shift the simulation's own
-random number stream. Leave it \code{NULL} to draw from the current stream.
+With a \code{seed}, \code{draw()} saves the caller's random number state, seeds,
+draws, and restores the state on exit, so drawing a sample inside a
+simulation does not shift the simulation's own random number stream. With
+\code{seed = NULL} it draws from the caller's stream and advances it, as any
+function that draws random numbers does.
+
+A seed is applied with R's default generator,
+\code{set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")}, whatever generator the session has selected,
+and the session's generator is restored on exit with its state. A seed
+therefore draws the same sample after \code{RNGkind("L'Ecuyer-CMRG")}, which
+parallel code often selects, or under \code{sample.kind = "Rounding"} as it
+does in a session left at R's defaults. It must be a whole number from
+\code{-.Machine$integer.max} to \code{.Machine$integer.max}. The same holds for the
+\code{seed} of \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=joint_prob]{joint_prob()}} and \link[=plot.drawn_design]{plot()}.
+Most designs select rows by their position in \code{data}, so a seed is sure
+to draw the same rows again only from a frame with the same rows in the
+same order.
+
+With \code{weights = TRUE} the sample records how it was drawn in its
+\code{drawn_meta} attribute: \code{seed} (\code{NULL} without one), \code{rng_kind} (the
+generator used, as \code{\link[=RNGkind]{RNGkind()}} gives it), \code{version} (of drawn), \code{time},
+\code{frame_rows} (the rows of \code{data}) and \code{made_by} (\code{"draw()"}, or
+\code{"as_drawn()"} for a sample rebuilt from a file). \code{\link[=sample_summary]{sample_summary()}}
+prints it.
 }
 
 \examples{

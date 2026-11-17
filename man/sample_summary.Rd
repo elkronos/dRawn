@@ -14,16 +14,70 @@ A list with a \code{print()} method, holding:
 \describe{
 \item{\code{design}}{The design's type, as a string.}
 \item{\code{n}, \code{N}}{Rows drawn, and rows in the frame.}
+\item{\code{N_reachable}}{Rows of the frame the design gives a probability
+above 0, the population it samples. For weights conditional on the
+clusters selected, the rows of the clusters not selected count, since
+another selection could have drawn them. The printed sampling
+fraction is \code{n / N_reachable}. \code{NA} only when the frame's
+probabilities cannot be worked out, for an empty sample saved by
+drawn 0.2.0, which records none, from a design with no closed-form
+inclusion probability. The fraction is then \code{n / N}.}
+\item{\code{expected_n}}{The sample size the design expects, the sum of
+the inclusion probabilities over the frame. It is \code{n} for a design
+of fixed size, and printed beside \code{n} when the two differ, as they
+can under Poisson sampling, a \code{\link[=design_systematic]{design_systematic()}} \code{interval} that
+does not divide the frame, or clusters of unequal size. \code{NA} where
+\code{N_reachable} is, and for weights conditional on the clusters
+selected.}
 \item{\code{weight_range}}{The smallest and largest design weight.}
 \item{\code{weight_cv}}{Their coefficient of variation. Large values mean a
 few rows carry most of the estimate.}
-\item{\code{unreachable}}{Frame rows with inclusion probability 0 — the
-design could never have selected them. \code{NA} if the design has no
-closed-form inclusion probability.}
+\item{\code{n_kish}}{Kish's effective sample size, \code{sum(w)^2 / sum(w^2)}
+over the weights \code{w}, which is \code{n / (1 + cv^2)} with the
+coefficient of variation computed with divisor \code{n}: the size of a
+simple random sample that would estimate a mean as precisely if
+unequal weights were the only cost. Clustering and stratification
+are not in it; \code{\link[=deff]{deff()}} measures those.}
+\item{\code{n_certain}}{Sampled rows taken with certainty, at a probability
+of 1.}
+\item{\code{certain_by}}{Those rows by why they are certain, a named count:
+\code{threshold}, above the threshold of \code{\link[=design_certainty]{design_certainty()}}; \code{size},
+put at probability 1 by a size measure, in \code{\link[=design_weighted]{design_weighted()}} or
+in \code{\link[=design_spread]{design_spread()}} or \code{\link[=design_multistage]{design_multistage()}} with \code{size}, which
+includes the rows of a cluster put at 1 by its size and then taken
+whole; and \code{whole}, in a stratum, interval or cluster taken whole,
+or a census, with a size measure or without. Under a size measure a
+group counts as taken whole when the design gives every row of it
+probability 1, or every cluster of a multistage design a
+first-stage probability of 1, so a Poisson sample that holds every
+row of a stratum by chance files its certain rows under \code{size}.}
+\item{\code{conditional}}{The number of clusters selected, when the
+weights are conditional on them, as for \code{\link[=design_cluster]{design_cluster()}} with
+\code{balanced = TRUE} (see "Design weights" in \code{\link[=draw]{draw()}}); otherwise
+\code{NA}.}
+\item{\code{unreachable}}{Frame rows with inclusion probability 0, which
+the design could never have selected, such as rows \code{na_rm} drops.
+\code{NA} where \code{N_reachable} is.}
 \item{\code{by_group}}{A data frame of \code{group}, \code{drawn}, \code{in_frame} and
-\code{rate} per stratum or cluster, or \code{NULL} for a design with no
-grouping.}
+\code{rate} per stratum, interval or cluster, or \code{NULL} for a design with
+no grouping. The strata are those of \code{\link[=design_stratified]{design_stratified()}}, and of
+\code{\link[=design_spread]{design_spread()}} and \code{\link[=design_weighted]{design_weighted()}} when they have \code{strata},
+and every stratum of the frame is listed, one allocated no rows
+included. A stratum's \code{in_frame} counts the rows the design can
+draw from it, as \code{N} of \code{\link[=allocation_table]{allocation_table()}} does, so rows \code{na_rm}
+drops are left out, and a stratum it empties is not listed. The
+intervals of \code{\link[=design_temporal]{design_temporal()}} are listed in time
+order and named by their start, such as \code{"2024-01-03 00:00"}. For
+\code{\link[=design_cluster]{design_cluster()}} and \code{\link[=design_multistage]{design_multistage()}}, only the clusters
+drawn are listed. For \code{\link[=design_certainty]{design_certainty()}}, the groups are those of
+its \code{rest} over the rows below the threshold, after a \code{"(certain)"}
+row for the rows above it.}
 \item{\code{group_col}}{The column(s) \code{by_group} is keyed on.}
+\item{\code{drawn}}{How the sample was drawn, from its \code{drawn_meta}
+attribute: \code{seed}, \code{rng_kind}, \code{version}, \code{time}, \code{frame_rows} and
+\code{made_by} (see "Seeding" in \code{\link[=draw]{draw()}}). \code{NULL} for a sample from an
+earlier version of drawn, which recorded none. The print shows the
+seed, the version and the date.}
 }
 }
 \description{

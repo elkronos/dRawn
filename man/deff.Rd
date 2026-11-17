@@ -4,28 +4,67 @@
 \alias{deff}
 \title{Design effect}
 \usage{
-deff(x)
+deff(object, ...)
 }
 \arguments{
-\item{x}{A result from \code{\link[=ht_total]{ht_total()}} or \code{\link[=ht_mean]{ht_mean()}}.}
+\item{object}{A result from \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_ratio]{ht_ratio()}} or
+\code{\link[=ht_quantile]{ht_quantile()}}, or an object from \code{survey} that holds a design effect.}
+
+\item{...}{Passed to \code{survey::deff()} for an object from \code{survey}, such as
+its \code{quietly}. Not used for an estimate made here.}
 }
 \value{
-A single number, or \code{NA} when the design has no variance estimate.
+A single number, or \code{NA} when the design has no variance
+estimate, \code{y} is constant in the sample, or the estimate is a mean from
+\code{ht_mean(na_rm = TRUE)} with \code{y} missing in some sampled rows. For an
+object from \code{survey}, what \code{survey::deff()} returns.
 }
 \description{
 How much precision the design costs against simple random sampling of the
 same size (Kish 1965). \code{deff = 1} means the design is doing as well as a
-coin flip over the frame; above 1 it is doing worse, which is the usual price
-of clustering; below 1 it is doing better, which is what stratification and
-probability-proportional-to-size buy you.
+simple random sample from the rows it can reach; above 1 it is doing worse,
+which is the usual price of clustering; below 1 it is doing better, which is
+what stratification and probability-proportional-to-size buy you.
 }
 \details{
 Read it as an exchange rate on sample size: at \code{deff = 2}, a sample of 400
 carries about as much information as 200 drawn at random.
 
-\code{survey} has a \code{deff()} of its own, and attaching \code{survey} after this
-package masks this one. Both work on an estimate from \code{\link[=ht_total]{ht_total()}} or
-\code{\link[=ht_mean]{ht_mean()}}, so the masking is harmless.
+The simple random sample it is measured against is drawn from the rows the
+design gives a probability above 0, \code{sum(inclusion_prob(design, frame) > 0)}
+of them, because those are the rows a total or a Hajek mean estimates
+over. Rows past \code{max_items}, outside a region or time window, dropped by
+\code{na_rm} or in a stratum allocated no rows are left out. Counting them set
+an equal-probability sample of 20 from the first 100 rows of a 400-row
+frame at a design effect of 0.05 for a total, "better than simple random
+sampling", where the right figure is 1.
+\code{survey} measures against the sum of the weights, which is that count for
+an equal-probability design, and gives the same design effect there. A
+Horvitz-Thompson mean
+(\code{estimator = "ht"}) divides the total by the frame's row count, so its
+design effect is the total's.
+
+The design effect is \code{NA} when there is no variance, and when \code{y} takes
+one value in every sampled row, where there is no spread for a simple
+random sample to be measured by. It is \code{NA} too for a mean from
+\code{ht_mean(na_rm = TRUE)} with \code{y} missing in some sampled rows, since the
+rows with \code{y} are a domain of the sample, and a domain's design effect is
+not estimated.
+
+A table of domain estimates from \code{by}, of several variables, of the
+levels of a factor or of quantiles carries no design effect, and \code{deff()}
+refuses it with a message saying so. A contrast's design effect is \code{NA},
+and so is a quantile's from \code{\link[=ht_quantile]{ht_quantile()}}. A ratio from \code{\link[=ht_ratio]{ht_ratio()}},
+and a total from the ratio estimator, are measured against the same
+estimator from a simple random sample, through the variance of its
+linearised residuals, as \code{survey::svyratio(deff = TRUE)} measures a
+ratio.
+
+\code{survey} has a \code{deff()} of its own, and whichever of the two packages is
+attached last masks the other's. Either one answers for both. This
+\code{deff()} is a generic that passes an object it has no method for, such as
+\code{survey::svymean(..., deff = TRUE)}, to \code{survey::deff()}, and \code{survey}'s
+generic finds the methods for the estimates made here.
 }
 \examples{
 set.seed(1)

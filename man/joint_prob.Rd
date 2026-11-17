@@ -11,9 +11,13 @@ joint_prob(data, design, rows = NULL, simulate = FALSE, R = 5000, seed = NULL)
 
 \item{design}{A design object.}
 
-\item{rows}{Optional row indices. Supply these — usually the rows you drew —
-to get the submatrix for them instead of the full \code{nrow(data)} square,
-which is what makes this usable on a large population.}
+\item{rows}{Optional row indices, usually the rows you drew, which are
+\code{s$.row} for a sample \code{s} from \code{draw(weights = TRUE)}. The result is then
+the submatrix for these rows instead of the full \code{nrow(data)} square,
+which is what makes this usable on a large population. See "Size".
+Indices must be whole numbers. A row given more than once is one unit,
+so its entry with itself, off the diagonal too, is its own inclusion
+probability.}
 
 \item{simulate}{Estimate the probabilities by repeated draws rather than in
 closed form. Works for every probability design, including the ones with no
@@ -21,9 +25,11 @@ closed form, at the cost of Monte Carlo error. Refused for
 \code{\link[=design_bootstrap]{design_bootstrap()}}, where every row appears in some replicate and the
 count converges to 1 for all of them.}
 
-\item{R}{Number of simulated draws when \code{simulate = TRUE}.}
+\item{R}{Number of simulated draws when \code{simulate = TRUE}. A simulation
+costs \code{R} draws; see "What a simulation costs" in \code{\link[=inclusion_prob]{inclusion_prob()}}.}
 
-\item{seed}{Optional seed for the simulation.}
+\item{seed}{Optional seed for the simulation, applied as in \code{\link[=draw]{draw()}} (see
+"Seeding" there). Checked whether or not \code{simulate} is \code{TRUE}.}
 }
 \value{
 A square matrix with one row and column per element of \code{rows}
@@ -43,27 +49,53 @@ independent across groups or a simple random sample within them:
 \code{\link[=design_simple]{design_simple()}}      \tab \code{n(n-1) / (N(N-1))} for a pair, without replacement \cr
 \code{\link[=design_stratified]{design_stratified()}}  \tab within a stratum as above; across strata, independent \cr
 \code{\link[=design_cluster]{design_cluster()}}     \tab same cluster: \code{a/A}; different clusters: \code{a(a-1)/(A(A-1))} \cr
-\code{\link[=design_multistage]{design_multistage()}}  \tab the two stages multiplied, where the per-cluster take is constant \cr
+\code{\link[=design_multistage]{design_multistage()}}  \tab the two stages multiplied, where the per-cluster take is constant and \code{size} is not given \cr
 \code{\link[=design_certainty]{design_certainty()}}   \tab \code{1} between certainty rows; otherwise the other row's own \code{pi} \cr
 \code{\link[=design_reservoir]{design_reservoir()}}   \tab simple random sampling over the first \code{max_items} rows \cr
 \code{\link[=design_temporal]{design_temporal()}}    \tab within an interval as above; across intervals, independent \cr
 \code{\link[=design_spatial]{design_spatial()}}     \tab simple random sampling inside the region \cr
 \code{\link[=design_weighted]{design_weighted()}}    \tab \code{"poisson"} only, where rows are independent: \code{pi_i * pi_j} \cr
-\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero} \cr
+\code{\link[=design_systematic]{design_systematic()}}  \tab \code{1/interval} for rows sharing a residue class, otherwise \strong{zero}; with \code{n}, the overlap of the two rows' stretches, from 0 to \code{n / N}; with \code{n_starts = m}, \code{1/interval} for rows sharing a residue class modulo \code{m * interval}, otherwise \code{m(m-1) / (mk(mk-1))} with \code{k} the interval \cr
 }
 
-Systematic sampling is the awkward one. Most pairs can never co-occur, so
-their joint probability is genuinely 0 and no design-unbiased variance
-estimator exists; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation
-instead, and says so. Its residue classes follow the order the design walks,
-so \code{order_by} changes which pairs can co-occur.
+Systematic sampling is the awkward one. At a step of 2 rows or more, which
+is every \code{interval} above 1 and every \code{n} up to half the rows walked,
+neighbouring rows and many other pairs can never co-occur, so their joint
+probability is genuinely 0 and no design-unbiased variance estimator
+exists; \code{\link[=ht_total]{ht_total()}} uses the successive-difference approximation instead,
+and says so. Its residue classes follow the order the design walks, so
+\code{order_by} changes which pairs can co-occur. Given \code{n}, the design walks at
+a step of \code{N / n} rows from a start \code{u} uniform on (0, 1), each row
+covering a stretch of length \code{n / N}, and a pair is drawn together when \code{u}
+falls where both stretches, moved into (0, 1), overlap. With \code{n} above
+\code{N / 2} the stretches are longer than 1/2, any two of them overlap, and
+every pair has a positive joint probability; \code{\link[=ht_total]{ht_total()}} uses the
+successive-difference approximation there too. With a fixed \code{start} the
+design is deterministic, and it is refused as in \code{\link[=inclusion_prob]{inclusion_prob()}}. With
+several starts (\code{n_starts}), rows in different residue classes can be drawn
+together too, which is what gives a replicated sample its unbiased
+variance. Within the strata of
+\code{design_stratified(within = design_systematic())}, pairs in one stratum
+get the overlap of their stretches, as with \code{n}, and pairs in two strata
+the product of their probabilities.
 
-Two designs have joint probabilities that are positive but have no closed
-form: \code{design_weighted(method = "systematic")}, which shuffles the rows
-before walking them so every pair can co-occur, and \code{\link[=design_spread]{design_spread()}}. For
-both, \code{\link[=ht_total]{ht_total()}} uses a variance approximation that needs only
-first-order probabilities, and \code{simulate = TRUE} here estimates the joint
-probabilities themselves.
+Three designs have joint probabilities that are positive but have no
+closed form: \code{design_weighted(method = "systematic")}, which shuffles the
+rows before walking them so every pair can co-occur, with or without
+\code{strata}; \code{\link[=design_multistage]{design_multistage()}} with \code{size}, which does the same with the
+clusters; and \code{\link[=design_spread]{design_spread()}}. For all three, \code{\link[=ht_total]{ht_total()}} uses a
+variance approximation that needs only first-order probabilities, and
+\code{simulate = TRUE} here estimates the joint probabilities themselves.
+}
+
+\section{Size}{
+
+The matrix has a row and a column for each of \code{rows}, by default every row
+of \code{data}, and holds 8 bytes for each pair: 800 MB for 10,000 rows. Past
+about 1 GB, from about 11,200 rows, \code{joint_prob()} refuses and gives the
+size, rather than risk exhausting memory, which can end the R session.
+\code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} do not build this matrix for any design in
+the package.
 }
 
 \examples{

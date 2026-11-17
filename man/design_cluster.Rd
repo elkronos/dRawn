@@ -12,7 +12,7 @@ design_cluster(clusters, n_clusters, balanced = FALSE, na_rm = FALSE)
 \item{n_clusters}{Number of clusters to select.}
 
 \item{balanced}{Take an equal number of rows from each selected cluster,
-equal to the smallest selected cluster's size.}
+equal to the smallest selected cluster's size. See "Balanced clusters".}
 
 \item{na_rm}{Drop rows whose cluster label is \code{NA} instead of raising an
 error. When \code{FALSE}, missing labels are never treated as a cluster of their
@@ -26,9 +26,45 @@ Selects whole clusters at random and returns all of their rows. The row count
 follows from which clusters were picked, so there is no \code{n}; use
 \code{\link[=design_multistage]{design_multistage()}} when you need to control it.
 }
+\section{Balanced clusters}{
+
+With \code{balanced = TRUE}, each of the \code{a} clusters selected out of \code{A}
+gives \code{m} rows by simple random sampling, \code{m} being the size of the
+smallest of them. A row of a cluster of \code{N_i} rows has inclusion
+probability \code{(a / A) * E(m) / N_i}, where \code{E(m)} is the average take
+over the selections that include its cluster. \code{\link[=inclusion_prob]{inclusion_prob()}}
+computes it exactly: given that cluster \code{i} is selected, the take is at
+least \code{s} rows when the other \code{a - 1} clusters selected all hold \code{s} rows
+or more, which happens with probability
+\code{choose(c_s - 1, a - 1) / choose(A - 1, a - 1)}, \code{c_s} being the number
+of clusters of \code{s} rows or more, and \code{E(m)} adds these up for \code{s} from 1
+to \code{N_i}. On clusters of 2, 4, 6 and 8 rows with two selected, that gives
+0.5, 0.417, 0.333 and 0.25.
+
+\code{draw(weights = TRUE)} weights a balanced sample conditional on the
+clusters it selected instead: \code{.prob} is \code{(a / A) * m / N_i} for the \code{m}
+taken in this draw. The estimate of a total is then \code{A / a} times the sum
+of the selected clusters' estimated totals, which is unbiased whichever
+clusters were selected, and so over all of them. \code{\link[=ht_total]{ht_total()}} and
+\code{\link[=ht_mean]{ht_mean()}} use the two-stage variance of \code{\link[=design_multistage]{design_multistage()}}, with the
+variance between the estimated cluster totals and within each cluster,
+and \code{\link[=as_svydesign]{as_svydesign()}} hands the sample to \code{survey} in two stages. The
+smallest selected cluster is taken whole and adds no variance within it.
+When it holds one row, every cluster gives one, the variation within
+clusters cannot be measured, and the variance falls back to the
+delete-a-cluster jackknife. Joint probabilities have no closed form;
+\code{\link[=joint_prob]{joint_prob()}} estimates them with \code{simulate = TRUE}.
+}
+
 \examples{
 df <- data.frame(id = 1:100, site = rep(paste0("s", 1:10), each = 10))
 unique(draw(df, design_cluster("site", n_clusters = 3), seed = 1)$site)
+
+# Balanced: the take is the smallest selected cluster's size, so a row of
+# a large cluster is less likely to be drawn
+uneven <- data.frame(site = rep(c("a", "b", "c", "d"), c(2, 4, 6, 8)))
+bal <- design_cluster("site", n_clusters = 2, balanced = TRUE)
+round(tapply(inclusion_prob(uneven, bal), uneven$site, unique), 3)
 
 }
 \seealso{

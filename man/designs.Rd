@@ -13,11 +13,15 @@ passed around.
 
 \describe{
 \item{\code{\link[=design_simple]{design_simple()}}}{Rows uniformly at random.}
-\item{\code{\link[=design_stratified]{design_stratified()}}}{A share of each stratum.}
-\item{\code{\link[=design_systematic]{design_systematic()}}}{Every \emph{k}-th row.}
+\item{\code{\link[=design_stratified]{design_stratified()}}}{A share of each stratum, at random or
+walked in order.}
+\item{\code{\link[=design_systematic]{design_systematic()}}}{Every \emph{k}-th row, or \code{n} rows at an even
+step, from one random start or several.}
 \item{\code{\link[=design_cluster]{design_cluster()}}}{Whole clusters.}
-\item{\code{\link[=design_multistage]{design_multistage()}}}{Clusters, then rows within them.}
-\item{\code{\link[=design_weighted]{design_weighted()}}}{Rows with probability governed by a weight.}
+\item{\code{\link[=design_multistage]{design_multistage()}}}{Clusters, at random or in proportion to
+size, then rows within them.}
+\item{\code{\link[=design_weighted]{design_weighted()}}}{Rows with probability governed by a weight,
+within strata if asked.}
 \item{\code{\link[=design_certainty]{design_certainty()}}}{Everything above a threshold, plus a sample of
 the rest.}
 \item{\code{\link[=design_reservoir]{design_reservoir()}}}{A fixed-size sample from a stream.}
@@ -25,7 +29,7 @@ the rest.}
 \item{\code{\link[=design_temporal]{design_temporal()}}}{A share of each time interval.}
 \item{\code{\link[=design_spatial]{design_spatial()}}}{Rows inside a region.}
 \item{\code{\link[=design_spread]{design_spread()}}}{A sample spread evenly across a map or across
-auxiliary variables.}
+auxiliary variables, within strata if asked.}
 }
 }
 
@@ -36,26 +40,44 @@ Arguments mean the same thing everywhere they appear:
 \item \code{n} is always the \strong{total} number of rows drawn, never a per-group figure.
 \code{\link[=design_temporal]{design_temporal()}} uses \code{per_interval} precisely because that one \emph{is} per
 group, and \code{\link[=design_cluster]{design_cluster()}} has no \code{n} at all because the row count
-follows from which clusters were selected.
-\item \code{allocation} always says how a total is split across groups, either
-\code{"proportional"} or \code{"equal"}. Splitting is exact: the largest-remainder
-method is used, so a request for 60 rows returns 60 rather than drifting
-with per-group rounding.
+follows from which clusters were selected. A plan from \code{\link[=plan_size]{plan_size()}} can
+be given as \code{n}, and its \code{n} is used.
+\item \code{allocation} always says how a total is split across groups:
+\code{"proportional"}, \code{"equal"} or, in \code{\link[=design_stratified]{design_stratified()}} only,
+\code{"neyman"}. \code{\link[=design_stratified]{design_stratified()}}, \code{\link[=design_spread]{design_spread()}} and
+\code{\link[=design_weighted]{design_weighted()}} also take the count for each stratum in place of a
+rule, and \code{n} is then their total.
+Splitting is exact: the largest-remainder method is used, so a request
+for 60 rows returns 60 rather than drifting with per-group rounding.
 \item \code{na_rm} always decides whether rows with a missing key are dropped or raise
 an error. It is never silently assumed either way.
+\item Groups always come in key order, whether strata, \code{by} domains or the
+rows of \code{\link[=sample_summary]{sample_summary()}}: a factor's levels, or the sorted values of any
+other column, with text sorted byte by byte as in the C locale. A seed
+therefore draws the same rows in every locale, and an \code{order_by} column
+of text is walked in the same order everywhere.
 \item \code{replace} always means sampling with replacement within whatever group the
 design works on, and always rules out \code{draw(weights = TRUE)}: an inclusion
 probability describes distinct units, and a sample holding duplicates
 cannot be weighted by one.
-\item \code{\link[=draw]{draw()}} always restores the caller's random number stream before
-returning, and always gives back a data frame with the input's class and
-column order.
+\item With a \code{seed}, \code{\link[=draw]{draw()}} always restores the caller's random number
+stream and generator before returning, and a seed draws the same sample
+whatever generator the session has selected. With \code{seed = NULL} it draws
+from, and advances, the caller's stream. See "Seeding" in \code{\link[=draw]{draw()}}.
+\item \code{\link[=draw]{draw()}} always gives back a data frame with the input's class and
+column order, and the frame's own row names on the rows drawn.
+\code{\link[=design_bootstrap]{design_bootstrap()}} with \code{output = "indices"} or
+\code{"weights"} gives a matrix instead, and \code{\link[=design_reservoir]{design_reservoir()}} a list
+when \code{data} is not a data frame, unless \code{batches = TRUE}.
 \item Rows come back in frame order for every design that selects a set of rows,
-including \code{\link[=design_systematic]{design_systematic()}} with \code{order_by}.
-The two exceptions are the ones where draw order is meaningful:
-\code{\link[=design_simple]{design_simple()}} and \code{\link[=design_weighted]{design_weighted()}} return rows in the order they
-were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns replicates in order with a
-leading \code{.replicate} column.
+including \code{\link[=design_systematic]{design_systematic()}} with \code{order_by} and \code{\link[=design_weighted]{design_weighted()}}
+with \code{method = "systematic"} or \code{"poisson"}.
+The exceptions are the ones where draw order is meaningful:
+\code{\link[=design_simple]{design_simple()}} and \code{design_weighted(method = "successive")} return
+rows in the order they were drawn, and \code{\link[=design_bootstrap]{design_bootstrap()}} returns
+replicates in order with a leading \code{.replicate} column. A design with
+\code{reserve} returns its main sample and then its reserves, in the order
+they are used, with a leading \code{.reserve} column.
 }
 }
 
@@ -64,18 +86,35 @@ leading \code{.replicate} column.
 Because a design is a value, it can report its own inclusion probabilities
 before any sampling happens. \code{\link[=inclusion_prob]{inclusion_prob()}} gives first-order
 probabilities and \code{\link[=sampling_weight]{sampling_weight()}} their reciprocals — the number of
-population rows each sampled row stands for. \code{\link[=joint_prob]{joint_prob()}} gives
+population rows each sampled row stands for, and \code{\link[=certainty_set]{certainty_set()}} the rows
+a design that selects in proportion to size takes with certainty.
+\code{\link[=allocation_table]{allocation_table()}} shows how a design with strata splits \code{n} over the
+strata of a frame, and which strata it holds at the floor, takes whole or
+leaves empty. \code{\link[=joint_prob]{joint_prob()}} gives
 second-order probabilities, and \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} turn a sample
-into a population total, mean or proportion — overall or by domain — with a
-standard error from the variance estimator suited to the design and a
-confidence interval on the design's degrees of freedom. \code{\link[=deff]{deff()}} reports
+into a population total, mean or proportion, overall or by domain and for
+one variable or several, with a standard error from the variance
+estimator suited to the design and a confidence interval on the design's
+degrees of freedom. A factor \code{y} gives the count or share of each level.
+\code{\link[=ht_ratio]{ht_ratio()}} estimates a ratio of two totals the same way,
+\code{ht_total(ratio =)} the ratio estimator of a total, and \code{\link[=ht_quantile]{ht_quantile()}}
+medians and other quantiles with Woodruff intervals. \code{\link[=deff]{deff()}} reports
 what the design cost in precision against simple random sampling, and
 \code{\link[=sample_summary]{sample_summary()}} reports what was actually drawn against what was in the
-frame.
+frame. \code{\link[=add_fieldwork]{add_fieldwork()}} joins fieldwork results to a sample by an id,
+\code{\link[=use_reserves]{use_reserves()}} replaces the units of a list from \code{\link[=design_simple]{design_simple()}} or
+\code{\link[=design_spread]{design_spread()}} with \code{reserve} that were found unavailable,
+\code{\link[=as_drawn]{as_drawn()}} rebuilds a sample read back from a file or a database, and
+\code{\link[=compact_sample]{compact_sample()}} drops the frame columns its design does not read before
+it is saved or shared.
 
 Going the other way, \code{\link[=plan_size]{plan_size()}} solves for the sample size a given margin
-of error requires — the step \emph{before} choosing a design. For analysis this
-package does not do, \code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package.
+of error requires — the step \emph{before} choosing a design. It plans a sample
+overall or split over strata, and \code{\link[=deff_cluster]{deff_cluster()}} gives the design effect
+of a cluster sample to plan with. For analysis this package does not do,
+\code{\link[=as_svydesign]{as_svydesign()}} hands a sample to the \code{survey} package,
+\code{\link[=replicate_weights]{replicate_weights()}} builds replicate weights for it from the design, and
+\code{\link[=frame_totals]{frame_totals()}} gives the frame's totals to calibrate it to.
 
 Not every design has a closed form for these — see \code{\link[=inclusion_prob]{inclusion_prob()}} for
 which, why, and what to do instead. Those that do not say so rather than
@@ -92,9 +131,12 @@ returning an approximation.
 \code{min_per_stratum} if rare groups must appear.}
 \item{Fieldwork cost matters more than efficiency}{\code{\link[=design_cluster]{design_cluster()}} or
 \code{\link[=design_multistage]{design_multistage()}} — visiting five sites is cheaper than visiting
-fifty, at the cost of precision.}
+fifty, at the cost of precision. With \code{size}, \code{\link[=design_multistage]{design_multistage()}}
+selects the sites in proportion to size and takes the same number of
+rows from each.}
 \item{Large units matter more}{\code{\link[=design_weighted]{design_weighted()}}, with
-\code{method = "systematic"} or \code{"poisson"} if you intend to estimate.}
+\code{method = "systematic"} or \code{"poisson"} if you intend to estimate, and
+\code{strata} to sample in proportion to size within each stratum.}
 \item{A few units dominate the total}{\code{\link[=design_certainty]{design_certainty()}} — take those
 with certainty and sample the tail, which removes them from the variance
 entirely.}

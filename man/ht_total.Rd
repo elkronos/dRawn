@@ -10,47 +10,111 @@ ht_total(
   variance = c("auto", "analytic", "jackknife", "none"),
   level = 0.95,
   by = NULL,
-  df = NULL
+  df = NULL,
+  alternative = c("two.sided", "less", "greater"),
+  contrast = NULL,
+  ratio = NULL
 )
 }
 \arguments{
-\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}.}
+\item{sample}{A data frame returned by \code{\link[=draw]{draw()}} with \code{weights = TRUE}. See
+"Which columns are read".}
 
-\item{y}{The variable to total: a column name, or a numeric vector as long as
-\code{sample}.}
+\item{y}{The variable to total: a column name, several column names, a
+numeric vector as long as \code{sample}, or a single number, which stands
+for that value in every row. A factor or character column, or a factor
+as long as \code{sample}, gives the count of each level. See "Several
+variables" and "Categories".}
 
 \item{variance}{How to compute it. \code{"auto"} uses the design's own estimator
 (see "Variance") and falls back to the jackknife when that declines;
 \code{"analytic"} insists on the design's own estimator, returning \code{NA} with
-the reason in \code{note} rather than falling back; \code{"jackknife"} always
-resamples; \code{"none"} skips it. The result reports which was used in
-\code{method}, and \code{"none"} when nothing could produce a figure.}
+the reason in \code{note} rather than falling back; \code{"jackknife"} uses the
+jackknife, and returns \code{NA} with the reason in \code{note} for systematic and
+Poisson samples, where it does not apply; \code{"none"} skips it. The result
+reports which was used in \code{method}, and \code{"none"} when nothing could
+produce a figure.}
 
 \item{level}{Confidence level for the interval.}
 
 \item{by}{Optional column name(s) in \code{sample} defining domains. When given,
-the result is one row per domain. See "Domains".}
+the result is one row per domain. See "Domains". A column named like
+one of the table's own, such as \code{n} or \code{se}, is refused.}
 
 \item{df}{Degrees of freedom for the interval. \code{NULL} uses the design's
-(see "Confidence intervals"); \code{Inf} gives a normal interval.}
+(see "Confidence intervals"); \code{Inf} gives a normal interval; otherwise a
+single number of 1 or more.}
+
+\item{alternative}{\code{"two.sided"} for a confidence interval, \code{"less"} for a
+one-sided upper bound or \code{"greater"} for a lower bound, each at \code{level}.
+See "Confidence intervals".}
+
+\item{contrast}{Optional weights over the \code{by} domains, as a named numeric
+vector such as \code{c(a = 1, b = -1)} for domain \code{a} less domain \code{b}. A name
+is the domain's value of a single \code{by} column, or the values of several
+joined by \code{" . "}, as in \code{"a . east"}, the way the notes of a \code{by} table
+name domains. Needs \code{by}. See "Contrasts".}
+
+\item{ratio}{Optional name of a numeric column \code{x} of the frame, for the
+ratio estimator of the total, \code{sum(y / pi) / sum(x / pi)} times the
+frame's total of \code{x}. Not with \code{by}. See "Ratio estimation".}
 }
 \value{
 A list with a \code{print()} method, holding:
 \describe{
 \item{\code{total}}{The Horvitz-Thompson total, \code{sum(y / pi)}.}
-\item{\code{variance}, \code{se}, \code{ci}, \code{level}, \code{df}}{Its estimated variance,
-standard error, confidence interval, and the degrees of freedom the
-interval used. \code{NA} where the design supports no variance.}
-\item{\code{n}, \code{design}}{Rows used, and the design's type.}
+\item{\code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}}{Its
+estimated variance, standard error, confidence interval or one-sided
+bound, and the degrees of freedom the interval used. \code{NA} where the
+design supports no variance.}
+\item{\code{ci_scale}}{The scale the interval was formed on: \code{"linear"}
+for a total, and \code{"logit"} or \code{"beta"} for a proportion from
+\code{\link[=ht_mean]{ht_mean()}}.}
+\item{\code{variable}}{The name of \code{y} when it is a column name, and
+\code{NULL} when it is a vector.}
+\item{\code{n}, \code{n_random}, \code{design}}{Rows used, those of them not taken
+with certainty, which the beta interval of a proportion counts as
+its sample size, and the design's type.}
 \item{\code{deff}}{The design effect — see \code{\link[=deff]{deff()}}.}
 \item{\code{method}}{Which estimator produced the variance. See "Variance".}
 \item{\code{note}}{Why a variance is missing, what approximation was used,
 or which fallback was taken. \code{NULL} when an exact estimator applied
 cleanly.}
+\item{\code{unreachable}}{Rows of the frame with inclusion probability 0,
+which the estimate does not cover; \code{NA} for a sample saved by drawn
+0.2.0. See "Rows the design cannot reach".}
+\item{\code{unavailable}}{For a sample from \code{\link[=use_reserves]{use_reserves()}} only, the
+number of those rows found unavailable. The estimate takes every
+frame row nobody visited as available; see "What the estimates
+describe" in \code{\link[=use_reserves]{use_reserves()}}.}
 }
+With \code{ratio}, the list also holds \code{ratio}, the estimated ratio of \code{y}
+to \code{x}, \code{x}, the column's name, and \code{frame_total}, its total over the
+frame.
+
 With \code{by}, a data frame of class \code{drawn_by} instead: one row per domain,
-with the domain columns, \code{n}, \code{total}, \code{se}, \code{ci_lower}, \code{ci_upper} and
-\code{method}.
+with the domain columns, \code{n} (an integer), \code{total}, \code{variance}, \code{se},
+\code{ci_lower}, \code{ci_upper} and \code{method}, and the level, alternative, scale,
+degrees of freedom, notes, unreachable count and \code{variable} as
+attributes. It prints without \code{variance}, which is the square of \code{se}.
+A \code{by} table has no design effect.
+
+With \code{contrast}, a list of class \code{drawn_contrast} with a \code{print()}
+method, holding \code{contrast}, the weighted sum; \code{weights} and \code{estimates},
+the weight and estimate of each domain it weighs; \code{what} (\code{"total"} or
+\code{"mean"}), \code{estimator} for a mean, and \code{by}; and \code{variable},
+\code{variance}, \code{se}, \code{ci}, \code{level}, \code{alternative}, \code{df}, \code{n}, \code{n_random},
+\code{ci_scale}, \code{design}, \code{method}, \code{note} and \code{unreachable} as above.
+\code{deff} is \code{NA}.
+
+With several column names as \code{y}, a \code{drawn_by} table with a row for
+each variable, or each variable and domain, led by a \code{variable} column;
+see "Several variables". With a factor or character \code{y}, the same
+table with a row for each level, led by a \code{level} column; see
+"Categories".
+
+Each has \code{coef()}, \code{vcov()}, \code{confint()}, \code{as.data.frame()} and
+\code{tidy()} methods; see "Working with the result".
 }
 \description{
 Forms the Horvitz-Thompson total \code{sum(y / pi)} with a standard error, a
@@ -64,12 +128,22 @@ it, and \code{method} in the result says which one was used:
 
 \describe{
 \item{\code{"analytic"}}{Exact and design-unbiased. Fixed-size designs with
-known joint probabilities use the Sen-Yates-Grundy estimator; Poisson
-sampling, whose rows are independent, uses \code{sum((1 - pi) / pi^2 * y^2)};
-cluster designs apply the estimator at the cluster level, because taking
-whole clusters makes the row count random; certainty designs hand the
-problem to \code{rest}, since certainty rows are in every sample and add
-nothing.}
+known joint probabilities use the Sen-Yates-Grundy estimator. For
+simple random, reservoir and spatial samples, strata and intervals it
+reduces to the textbook formula built from the variance of \code{y} within
+each stratum or interval, and for an equal-take \code{\link[=design_multistage]{design_multistage()}}
+to the two-stage formula built from the variance between the estimated
+cluster totals and within clusters (Särndal, Swensson and Wretman
+1992). Those formulas are what is computed, in time and memory that
+grow with the number of sampled rows rather than with its square.
+Poisson sampling, whose rows are independent, uses
+\code{sum((1 - pi) / pi^2 * y^2)}; cluster designs apply the estimator at
+the cluster level, because taking whole clusters makes the row count
+random; certainty designs hand the problem to \code{rest}, since certainty
+rows are in every sample and add nothing. A \code{\link[=design_systematic]{design_systematic()}}
+sample with \code{n_starts} of 2 or more uses the variance between its
+replicates' totals, the random group estimator (Wolter 2007), on
+\code{n_starts - 1} degrees of freedom.}
 \item{\code{"deville"}}{Systematic probability-proportional-to-size
 (\code{\link[=design_weighted]{design_weighted()}} with \code{method = "systematic"}). Its joint
 probabilities have no closed form, so this uses Deville's (1999)
@@ -78,42 +152,91 @@ best-performing of the standard approximations for high-entropy designs
 (Matei and Tillé 2005). Randomised systematic selection is close to high
 entropy (Hartley and Rao 1962). Unlike a plain jackknife, each row's
 contribution is scaled by its own \code{1 - pi}, so rows near certainty stop
-adding variance they do not have.}
-\item{\code{"successive difference"}}{\code{\link[=design_systematic]{design_systematic()}}. No
-design-unbiased estimator exists — the design has one random start, and
-most pairs of rows can never be drawn together — so this uses the
-successive-difference approximation, which compares each sampled row with
-its neighbour in the order the design walked (Wolter 2007). It removes a
-trend along that order rather than counting it as noise, which is why it
-beats treating the sample as simple random: on a frame sorted by a
-variable related to \code{y}, the simple random formula overstated the
-variance two- to thirtyfold in the package's simulations, where this one
-stayed near the truth. Two limits no estimator from a single systematic
-sample can escape: it is understated if the frame cycles with a period
-matching \code{interval}, and when a smooth trend so dominates \code{y} that the
-random start is almost the only source of variation, it runs low (0.3 to
-0.7 of the truth when the trend spanned 25 noise standard deviations).}
+adding variance they do not have. With \code{strata} it is added up over
+the strata. \code{\link[=design_multistage]{design_multistage()}} with \code{size} applies it to the
+estimated totals of the clusters, and adds the variance within them.}
+\item{\code{"successive difference"}}{\code{\link[=design_systematic]{design_systematic()}}. The design has
+one random start, and at a step of 2 rows or more neighbouring rows are
+never drawn together, so no design-unbiased estimator exists. This uses
+the successive-difference approximation, which compares each sampled
+row with its neighbour in the order the design walked (Wolter 2007), at
+every step, including a step under 2 rows, where every pair of rows can
+be drawn together. It removes a trend along that order rather than
+counting it as noise, which is why it beats treating the sample as
+simple random: on a frame sorted by a variable related to \code{y}, the
+simple random formula overstated the variance two- to thirtyfold in the
+package's simulations. This one came closer, but its average over the
+random starts depends on the frame, and on the estimation article's
+example it was 1.6 times the true variance. No estimator from a single
+systematic sample escapes its limits. A frame that cycles with a period
+equal to the step, or one that divides it, such as 5 rows at a step of
+10, puts every row of one sample at the same phase of the cycle, and the
+variance is understated, to under 0.001 of the truth in one simulation.
+A period of twice the step puts neighbouring sampled rows at opposite
+phases, and the variance is overstated, 29-fold in the same simulation.
+When a smooth trend so dominates \code{y} that the random start is almost the
+only source of variation, it runs low, and has no floor. It was 0.3 to
+0.7 of the truth when the trend spanned 25 noise standard deviations,
+0.2 at 100 and 0.06 at 1,000. With \code{y} a straight line along the walk
+and no noise, it is \code{6 * k / (n * (k + 1))} times the truth, about
+\code{6 / n}, for \code{n} rows sampled at a step of \code{k}.
+When \code{interval} does not divide the number of rows walked, the sample
+size is random, one of two values, and the total moves with it in a way
+successive differences cannot see. A term for that,
+\code{mean(y / pi)^2 * (r / k) * (1 - r / k)} with \code{k} the interval and \code{r}
+the remainder, is added, and the note says so. Without it a constant
+\code{y} had a standard error of 0, and a variable with a coefficient of
+variation of 0.02 an interval that never covered the truth. A design
+given \code{n} draws exactly \code{n} rows at a step of \code{N / n} and needs no
+such term. \code{\link[=design_stratified]{design_stratified()}} with
+\code{within = design_systematic()} adds up this estimator over its
+strata.}
 \item{\code{"local mean"}}{\code{\link[=design_spread]{design_spread()}}. A spatially balanced sample is
 well spread precisely because neighbours are rarely taken together, so
 this compares each sampled row with the local mean of its nearest
-sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).}
+sampled neighbours (Stevens and Olsen 2003; Grafström and Schelin 2014).
+With \code{strata} it runs within each stratum, and the strata's variances
+are added.}
 \item{\code{"jackknife"}}{The delete-one-unit jackknife, by stratum (JKn) where
 the design has strata, and deleting whole clusters where it has them.
 Used when requested, and as the fallback under \code{variance = "auto"}.}
 }
 
+Rows taken with certainty are in every possible sample and add nothing to
+the variance. That covers rows above a \code{\link[=design_certainty]{design_certainty()}} threshold, rows
+whose size puts them past certainty in \code{\link[=design_weighted]{design_weighted()}} or
+\code{\link[=design_spread]{design_spread()}}, strata taken whole, clusters taken whole by a two-stage
+design that selects every cluster, and a census. Every estimator leaves
+them out. The jackknife holds them fixed instead of deleting them, and its
+finite population correction counts only the other units. A sample made of
+nothing else has a variance of 0 under the design's own estimator.
+
 The analytic estimator declines — returning \code{NA} with the reason in \code{note}
-— rather than understate. Two cases matter in practice:
+— rather than understate. Only a decline sends \code{variance = "auto"} to the
+jackknife. Any other error inside an estimator, such as running out of
+memory, stops \code{ht_total()} with that error. Two cases matter in practice:
 \itemize{
 \item \strong{A stratum or interval with a single sampled row.} There is no
 variation inside it to measure, and simply leaving it out, as the
 Sen-Yates-Grundy sum does, reports a standard error that is too small —
 zero, if every stratum is like that. Draw at least two per stratum
 (\code{min_per_stratum = 2}, \code{per_interval = 2}).
-\item \strong{One row per cluster in a multistage design.} The within-cluster
-variation is unmeasurable and the exact estimator understates by around
-a third. \code{variance = "auto"} falls back to the delete-a-cluster jackknife,
-which is the ultimate-cluster approximation standard in survey practice.
+\item \strong{One row per cluster in a multistage design.} Two rows of one cluster
+are never drawn together, so the within-cluster variation is
+unmeasurable. With \code{f1 = n_clusters / N_clusters}, the share of clusters
+selected, the exact estimator understates by \code{f1} times the
+within-cluster component of the variance. \code{variance = "auto"} falls back
+to the delete-a-cluster jackknife, the ultimate-cluster approximation
+standard in survey practice. It has no first-stage finite population
+correction, so it overstates by \code{f1} times the between-cluster component,
+the variance the cluster totals would have if clusters were drawn with
+replacement. The excess is small when few clusters are selected. With 30
+of 40 clusters whose totals differed widely, the jackknife averaged 3.3
+times the true variance. Whenever \code{f1} is above 0.2, the note gives the
+factor by which the jackknife inflates the between-cluster part. When
+every cluster is selected, the clusters are strata and the variance
+between them is zero by design, so \code{\link[=design_stratified]{design_stratified()}} with the cluster
+column as \code{strata} and two rows in each gives an exact variance instead.
 }
 
 A Sen-Yates-Grundy estimate that comes out negative is treated the same way:
@@ -129,6 +252,73 @@ with hundreds of units and decisive with a handful: at four clusters a
 normal interval covers about 87\% where it claims 95\%, and the t interval
 restores most of that. The degrees of freedom used are reported as \code{df};
 pass \code{df = Inf} for the normal interval.
+
+Units taken with certainty count in neither number. They are in every
+sample and carry no variance, and counting them made the interval too
+narrow. With eight certain units among ten, systematic PPS reported 9
+degrees of freedom where the variance rests on two units, and its interval
+covered 79\%. A stratum or interval with no other unit drops out of the
+count of strata. With no unit below certainty the variance is 0 and \code{df}
+is \code{Inf}. \code{\link[=as_svydesign]{as_svydesign()}} hands certain units to \code{survey} in a form that
+makes \code{survey::degf()} give the same count, except for a census, where it
+gives \code{n - 1}.
+
+An estimate whose variance is 0 is exact and gets a zero-width interval
+whatever \code{df} is. Otherwise a design that leaves 0 degrees of freedom, such
+as Poisson sampling that drew one row, gives a standard error but no
+interval, and \code{note} says why. \code{df} set by hand must be at least 1. A
+proportion of 0 or 1 is the exception to the first rule; see
+"Proportions" in \code{\link[=ht_mean]{ht_mean()}}.
+
+The t interval assumes the estimate is close to normally distributed over
+repeated samples. When \code{y / pi} is skewed and the sample small it is not,
+and the interval covers less often than \code{level} says, even where the
+variance estimate is close to unbiased. In 2,000 draws with \code{n = 30} from
+240 rows in proportion to a size whose coefficient of variation was 0.66,
+with \code{y} close to proportional to size, the 95\% interval for the total
+covered 90\% of the time under systematic PPS and 94\% under Poisson PPS. The
+mean with \code{estimator = "ht"}, which \code{\link[=ht_mean]{ht_mean()}} recommends in that case, is
+the total divided by \code{N} and covered as often. The default Hajek mean
+covered 91\% under both methods. Skew is one reason. The Hajek mean also has
+a ratio bias, here 1.5\% of the mean under systematic PPS and 1.8\% under
+Poisson PPS, and its estimated variance averaged 0.89 and 0.88 times the
+variance of the mean over the draws. Skew lowers coverage under equal
+probabilities too. A simple random sample of 30 from 600 lognormal values
+with a coefficient of variation of 1.5 covered 87\%. A larger sample brings
+the coverage closer to \code{level}. The audit-sampling article checks a bound's
+coverage by drawing the design many times, which is how to check it on a
+frame of your own.
+
+\code{alternative = "less"} gives a one-sided upper bound, the figure an auditor
+signs off against, and \code{"greater"} a lower bound. The other end of \code{ci} is
+then \code{-Inf} or \code{Inf}, or 0 or 1 for a proportion, and the printout labels
+the bound. A one-sided bound at \code{level} is the end of a two-sided interval
+at \code{1 - 2 * (1 - level)}, so the 95\% upper bound is the upper end of the
+90\% interval, which \code{level = 0.90} also gives.
+}
+
+\section{Rows the design cannot reach}{
+
+Rows with inclusion probability 0, such as rows past \code{max_items}, outside
+a region or time window, dropped by \code{na_rm} or in a stratum allocated no
+rows, can never be drawn, so a total covers the other rows only.
+\code{\link[=draw]{draw()}} warns about some of them by name. The estimate keeps their
+number in \code{unreachable} and prints it on a line of its own, since a sample
+saved and read back, or drawn with the warning muffled, would otherwise
+give no sign of them. The design effect is measured against a simple
+random sample of the rows the design can reach; see \code{\link[=deff]{deff()}}.
+}
+
+\section{An empty sample}{
+
+A design of random size, such as Poisson sampling or a systematic sample
+whose random start falls past the last row, can draw nothing. \code{ht_total()}
+then returns a total of 0, which keeps the estimator unbiased over repeated
+draws, with \code{df} 0, the variance, standard error and interval \code{NA}, and a
+note that the sample is empty. \code{\link[=ht_mean]{ht_mean()}} refuses the Hajek mean of an
+empty sample, which is 0 / 0; \code{estimator = "ht"} gives 0. An empty sample
+from a design that gives every row a probability of 0, such as one with
+\code{n = 0}, is refused, and so is any empty sample in \code{\link[=as_svydesign]{as_svydesign()}}.
 }
 
 \section{Domains}{
@@ -140,6 +330,258 @@ number of rows that happen to fall in a domain is itself random. Here each
 domain's total is estimated from \verb{y * (row in domain)} over the whole sample,
 so the same design and the same variance machinery apply (Särndal, Swensson
 and Wretman 1992, section 10.3).
+
+Domains come out in key order: a factor's levels, numbers and dates in
+sequence, and text sorted byte by byte as in the C locale, the same in every
+session. A domain with no sampled row is left out, as \code{survey::svyby()}
+leaves it out.
+
+A stratum or interval with a single sampled row stops a domain's variance,
+as it stops the whole sample's, unless it holds no unit of the domain. That
+is read from the \code{by} columns of the frame stored with the sample, so it
+needs them in the frame, with the same values as in the sample. A domain
+made of strata taken whole is then exact, with a zero-width interval. A
+lonely stratum whose one sampled row lies outside the domain still stops
+it when other units of the stratum belong to the domain, because their
+variation went unmeasured. A frame row whose \code{by} value is missing may
+belong to any domain, so a lonely stratum holding one stops every domain.
+
+A domain's Hajek mean (\code{\link[=ht_mean]{ht_mean()}}) needs sampled rows in at least two
+primary sampling units, rows or clusters. Its linearised residuals sum to
+zero inside the unit that holds the whole domain, so with one unit every
+estimator gives a standard error of about 0, and \code{survey} does the same. Such
+a domain gets no standard error, with a note. When stage one of a cluster
+design takes every cluster, the analytic estimator's units are rows, since
+each cluster is then in every sample and only its rows were drawn at random.
+The jackknife still deletes whole clusters, so a domain inside one cluster
+gets no standard error from it, whether \code{variance = "jackknife"} asks for it
+or \code{"auto"} turns to it after the analytic estimator declines. Rows taken
+with certainty count as one unit, since every estimator holds them fixed and
+\code{as_svydesign()} hands them to \code{survey} together, so a domain whose sampled
+rows were all taken with certainty gets no standard error either, unless
+every row of it that the design could reach is certain, which makes its mean
+exact. A domain total, and the \code{estimator = "ht"} mean, keep the standard
+error of 0 their estimators give such a domain, since those estimators are
+unbiased over samples, and a note says the interval has no width because the
+sampled rows were all certain. A domain with a handful of sampled rows has a
+standard error that is itself unreliable, and the interval covers less often
+than \code{level} says. In one simulation of a skewed variable, a 95\% interval for
+the mean of a domain with two or three sampled rows covered 65\% of the time,
+and 85\% with four or five.
+
+A sample grouped with \code{dplyr::group_by()} is estimated as a whole, with a
+warning of class \code{drawn_grouped_df}; the groups play no part. Use \code{by}.
+
+The strata, clusters and other pieces the variance reads from the frame
+are worked out once for all the domains. For simple random, reservoir,
+spatial, stratified and temporal samples the analytic variances of all
+the domains come from one pass over the sample, in time that grows with
+the number of sampled rows rather than with rows times domains. A domain
+with units in a stratum or interval of one sampled row, and every domain
+under \code{variance = "jackknife"}, is estimated on its own.
+}
+
+\section{Contrasts}{
+
+\code{contrast} weighs the domain estimates of \code{by} and gives their weighted
+sum, such as the difference between two sites' totals or means, with a
+standard error, an interval and \code{df} as for any other estimate. Each
+domain's estimate is the total, over the whole sample, of a variable that
+is 0 outside the domain: \code{y} for a total, the linearised residual for a
+Hajek mean and \code{y / N_d} for a Horvitz-Thompson mean. The weighted sum of
+the estimates is the total of the same weighted sum of those variables, so
+one run of the design's variance estimator gives its variance, with the
+covariances between domains included. For simple random, stratified,
+cluster and multistage samples the standard error equals that of
+\code{survey::svycontrast()} applied to \code{survey::svyby(..., covmat = TRUE)}.
+
+The interval is symmetric, for a proportion too, since a difference of
+proportions can be negative. Domains left out of \code{contrast} have a weight
+of 0. A name that is not a domain with a sampled row is refused, and so is
+a contrast whose weights are all 0. When a Hajek mean that the contrast
+weighs rests on one primary sampling unit, the contrast gets no standard
+error, for the reason given under "Domains".
+}
+
+\section{Ratio estimation}{
+
+\code{ratio} names a column \code{x} of the frame, and the total of \code{y} is then
+estimated by the ratio estimator \code{sum(y / pi) / sum(x / pi) * X}, where
+\code{X} is the total of \code{x} over the frame rows the design can reach, read
+from the frame stored with the sample, as \code{\link[=frame_totals]{frame_totals()}} reads it.
+When \code{y} is close to proportional to \code{x}, such as an audited value and
+the book value it was drawn on, the residuals \verb{y - R x} vary far less
+than \code{y}, and the estimate is more precise than the Horvitz-Thompson
+total. Its variance is \code{X^2} times that of the
+ratio from \code{\link[=ht_ratio]{ht_ratio()}}, estimated from the residuals
+\verb{X (y - R x) / X_hat} with the design's own estimator, and it equals
+\code{predict(survey::svyratio(~y, ~x, design), total = X)} for the designs
+\code{\link[=as_svydesign]{as_svydesign()}} maps with identical standard errors. The sampled rows'
+values of \code{x} come from the frame too. A value of \code{x} missing from a
+frame row the design can reach is refused, since \code{X} is then unknown,
+and so is \code{ratio} with \code{by}. The result holds the ratio as \code{ratio}, the
+column as \code{x} and \code{X} as \code{frame_total}, and prints them.
+
+The ratio estimator is biased, by an amount of order \code{1 / n}, and its
+design effect compares it with the same estimator from a simple random
+sample of the same size. Calibration in \code{survey}, with the totals from
+\code{\link[=frame_totals]{frame_totals()}}, covers several auxiliary columns at once.
+}
+
+\section{Several variables}{
+
+\code{y} may name several columns, such as \code{c("spend", "visits")}. The result
+is then a \code{drawn_by} table with a row for each variable, or for each
+variable and domain with \code{by}, led by a \code{variable} column. Each row holds
+what a call for that variable alone gives: the same estimate, standard
+error, interval and method, with the same refusals for a missing or
+infinite value, named by its column. Notes that hold for every variable
+are printed once, and the others after the variable's name.
+
+\code{vcov()} of the table gives the covariances between the variables'
+estimates as well as their variances. Every variance estimator here is a
+quadratic form in the variable it totals, so the covariance of two
+estimates whose variables are \code{z_a} and \code{z_b} is
+\code{(V(z_a + z_b) - V(z_a) - V(z_b)) / 2}, one more run of the same
+estimator. For a total these variables are the \code{y} columns, and for a
+Hajek mean their linearised residuals. For the designs \code{\link[=as_svydesign]{as_svydesign()}}
+maps with identical standard errors, the matrix equals
+\code{vcov(survey::svytotal(~a + b, design))}, or that of \code{survey::svymean()}
+for means. With \code{by}, the covariances between the variables within each
+domain are estimated, and those between domains are not, as for a \code{by}
+table of one variable. A covariance is \code{NA} when either
+variance is missing, or when the two variances, or the variance of their
+sum, did not come from one estimator, as when the design's own declined
+for one and the jackknife stood in.
+
+A \code{by} column named \code{variable} is refused, and so is \code{contrast}. The
+table has no design effect.
+}
+
+\section{Categories}{
+
+A factor or character column named as \code{y}, or a factor as long as
+\code{sample}, is split into a 0/1 indicator for each of its levels:
+\code{ht_total()} gives the estimated number of frame rows at each level, and
+\code{\link[=ht_mean]{ht_mean()}} the share of each, with a proportion's interval. The result
+is the table of "Several variables" with a row for each level, or each
+level and domain with \code{by}, led by a \code{level} column in place of
+\code{variable}, and \code{vcov()} holds the covariances between levels. The
+levels are a factor's levels, unused ones included, and the values of a
+character column sorted byte by byte. A missing value is a missing \code{y}.
+For the designs \code{\link[=as_svydesign]{as_svydesign()}} maps with identical standard errors, the
+estimates and \code{vcov()} equal those of \code{survey::svytotal(~f, design)} and
+\code{survey::svymean(~f, design)}. A character vector given as \code{y} is read
+as column names, so pass categories held in a vector as a factor. A
+\code{by} column named \code{level} is refused, and so is \code{contrast}; the
+indicator of one level, such as \code{sample$f == "a"}, takes it.
+
+A single number as \code{y} stands for that value in every row:
+\code{ht_total(sample, 1)} estimates the number of frame rows the design can
+reach, and with \code{by} the number in each domain.
+}
+
+\section{Working with the result}{
+
+\code{coef()} gives the estimate, named after \code{y} when \code{y} is a column name,
+\code{vcov()} its variance as a 1 by 1 matrix, and \code{confint()} its interval as
+a matrix with a column for each end. At the estimate's own \code{level},
+\code{confint()} returns the interval the estimate holds. At another level it
+forms the interval again on the design's degrees of freedom and on the
+estimate's scale (\code{ci_scale}), so it gives what \verb{level =} in \code{ht_total()}
+or \code{\link[=ht_mean]{ht_mean()}} would have given. \code{survey::SE()} and \code{survey::cv()} work
+through \code{coef()} and \code{vcov()}.
+
+\code{as.data.frame()} gives one row of \code{variable}, \code{n}, the estimate,
+\code{variance}, \code{se}, \code{ci_lower}, \code{ci_upper}, \code{level}, \code{df}, \code{deff} and
+\code{method}, so estimates of several variables can be bound with \code{rbind()}.
+With the generics package installed, \code{generics::tidy()}, and so
+\code{broom::tidy()}, gives \code{term}, \code{estimate} and \code{std.error}, with
+\code{conf.low} and \code{conf.high} when \code{conf.int = TRUE}, at \code{conf.level}, which
+is the estimate's own level unless given.
+
+A \code{by} table has the same methods. \code{coef()} names each domain as
+\code{contrast} names it, \code{confint()} and \code{tidy()} give a row per domain,
+\code{tidy()} with the \code{by} columns, and \code{as.data.frame()} drops the table's
+class and attributes. \code{vcov()} holds the domains' variances. The
+covariances between domains are not estimated, and its entries for them
+are \code{NA}, except 0 for two domains of a \code{\link[=design_stratified]{design_stratified()}} sample
+whose sampled rows share no stratum, since strata are sampled
+independently. The standard error of a difference between domains comes
+from \code{contrast}, not from \code{vcov()}. A table of
+several variables names each row by its variable, then its domain, as in
+\code{"spend . a"}, and its \code{vcov()} holds the covariances between variables
+described under "Several variables". Selecting
+columns of the table with \code{[} or \code{subset()} drops the attributes these
+methods read, and the result prints as a plain data frame. Selecting rows
+keeps them. A \code{drawn_contrast} has the same methods, with the estimate
+named by its weights, as in \code{"a - b"}, and so does a ratio from
+\code{\link[=ht_ratio]{ht_ratio()}}, named as \code{"y/x"}.
+}
+
+\section{Missing values and nonresponse}{
+
+\code{ht_total()} refuses a missing \code{y}, from a nonresponse or a measurement
+that failed. A total over the rows with \code{y} present counts the others as
+0, so it is low by about the share of the weight they hold, the weighted
+nonresponse rate, and the message gives that share.
+
+\code{ht_mean(na_rm = TRUE)} estimates the mean over the rows with \code{y}
+present. They are a domain of the whole sample, as a \code{by} domain is: the
+estimate is the Hajek mean over them, and its variance comes from the
+linearised residuals over every sampled row, 0 for the rows left out,
+with the design's own estimator and degrees of freedom.
+\code{survey::svymean(na.rm = TRUE)} on \code{\link[=as_svydesign]{as_svydesign()}} gives the same
+estimate and standard error. With \code{by}, each domain's mean is over its
+rows with \code{y} present, and a domain whose sampled rows all have \code{y}
+missing has no mean, no row in the table and no place in \code{contrast}; the
+note names it. \code{\link[=add_fieldwork]{add_fieldwork()}} joins results keyed by an id and leaves
+\code{y} missing for a sampled row with none.
+
+That mean is unbiased for the frame's mean only if the values are missing
+completely at random, with no relation between whether a row has a \code{y}
+and its \code{y}.
+When response rates differ between groups whose \code{y} differs, such as
+sites, the rows with \code{y} present over-represent the groups that responded
+more. A weighting-class adjustment corrects for that, under the weaker
+assumption that response is unrelated to \code{y} within each group. Multiply
+the \code{.weight} of each row with \code{y} present by its group's sum of
+\code{.weight} over all its sampled rows, divided by the same sum over its rows
+with \code{y} present, and estimate totals and means from \code{\link[=as_svydesign]{as_svydesign()}}
+with \code{survey}'s \code{na.rm = TRUE}. \code{survey} treats the adjusted weights as
+fixed, so its standard errors leave out that the adjustment factors were
+estimated from the sample. \code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} keep to \code{.prob}
+and do not see the adjustment. The estimation article shows the steps.
+
+A unit that cannot be reached at all, rather than one that does not
+answer, can be replaced from a reserve list drawn with the sample:
+\code{reserve} in \code{\link[=design_simple]{design_simple()}} and \code{\link[=design_spread]{design_spread()}}, then
+\code{\link[=use_reserves]{use_reserves()}}. The estimates then describe the units that can be
+reached.
+}
+
+\section{Which columns are read}{
+
+\code{ht_total()} and \code{\link[=ht_mean]{ht_mean()}} divide by \code{.prob}, the inclusion probabilities
+\code{\link[=draw]{draw()}} attached, find each sampled row's frame row through \code{.row}, and
+read strata, clusters, time stamps and the other design columns from the
+copy of the frame stored with the sample. Of the sample's own columns they
+read \code{.prob}, \code{.row}, \code{y} and \code{by}, and \code{.weight} only to warn when it was
+edited, so renaming, recoding or dropping a design column in the sample
+changes nothing.
+
+\code{.weight} is not used in the estimate. A weight adjusted after the draw, for
+nonresponse or by trimming, and written into \code{.weight} is ignored with a
+warning of class \code{drawn_weight_edited}; \code{\link[=as_svydesign]{as_svydesign()}} hands \code{.weight} to
+\code{survey}, which is where adjusted weights are estimated from. A sample
+whose \code{.prob} was changed or removed is refused. So is one whose design
+gives the frame different inclusion probabilities in the current session
+than it did at draw time, which a change of \code{\link[sf:s2]{sf::sf_use_s2()}} does to a
+\code{\link[=design_spatial]{design_spatial()}} sample: the variance is recomputed from the design and
+would describe another one. A sample saved by drawn 0.2.0 has no \code{.row}
+and records no probabilities for the frame, so its rows are matched by
+position and it is refused when the design gives a sampled row a
+probability other than its \code{.prob}.
 }
 
 \examples{
@@ -158,6 +600,15 @@ sum(pop$spend)   # the truth
 # One estimate per site, from the same sample
 ht_total(s, "spend", by = "site")
 tapply(pop$spend, pop$site, sum)
+
+# How much more site a spent than site b
+ht_total(s, "spend", by = "site", contrast = c(a = 1, b = -1))
+
+# Two variables at once, with the covariance between their totals
+s$visits <- round(s$spend / 50) + 1
+both <- ht_total(s, c("spend", "visits"))
+both
+vcov(both)
 
 }
 \references{
@@ -195,5 +646,6 @@ Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Surve
 Sampling}. Springer.
 }
 \seealso{
-\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=deff]{deff()}}, \code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
+\code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_ratio]{ht_ratio()}}, \code{\link[=ht_quantile]{ht_quantile()}}, \code{\link[=deff]{deff()}},
+\code{\link[=joint_prob]{joint_prob()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}
 }

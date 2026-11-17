@@ -11,7 +11,8 @@ design_multistage(
   allocation = c("equal", "proportional"),
   min_per_cluster = 0L,
   replace = FALSE,
-  na_rm = FALSE
+  na_rm = FALSE,
+  size = NULL
 )
 }
 \arguments{
@@ -19,24 +20,41 @@ design_multistage(
 
 \item{n_clusters}{Number of clusters to select at stage one.}
 
-\item{n}{Total rows to draw across the selected clusters. Make it a
-multiple of \code{n_clusters}, and no larger than \code{n_clusters} times the
-smallest cluster, if you intend to estimate: otherwise the per-cluster take
-depends on which clusters were selected and there is no closed-form
-inclusion probability. See \code{\link[=inclusion_prob]{inclusion_prob()}}.}
+\item{n}{Total rows to draw across the selected clusters, at least
+\code{n_clusters}, or a plan from \code{\link[=plan_size]{plan_size()}}. A multiple of \code{n_clusters},
+no larger than \code{n_clusters} times the smallest cluster, gives every
+selected cluster the same take and every row a closed-form inclusion
+probability. Otherwise the take depends on which clusters were
+selected, and \code{draw(weights = TRUE)} weights the sample conditional on
+them. See "When the take depends on the clusters selected".}
 
 \item{allocation}{\code{"equal"} splits \code{n} evenly across the selected clusters;
-\code{"proportional"} splits it in proportion to their size.}
+\code{"proportional"} splits it in proportion to their size, and its weights
+are conditional on the clusters selected. Proportional allocation can
+give a small selected cluster no rows; \code{\link[=draw]{draw()}} then warns with class
+\code{drawn_empty_cluster} and names it.}
 
 \item{min_per_cluster}{Minimum rows from each selected cluster. Defaults to
-\code{0}. Take at least two rows per cluster if you intend to estimate a
-variance: with one, the variation within clusters cannot be measured and
-\code{\link[=ht_total]{ht_total()}} falls back to the ultimate-cluster jackknife.}
+\code{0}, and \code{n_clusters * min_per_cluster} must not exceed \code{n}. A cluster
+smaller than the minimum is taken whole. \code{draw(weights = TRUE)} needs at
+least 1 under proportional allocation. Take at least two rows per
+cluster if you intend to estimate a variance: with one, the variation
+within clusters cannot be measured and \code{\link[=ht_total]{ht_total()}} falls back to the
+ultimate-cluster jackknife.}
 
-\item{replace}{Sample with replacement within each cluster?}
+\item{replace}{Sample with replacement within each cluster? A selected
+cluster then gives its full share of \code{n} however small it is, and a row's
+inclusion probability is the chance of being drawn at least once,
+\code{(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^m)} for a take of \code{m}
+from a cluster of \code{N_h} rows.}
 
-\item{na_rm}{Drop rows whose cluster label is \code{NA} instead of raising an
-error.}
+\item{na_rm}{Drop rows whose cluster label, or \code{size}, is \code{NA} instead of
+raising an error.}
+
+\item{size}{Optional column holding each cluster's size measure, the same
+on every row of a cluster: positive, finite and numeric. Clusters are
+then selected with probability proportional to it. See "Clusters in
+proportion to size".}
 }
 \value{
 A design object, for use with \code{\link[=draw]{draw()}}.
@@ -46,9 +64,91 @@ Selects clusters at the first stage, then draws rows within them at the
 second. \code{n} is the total across the selected clusters under both allocations,
 matching \code{\link[=design_stratified]{design_stratified()}}.
 }
+\section{When the take depends on the clusters selected}{
+
+Without \code{size}, the \code{n} rows are split over the clusters selected, so a
+cluster's take is the same in every sample only under \code{"equal"}
+allocation of an \code{n} that divides by \code{n_clusters}, with no cluster
+smaller than \code{n / n_clusters}. Otherwise, under \code{"proportional"}
+allocation, with a remainder that goes to the largest clusters selected,
+or with a small cluster capped at its size and its shortfall dealt to the
+others, a row's inclusion probability depends on which other clusters
+were selected. It is the chance of drawing the row given the clusters
+selected, averaged over every possible selection, which has no closed
+form, so \code{\link[=inclusion_prob]{inclusion_prob()}} refuses it.
+
+\code{draw(weights = TRUE)} weights such a sample conditional on the clusters
+it selected. With \code{a} of \code{A} clusters selected and \code{m_i} of the \code{N_i}
+rows of cluster \code{i} taken, \code{.prob} is \code{(a / A) * m_i / N_i}, and the
+estimate of a total is \code{A / a} times the sum of the selected clusters'
+estimated totals. That is unbiased whichever clusters were selected, and
+so over all of them. \code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} estimate its variance
+with the two-stage formula, the variance between the estimated cluster
+totals plus that within each cluster at its own take, on \code{a - 1} degrees
+of freedom, and \code{\link[=as_svydesign]{as_svydesign()}} hands it to \code{survey} in two stages,
+where the standard errors agree. The variance falls back to the
+delete-a-cluster jackknife when a selected cluster gives one row of
+several. Proportional allocation needs \code{min_per_cluster} of at least 1
+for weights, since a selected cluster with no rows would count as a
+cluster total of 0.
+}
+
+\section{Clusters in proportion to size}{
+
+With \code{size}, the clusters are selected with probability proportional to a
+size measure, such as a count of households from a census, by
+systematic PPS as in \code{\link[=design_weighted]{design_weighted()}}: cluster \code{i} gets
+\code{pi_i = n_clusters * M_i / sum(M)}, and a cluster large enough that this
+passes 1 is taken with certainty, the rest of \code{n_clusters} being spread
+over the others. Each selected cluster then gives the same \code{m = n / n_clusters} rows by simple random sampling, so a row of cluster \code{i}, of
+\code{N_i} rows, has inclusion probability \code{pi_i * m / N_i}. When the measure
+is the cluster's row count and no cluster is certain, every row gets
+\code{n / N}: the design is self-weighting, with a fixed number of interviews
+per cluster.
+
+The measure is a property of the cluster, so every row of a cluster must
+carry the same value; a cluster with two values is refused. \code{n} must be a
+multiple of \code{n_clusters}, and \code{allocation} must be \code{"equal"}.
+
+\code{\link[=ht_total]{ht_total()}} and \code{\link[=ht_mean]{ht_mean()}} estimate the variance as Deville's
+approximation over the estimated totals of the selected clusters below
+certainty, each scaled by its own \code{1 - pi_i}, plus the variance within the
+selected clusters, each divided by its \code{pi_i}. That is the two-stage
+estimator of \code{\link[=design_multistage]{design_multistage()}} without \code{size} when every \code{pi_i} is
+equal. A cluster taken with certainty is a stratum, and adds only the
+variance of the simple random sample within it. The degrees of freedom
+count the clusters below certainty less one, and in each certain cluster
+the sampled rows less one. The variance is declined when one cluster
+below certainty is selected. With one row taken per cluster, whose
+variation within clusters cannot be measured, \code{\link[=ht_total]{ht_total()}} falls back to
+the delete-a-cluster jackknife over the clusters below certainty, with no
+finite population correction, and declines if a cluster taken with
+certainty gives one row of several. In simulations of 2,000 draws
+each from frames of 78 or 80 clusters of 10 to 600 rows, taking 2 or 5
+rows from each of 12 or 20 clusters, with and without clusters taken
+with certainty, the variance averaged 0.94 to 1.02 times the true
+variance of the total, and 95\% intervals covered 93\% to 95\% of the time.
+
+\code{\link[=as_svydesign]{as_svydesign()}} hands the design to \code{survey} in two stages with
+Brewer's approximation at the first. A sample with one row from a
+selected cluster of several goes over in one stage instead, as the
+clusters of that jackknife, and the standard errors agree. Joint
+probabilities have no closed form; \code{\link[=joint_prob]{joint_prob()}} estimates them with
+\code{simulate = TRUE}.
+}
+
 \examples{
 df <- data.frame(id = 1:100, site = rep(paste0("s", 1:10), each = 10))
 nrow(draw(df, design_multistage("site", n_clusters = 4, n = 12), seed = 1))
+
+# Villages selected in proportion to their households, then 5 households
+# from each: every household has the same chance, 20 / 260
+hh <- data.frame(village = rep(paste0("v", 1:8),
+                               times = c(10, 20, 30, 40, 20, 50, 60, 30)))
+hh$households <- ave(seq_len(nrow(hh)), hh$village, FUN = length)
+pps <- design_multistage("village", n_clusters = 4, n = 20,
+                         size = "households")
+unique(round(inclusion_prob(hh, pps), 4))
 
 }
 \seealso{

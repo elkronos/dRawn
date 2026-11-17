@@ -69,9 +69,9 @@ plan_size(margin = 100, sd = stats::sd(invoices$value), N = nrow(invoices),
 ```
 
 `deff` is not a guess you have to invent — it is measurable from a comparable
-past sample with `deff()`, which we come back to below. If the margin you ask
-for cannot be reached by sampling at all, `plan_size()` says so rather than
-returning a number bigger than your frame:
+past sample with `deff()`, which we come back to below. If only a census meets
+the margin you ask for, `plan_size()` says so rather than returning a number
+bigger than your frame:
 
 ```{r}
 plan_size(margin = 2, sd = stats::sd(invoices$value), N = nrow(invoices))
@@ -401,6 +401,27 @@ of the way from stratification to PPS, and on `checks` it gives up nothing
 against stratifying by site, where PPS lost badly. When you are not sure the
 size measure predicts what you will measure, that is the safer use of it.
 
+Strata and size also combine. With `strata`, `design_weighted()` splits `n`
+over the sites as `design_stratified()` would, and samples each site in
+proportion to `value` on its own, with a random start of its own. Every site
+gets its share of the sample, and large invoices are still favoured within
+it:
+
+```{r}
+pps_site <- design_weighted("value", n = 60, method = "systematic",
+                            strata = "site")
+allocation_table(invoices, pps_site)
+round(cbind(bet, spread = spread_sd,
+            pps_by_site = c(cost   = spread_of(pps_site, "cost"),
+                            checks = spread_of(pps_site, "checks"))), 1)
+```
+
+The invoices of every site were drawn from the same distribution, so here
+the strata change little against PPS over the whole frame. They pay where
+the strata differ in what you measure, and they guarantee each site its
+rows either way. `ht_total()` adds up Deville's approximation over the
+sites, and `as_svydesign()` hands the sites to `survey` as strata.
+
 ## The units too big to leave to chance
 
 PPS is one answer to dominant units. The blunter one is to stop sampling them
@@ -463,12 +484,11 @@ control both.
 
 ## Which designs can be estimated from
 
-Most designs have exact inclusion probabilities. Five situations do not, and the
+Most designs have exact inclusion probabilities. Four situations do not, and the
 package says so rather than approximating:
 
 ```{r}
 no_form <- list(
-  `balanced clusters`      = design_cluster("team", n_clusters = 4, balanced = TRUE),
   `proportional multistage`= design_multistage("team", n_clusters = 6, n = 60,
                                                allocation = "proportional"),
   `uneven multistage`      = design_multistage("team", n_clusters = 6, n = 61),
@@ -489,16 +509,50 @@ on, because the arithmetic looks innocent. The second-stage allocation runs over
 the clusters that were *selected*, so a leftover row goes to the largest of
 them, and a cluster smaller than its target is capped with the shortfall dealt
 to whichever clusters came with it. A row's chance therefore depends on the
-company it keeps. Averaging over the possibilities is not a closed form, and the
-average is not the answer.
+company it keeps. Its exact probability is its chance given the clusters
+selected, averaged over every possible selection, and no formula gives that
+average.
+
+Estimation does not need it. `draw(weights = TRUE)` weights such a sample
+conditional on the clusters it selected: with `a` of `A` clusters selected and
+`m_i` of the `N_i` rows of cluster `i` taken, `.prob` is `(a / A) * m_i / N_i`.
+The total built from those weights is unbiased whichever clusters were
+selected, and so over every selection, and `ht_total()` gives it the
+two-stage standard error:
+
+```{r}
+uneven <- draw(invoices, no_form$`uneven multistage`, seed = 1, weights = TRUE)
+table(uneven$team)
+ht_total(uneven, "value")
+```
+
+Proportional allocation needs `min_per_cluster = 1` or more for this, because a
+selected cluster given no rows would count as a cluster total of 0.
+
+Balanced clusters, which take from each selected cluster as many rows as the
+smallest of them holds, are not on the list. Their take is random too, but its
+average for each cluster has an exact form, which `inclusion_prob()` uses. With
+two of the four sites selected:
+
+```{r}
+balanced <- design_cluster("site", n_clusters = 2, balanced = TRUE)
+round(cbind(
+  exact     = tapply(inclusion_prob(invoices, balanced), invoices$site, mean),
+  simulated = tapply(inclusion_prob(invoices, balanced, simulate = TRUE,
+                                    R = 1000, seed = 1), invoices$site, mean)
+), 3)
+```
+
+`draw(weights = TRUE)` weights a balanced sample conditional on its clusters as
+well, so that `ht_total()` can use the same two-stage standard error.
 
 Where you need a number anyway, ask for a simulation and accept the Monte Carlo
 error:
 
 ```{r}
-sim <- inclusion_prob(invoices, no_form$`balanced clusters`,
+sim <- inclusion_prob(invoices, no_form$`uneven multistage`,
                       simulate = TRUE, R = 200, seed = 1)
-round(tapply(sim, invoices$team, unique)[1:5], 3)
+round(tapply(sim, invoices$team, mean)[1:5], 3)
 ```
 
 The one thing simulation cannot rescue is the bootstrap, and it is refused
@@ -538,7 +592,7 @@ round(cbind(
 
 ## Clusters, when fieldwork costs more than precision
 
-Visiting five teams is cheaper than visiting twenty. `design_cluster()` takes
+Visiting four teams is cheaper than visiting twenty. `design_cluster()` takes
 whole clusters, so the row count follows from which ones you get:
 
 ```{r}
@@ -555,9 +609,30 @@ res_ms <- draw(invoices, ms, seed = 1)
 table(res_ms$team)
 ```
 
-Both are estimable, but cluster designs pay for their convenience in precision —
-and in degrees of freedom. With four clusters there are three degrees of
-freedom, and the interval uses t on three rather than the normal
+The teams here are all the same size. Where clusters differ, or some matter
+more than others, `size` selects them in proportion to a measure known for
+every cluster, here each team's total invoice value, and still takes the same
+number of rows from each. A row's inclusion probability is its team's chance
+of selection times 10 out of 30:
+
+```{r}
+teams <- transform(invoices, team_value = ave(value, team, FUN = sum))
+ms_pps <- design_multistage("team", n_clusters = 6, n = 60,
+                            size = "team_value")
+range(inclusion_prob(teams, ms_pps))
+ht_total(draw(teams, ms_pps, seed = 1, weights = TRUE), "cost")
+```
+
+Had the measure been each team's number of invoices, every invoice would have
+had the same chance, `n / N`.
+
+Both are estimable. Cluster designs usually pay for their convenience in
+precision, because rows of one cluster tend to resemble each other, and they
+always pay in degrees of freedom. These teams are blocks of 30 invoices whose
+values have nothing to do with the team, so here clustering costs no
+precision on average, and the design effect estimated from one sample can
+fall below 1 by chance, as it does below. With four clusters there are three
+degrees of freedom, and the interval uses t on three rather than the normal
 distribution. That is why it is so wide, and it is right to be: a normal
 interval here covers about 87% of the time where it claims 95%.
 
@@ -567,8 +642,8 @@ ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
 
 ## Streams, when the data does not fit
 
-A data frame is not a stream: its length is already known, so `design_reservoir()`
-takes a direct vectorised path for one. The streaming path is for data you cannot
+A data frame or a list is not a stream: its length is already known, so
+`design_reservoir()` takes a direct vectorised path for one. The streaming path is for data you cannot
 hold — pass a connection, or a function that returns the next item and `NULL` when
 exhausted.
 
@@ -584,13 +659,22 @@ drawn_ids
 ```
 
 One pass, five items held, a hundred thousand seen. Algorithm L skips ahead
-geometrically rather than drawing a random number per item.
+geometrically rather than drawing a random number per item, and the items come
+back in the order they arrived.
+
+Each line of a connection is an item, a CSV header included, and a function
+that returns a data frame gives whole data frames as items.
+`?design_reservoir` shows how to leave a header out, and how
+`batches = TRUE` samples the rows of those data frames instead.
 
 ## Bootstrap, for the uncertainty of a statistic
 
 The other designs estimate a population total. The bootstrap estimates the
-sampling distribution of whatever you like — here the median, which has no
-convenient closed form:
+sampling distribution of a statistic computed on independent rows, here the
+median of the invoice values, which has no convenient closed form. A sample
+drawn with strata or clusters is not made of independent rows, and
+`?design_bootstrap` shows how to resample its clusters within strata with
+`survey::as.svrepdesign()` instead.
 
 ```{r}
 reps <- draw(invoices, design_bootstrap(n_replicates = 400), seed = 1)
@@ -610,6 +694,12 @@ randomly chosen runs instead of independent rows:
 ```{r}
 design_bootstrap(n_replicates = 100, method = "block", block_length = 20)
 ```
+
+A run must fit inside the data, so the first and last rows are drawn less often
+than the rest. `method = "circular"` lets a run wrap from the last row to the
+first, which draws every row equally often on average. For many replicates of a
+large frame, `output = "indices"` returns the row numbers of each replicate as a
+matrix instead of copying the rows.
 
 ## Reproducibility without side effects
 
@@ -642,10 +732,10 @@ ht_total(s, "value", by = "site")
 
 ## Where this package stops
 
-`drawn` draws samples and estimates totals, means and proportions from them,
-overall or by group. It does not do regression, calibration, or quantiles with
-proper standard errors — [`survey`](https://cran.r-project.org/package=survey)
-does all of that, and `as_svydesign()` hands a sample straight over.
+`drawn` draws samples and estimates totals, means, proportions, ratios and
+quantiles from them, overall or by group. It does not do regression or
+calibration. [`survey`](https://cran.r-project.org/package=survey) does both,
+and `as_svydesign()` hands a sample straight over.
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE), message = FALSE}
 library(survey)
@@ -667,7 +757,7 @@ c(drawn  = ht_total(s, "value")$se,
 From there it is `survey`'s vocabulary:
 
 ```{r, eval = requireNamespace("survey", quietly = TRUE)}
-svyquantile(~value, des, quantiles = c(0.25, 0.5, 0.75))
+coef(summary(svyglm(value ~ site, des)))
 ```
 
 Draw here, analyse there.

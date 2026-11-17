@@ -11,3 +11,7 @@
 ^Rplots\.pdf$
 ^README\.Rmd$
 ^vignettes/articles$
+^\.stage$
+^drawn$
+^CRAN-AUDIT\..*$
+^RUNBOOK\.md$
