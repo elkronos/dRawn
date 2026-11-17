@@ -91,7 +91,7 @@ tapply(inclusion_prob(invoices, plan), invoices$site, unique)
 ```
 
 **3. Draw,** with `weights = TRUE` to attach each row’s inclusion
-probability (`.prob`) and design weight (`.weight`).
+probability (`.prob`), design weight (`.weight`) and frame row (`.row`).
 
 **4. Check what you got.**
 
@@ -101,6 +101,8 @@ sample_summary(s)
 #> Sample of 60 from 600  (stratified design)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
+#>   effective n        60  (Kish, from the weights alone)
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-16
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate
@@ -110,9 +112,9 @@ sample_summary(s)
 #>     west       3       30  0.100
 ```
 
-**5. Estimate** a total, a mean or a proportion, overall or by domain.
-Domain estimates use the whole sample, not a subset of it, which is what
-keeps their standard errors right:
+**5. Estimate** a total, a mean, a proportion or a quantile, overall or
+by domain. Domain estimates use the whole sample, not a subset of it,
+which is what keeps their standard errors right:
 
 ``` r
 
@@ -130,28 +132,32 @@ ht_mean(s, "value", by = "site")
 ``` r
 
 des <- as_svydesign(s)             # a survey.design, with matching SEs
-survey::svyquantile(~value, des, 0.5)
+survey::svyglm(value ~ site, des)
 ```
 
 ## The designs
 
-| Design | Selects | Size | Variance estimator |
+| Design | Selects | Size | Variance `method` |
 |----|----|----|----|
-| [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md) | rows uniformly at random | `n` | exact |
-| [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md) | a share of each stratum: proportional, equal or Neyman | `n` total | exact |
-| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | every *k*-th row from a random start | `interval` | successive-difference approx. |
-| [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | whole clusters | `n_clusters` | exact |
-| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | clusters, then rows within them | `n_clusters`, `n` | exact two-stage |
-| [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | probability proportional to size | `n` | exact (Poisson), Deville (systematic) |
-| [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md) | everything above a threshold, plus any design below it | `rest`’s own | `rest`’s own |
-| [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md) | a sample spread evenly over a map or covariates | `n` | local-mean approx. |
-| [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | a fixed number per time interval | `per_interval` | exact |
-| [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | a simple random sample inside a region | `n` | exact |
-| [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | a fixed-size sample from a stream, in one pass | `n` | exact |
-| [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md) | resampled replicates, simple or block | `n_replicates` | not a survey design |
+| [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md) | rows uniformly at random | `n` | analytic |
+| [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md) | a share of each stratum: proportional, equal or Neyman, at random or with `within` systematically | `n` total | analytic; successive difference (an approximation) with `within` |
+| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | every *k*-th row from one or several random starts, or `n` rows at an even step | `interval` or `n` | successive difference (an approximation); analytic with `n_starts` |
+| [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | whole clusters | `n_clusters` | analytic |
+| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | clusters, at random or in proportion to size, then rows within them | `n_clusters`, `n` | analytic, two-stage; deville (an approximation) for the clusters with `size` |
+| [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | probability proportional to size, within strata if asked | `n` total | analytic (Poisson); deville (an approximation) for systematic, summed over strata |
+| [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md) | everything above a threshold, plus any design below it | rows above the threshold + `rest`’s | `rest`’s own |
+| [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md) | a sample spread evenly over a map or covariates | `n` | local mean (an approximation) |
+| [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | a fixed number per time interval | `per_interval` | analytic |
+| [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | a simple random sample inside a region | `n` | analytic |
+| [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | a fixed-size sample from a stream, in one pass | `n` | analytic |
+| [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md) | resampled replicates of rows (simple) or of runs of rows (block or circular) | `n_replicates` | not a survey design |
 
-Every estimate says which estimator produced its variance, and any
-approximation is named when it prints.
+Every estimate says in `method` which estimator produced its variance,
+under the names in this table, which are also the ones a printed
+estimate and the `method` column of a `by` table show. An approximation
+is called one when it prints. Under the default `variance = "auto"`, the
+jackknife takes over where the design’s own estimator declines, and
+`method` then says `jackknife`.
 
 ## Spread the sample, not just the rows
 
@@ -171,7 +177,7 @@ plots$biomass <- 100 + 80 * plots$x + 60 * sin(4 * plots$y) + rnorm(400, 0, 10)
 
 op <- par(mfrow = c(1, 2))
 plot(design_simple(n = 40), plots, type = "map", coords = c("x", "y"), seed = 3,
-     main = "simple random")
+     main = "simple random", asp = 1)
 plot(design_spread(c("x", "y"), n = 40, scale = FALSE), plots, type = "map",
      seed = 3, main = "spread (local pivotal method)")
 par(op)
@@ -209,7 +215,7 @@ inclusion_prob(invoices, design_weighted("value", n = 60))
 #> Its weights govern each successive draw, not each row's chance of ending up in
 #> the sample. Use method = "systematic" or "poisson" for a design whose inclusion
 #> probabilities really are proportional to the weights.
-#> Or pass simulate = TRUE to estimate it by Monte Carlo.
+#> Or estimate it by Monte Carlo with inclusion_prob(data, design, simulate = TRUE).
 ```
 
 ``` r
@@ -223,10 +229,9 @@ ht_total(one_each, "value")
 #> 
 #>   No variance is available for this sample. 4 strata `east`, `north`,
 #>   `south`, `west` each have a single sampled row, so the variation
-#>   within them cannot be measured and leaving it out would understate
+#>   within them cannot be measured and leaving them out would understate
 #>   the standard error. Draw at least two rows per stratum
-#>   (min_per_stratum = 2). The stratified jackknife needs two units per
-#>   stratum as well.
+#>   (min_per_stratum = 2).
 ```
 
 ## Learn more
@@ -268,8 +273,6 @@ One verb, and the designs it takes.
   : Picture a sampling design
 - [`is_design()`](https://elkronos.github.io/dRawn/reference/is_design.md)
   : Is this a sampling design?
-- [`draw_design()`](https://elkronos.github.io/dRawn/reference/draw_design.md)
-  : Design-specific draw method
 
 ## What a design knows before you draw
 
@@ -280,18 +283,41 @@ The probabilities that make a sample estimable.
   : Inclusion probabilities and design weights
 - [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
   : Joint inclusion probabilities
+- [`certainty_set()`](https://elkronos.github.io/dRawn/reference/certainty_set.md)
+  : Rows a size-proportional design takes with certainty
+- [`allocation_table()`](https://elkronos.github.io/dRawn/reference/allocation_table.md)
+  : How a design splits its sample over the strata of a frame
 
 ## Estimating from a sample
 
-Totals, means and proportions, overall or by domain, with the variance
-estimator the design calls for and a design effect.
+Totals, means, ratios, proportions and quantiles, overall or by domain,
+with the variance estimator the design calls for and a design effect.
 
 - [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
   : Estimate a population total from a sample
 - [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md) :
   Estimate a population mean
+- [`ht_ratio()`](https://elkronos.github.io/dRawn/reference/ht_ratio.md)
+  : Estimate a ratio of two population totals
+- [`ht_quantile()`](https://elkronos.github.io/dRawn/reference/ht_quantile.md)
+  : Estimate population quantiles from a sample
 - [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md) :
   Design effect
+
+## From fieldwork to estimate
+
+Join fieldwork results to a sample, replace units found unavailable from
+a reserve list, rebuild a sample read back from a file, and drop frame
+columns before saving or sharing one.
+
+- [`add_fieldwork()`](https://elkronos.github.io/dRawn/reference/add_fieldwork.md)
+  : Join fieldwork results to a weighted sample
+- [`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
+  : Replace unavailable units from a reserve list
+- [`as_drawn()`](https://elkronos.github.io/dRawn/reference/as_drawn.md)
+  : Rebuild a weighted sample from its rows
+- [`compact_sample()`](https://elkronos.github.io/dRawn/reference/compact_sample.md)
+  : Drop the frame columns a sample's design does not need
 
 ## Planning and checking
 
@@ -299,10 +325,16 @@ How many rows to draw, what you actually got, and where to go next.
 
 - [`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md)
   : How large a sample do you need?
+- [`deff_cluster()`](https://elkronos.github.io/dRawn/reference/deff_cluster.md)
+  : Design effect of a cluster sample, from the intraclass correlation
 - [`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
   : Describe a drawn sample
 - [`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
   : Hand a sample to the survey package
+- [`replicate_weights()`](https://elkronos.github.io/dRawn/reference/replicate_weights.md)
+  : Replicate weights for a sample
+- [`frame_totals()`](https://elkronos.github.io/dRawn/reference/frame_totals.md)
+  : Population totals from the frame behind a sample
 
 ## Equal-probability designs
 
@@ -351,6 +383,13 @@ region, or taken across time intervals.
 
 - [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
   : Bootstrap sampling
+
+## Extending
+
+A design class of your own, drawn by its own method.
+
+- [`draw_design()`](https://elkronos.github.io/dRawn/reference/draw_design.md)
+  : Draw method for a design class
 
 # Articles
 

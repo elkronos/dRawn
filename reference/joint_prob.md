@@ -24,9 +24,13 @@ joint_prob(data, design, rows = NULL, simulate = FALSE, R = 5000, seed = NULL)
 
 - rows:
 
-  Optional row indices. Supply these — usually the rows you drew — to
-  get the submatrix for them instead of the full `nrow(data)` square,
-  which is what makes this usable on a large population.
+  Optional row indices, usually the rows you drew, which are `s$.row`
+  for a sample `s` from `draw(weights = TRUE)`. The result is then the
+  submatrix for these rows instead of the full `nrow(data)` square,
+  which is what makes this usable on a large population. See "Size".
+  Indices must be whole numbers. A row given more than once is one unit,
+  so its entry with itself, off the diagonal too, is its own inclusion
+  probability.
 
 - simulate:
 
@@ -39,11 +43,15 @@ joint_prob(data, design, rows = NULL, simulate = FALSE, R = 5000, seed = NULL)
 
 - R:
 
-  Number of simulated draws when `simulate = TRUE`.
+  Number of simulated draws when `simulate = TRUE`. A simulation costs
+  `R` draws; see "What a simulation costs" in
+  [`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md).
 
 - seed:
 
-  Optional seed for the simulation.
+  Optional seed for the simulation, applied as in
+  [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) (see
+  "Seeding" there). Checked whether or not `simulate` is `TRUE`.
 
 ## Value
 
@@ -60,30 +68,61 @@ either independent across groups or a simple random sample within them:
 | [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md) | `n(n-1) / (N(N-1))` for a pair, without replacement |
 | [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md) | within a stratum as above; across strata, independent |
 | [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | same cluster: `a/A`; different clusters: `a(a-1)/(A(A-1))` |
-| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | the two stages multiplied, where the per-cluster take is constant |
+| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | the two stages multiplied, where the per-cluster take is constant and `size` is not given |
 | [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md) | `1` between certainty rows; otherwise the other row's own `pi` |
 | [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | simple random sampling over the first `max_items` rows |
 | [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | within an interval as above; across intervals, independent |
 | [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | simple random sampling inside the region |
 | [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | `"poisson"` only, where rows are independent: `pi_i * pi_j` |
-| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | `1/interval` for rows sharing a residue class, otherwise **zero** |
+| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | `1/interval` for rows sharing a residue class, otherwise **zero**; with `n`, the overlap of the two rows' stretches, from 0 to `n / N`; with `n_starts = m`, `1/interval` for rows sharing a residue class modulo `m * interval`, otherwise `m(m-1) / (mk(mk-1))` with `k` the interval |
 
-Systematic sampling is the awkward one. Most pairs can never co-occur,
-so their joint probability is genuinely 0 and no design-unbiased
-variance estimator exists;
+Systematic sampling is the awkward one. At a step of 2 rows or more,
+which is every `interval` above 1 and every `n` up to half the rows
+walked, neighbouring rows and many other pairs can never co-occur, so
+their joint probability is genuinely 0 and no design-unbiased variance
+estimator exists;
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
 uses the successive-difference approximation instead, and says so. Its
 residue classes follow the order the design walks, so `order_by` changes
-which pairs can co-occur.
+which pairs can co-occur. Given `n`, the design walks at a step of
+`N / n` rows from a start `u` uniform on (0, 1), each row covering a
+stretch of length `n / N`, and a pair is drawn together when `u` falls
+where both stretches, moved into (0, 1), overlap. With `n` above `N / 2`
+the stretches are longer than 1/2, any two of them overlap, and every
+pair has a positive joint probability;
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+uses the successive-difference approximation there too. With a fixed
+`start` the design is deterministic, and it is refused as in
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md).
+With several starts (`n_starts`), rows in different residue classes can
+be drawn together too, which is what gives a replicated sample its
+unbiased variance. Within the strata of
+`design_stratified(within = design_systematic())`, pairs in one stratum
+get the overlap of their stretches, as with `n`, and pairs in two strata
+the product of their probabilities.
 
-Two designs have joint probabilities that are positive but have no
+Three designs have joint probabilities that are positive but have no
 closed form: `design_weighted(method = "systematic")`, which shuffles
-the rows before walking them so every pair can co-occur, and
+the rows before walking them so every pair can co-occur, with or without
+`strata`;
+[`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md)
+with `size`, which does the same with the clusters; and
 [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md).
-For both,
+For all three,
 [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
 uses a variance approximation that needs only first-order probabilities,
 and `simulate = TRUE` here estimates the joint probabilities themselves.
+
+## Size
+
+The matrix has a row and a column for each of `rows`, by default every
+row of `data`, and holds 8 bytes for each pair: 800 MB for 10,000 rows.
+Past about 1 GB, from about 11,200 rows, `joint_prob()` refuses and
+gives the size, rather than risk exhausting memory, which can end the R
+session.
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+and [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md)
+do not build this matrix for any design in the package.
 
 ## See also
 

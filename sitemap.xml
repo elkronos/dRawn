@@ -10,8 +10,14 @@
 <url><loc>https://elkronos.github.io/dRawn/authors.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/index.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/news/index.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/add_fieldwork.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/allocation_table.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/as_drawn.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/as_svydesign.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/certainty_set.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/compact_sample.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/deff.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/deff_cluster.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_bootstrap.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_certainty.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/design_cluster.html</loc></url>
@@ -28,7 +34,10 @@
 <url><loc>https://elkronos.github.io/dRawn/reference/draw.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/draw_design.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/drawn-package.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/frame_totals.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/ht_mean.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/ht_quantile.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/ht_ratio.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/ht_total.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/inclusion_prob.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/index.html</loc></url>
@@ -36,6 +45,8 @@
 <url><loc>https://elkronos.github.io/dRawn/reference/joint_prob.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/plan_size.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/plot.drawn_design.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/replicate_weights.html</loc></url>
 <url><loc>https://elkronos.github.io/dRawn/reference/sample_summary.html</loc></url>
+<url><loc>https://elkronos.github.io/dRawn/reference/use_reserves.html</loc></url>
 </urlset>
 

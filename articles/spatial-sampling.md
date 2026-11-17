@@ -65,7 +65,7 @@ spread <- design_spread(c("x", "y"), n = 60, scale = FALSE)
 
 op <- par(mfrow = c(1, 2))
 plot(srs, grid, type = "map", coords = c("x", "y"), seed = 4,
-     main = "simple random")
+     main = "simple random", asp = 1)
 plot(spread, grid, type = "map", seed = 4, main = "spread")
 par(op)
 ```
@@ -136,16 +136,18 @@ sample_summary(plots)
 #> Sample of 60 from 1,600  (spread design)
 #>   sampling fraction  0.0375
 #>   design weights     26.67 to 26.67   (cv 0)
+#>   effective n        60  (Kish, from the weights alone)
+#>   drawn              with seed 3, by drawn 0.2.0.9000 on 2026-11-17
 ```
 
-After fieldwork, the total, and a mean per hectare-cell:
+After fieldwork, the total, and the mean per cell:
 
 ``` r
 
 ht_total(plots, "biomass")
 #> Horvitz-Thompson total  (spread design, n = 60)
 #>   estimate 226,652.7
-#>   se       3,326.188  (local-mean approximation)
+#>   se       3,326.188  (local mean, an approximation)
 #>   95% CI  219,997 to 233,308.4  (t, 59 df)
 #>   deff     0.256  (better than simple random sampling)
 #> 
@@ -154,6 +156,18 @@ ht_total(plots, "biomass")
 c(truth = sum(grid$biomass))
 #>    truth 
 #> 228499.5
+ht_mean(plots, "biomass")
+#> Hajek mean  (spread design, n = 60)
+#>   estimate 141.6579
+#>   se       2.078867  (local mean, an approximation)
+#>   95% CI  137.4981 to 145.8177  (t, 59 df)
+#>   deff     0.256  (better than simple random sampling)
+#> 
+#>   Local mean approximation for a spatially balanced sample: the local
+#>   pivotal method has no closed-form joint inclusion probabilities.
+c(truth = mean(grid$biomass))
+#>    truth 
+#> 142.8122
 ```
 
 The variance is the local mean estimator: each plot is compared with its

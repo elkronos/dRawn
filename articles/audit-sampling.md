@@ -133,25 +133,29 @@ sample_summary(s)
 #> Sample of 150 from 2,000  (certainty design)
 #>   sampling fraction  0.075
 #>   design weights     1 to 124.4   (cv 1.44)
-table(certain = s$.prob == 1)
-#> certain
-#> FALSE  TRUE 
-#>    85    65
+#>   effective n        49.1  (Kish, from the weights alone)
+#>   certain rows       65  (65 above the threshold)
+#>   drawn              with seed 11, by drawn 0.2.0.9000 on 2026-11-17
 ```
+
+`certain rows` counts the invoices taken with certainty and says why.
+Here every one is above the threshold, so every sample from this design
+holds them.
 
 ## Estimate
 
-Total misstatement, with a one-sided 95% upper bound — which is the
-upper end of a two-sided 90% interval:
+Total misstatement, with a one-sided 95% upper bound. It is the upper
+end of a two-sided 90% interval, so `level = 0.90` gives the same
+figure:
 
 ``` r
 
-m <- ht_total(s, "misstatement", level = 0.90)
+m <- ht_total(s, "misstatement", alternative = "less")
 m
 #> Horvitz-Thompson total  (certainty design, n = 150)
 #>   estimate 71,954.44
-#>   se       33,290.69  (Deville approximation)
-#>   90% CI  16,585.47 to 127,323.4  (t, 84 df)
+#>   se       33,290.69  (deville, an approximation)
+#>   95% upper bound  127,323.4  (t, 84 df)
 #>   deff     0.68  (better than simple random sampling)
 #> 
 #>   Deville's approximation for unequal-probability sampling: systematic
@@ -173,7 +177,7 @@ lopsided the way a small proportion’s uncertainty is:
 ht_mean(s, s$misstatement > 0)
 #> Hajek mean  (certainty design, n = 150)
 #>   estimate 0.0523489
-#>   se       0.02929237  (Deville approximation)
+#>   se       0.02929237  (deville, an approximation)
 #>   95% CI  0.01678616 to 0.1516344  (logit, t, 84 df)
 #>   deff     2.79  (worse than simple random sampling)
 #> 
@@ -220,7 +224,7 @@ above the true total:
 truth <- sum(ledger$misstatement)
 covered <- vapply(1:300, function(i) {
   r <- ht_total(draw(ledger, audit_design, seed = 1000 + i, weights = TRUE),
-                "misstatement", level = 0.90)
+                "misstatement", alternative = "less")
   r$ci[2] >= truth
 }, logical(1))
 mean(covered)

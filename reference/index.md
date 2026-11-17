@@ -12,8 +12,6 @@ One verb, and the designs it takes.
   : Picture a sampling design
 - [`is_design()`](https://elkronos.github.io/dRawn/reference/is_design.md)
   : Is this a sampling design?
-- [`draw_design()`](https://elkronos.github.io/dRawn/reference/draw_design.md)
-  : Design-specific draw method
 
 ## What a design knows before you draw
 
@@ -24,18 +22,41 @@ The probabilities that make a sample estimable.
   : Inclusion probabilities and design weights
 - [`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md)
   : Joint inclusion probabilities
+- [`certainty_set()`](https://elkronos.github.io/dRawn/reference/certainty_set.md)
+  : Rows a size-proportional design takes with certainty
+- [`allocation_table()`](https://elkronos.github.io/dRawn/reference/allocation_table.md)
+  : How a design splits its sample over the strata of a frame
 
 ## Estimating from a sample
 
-Totals, means and proportions, overall or by domain, with the variance
-estimator the design calls for and a design effect.
+Totals, means, ratios, proportions and quantiles, overall or by domain,
+with the variance estimator the design calls for and a design effect.
 
 - [`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
   : Estimate a population total from a sample
 - [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md) :
   Estimate a population mean
+- [`ht_ratio()`](https://elkronos.github.io/dRawn/reference/ht_ratio.md)
+  : Estimate a ratio of two population totals
+- [`ht_quantile()`](https://elkronos.github.io/dRawn/reference/ht_quantile.md)
+  : Estimate population quantiles from a sample
 - [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md) :
   Design effect
+
+## From fieldwork to estimate
+
+Join fieldwork results to a sample, replace units found unavailable from
+a reserve list, rebuild a sample read back from a file, and drop frame
+columns before saving or sharing one.
+
+- [`add_fieldwork()`](https://elkronos.github.io/dRawn/reference/add_fieldwork.md)
+  : Join fieldwork results to a weighted sample
+- [`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
+  : Replace unavailable units from a reserve list
+- [`as_drawn()`](https://elkronos.github.io/dRawn/reference/as_drawn.md)
+  : Rebuild a weighted sample from its rows
+- [`compact_sample()`](https://elkronos.github.io/dRawn/reference/compact_sample.md)
+  : Drop the frame columns a sample's design does not need
 
 ## Planning and checking
 
@@ -43,10 +64,16 @@ How many rows to draw, what you actually got, and where to go next.
 
 - [`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md)
   : How large a sample do you need?
+- [`deff_cluster()`](https://elkronos.github.io/dRawn/reference/deff_cluster.md)
+  : Design effect of a cluster sample, from the intraclass correlation
 - [`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
   : Describe a drawn sample
 - [`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
   : Hand a sample to the survey package
+- [`replicate_weights()`](https://elkronos.github.io/dRawn/reference/replicate_weights.md)
+  : Replicate weights for a sample
+- [`frame_totals()`](https://elkronos.github.io/dRawn/reference/frame_totals.md)
+  : Population totals from the frame behind a sample
 
 ## Equal-probability designs
 
@@ -95,3 +122,10 @@ region, or taken across time intervals.
 
 - [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
   : Bootstrap sampling
+
+## Extending
+
+A design class of your own, drawn by its own method.
+
+- [`draw_design()`](https://elkronos.github.io/dRawn/reference/draw_design.md)
+  : Draw method for a design class

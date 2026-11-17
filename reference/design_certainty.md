@@ -43,6 +43,16 @@ contribute their own value to a Horvitz-Thompson total with a weight of
 1 and add nothing to its variance. That is the whole point: the
 uncertainty in the estimate comes only from the part you sampled.
 
+A `rest` with a random sample size, such as
+`design_weighted(method = "poisson")` with a small `n`, can draw none of
+the rows below the threshold. Those rows then went unobserved, so
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+and [`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md)
+report no variance rather than an exact total. `draw(weights = TRUE)`
+refuses a `rest` that can never draw any of them, such as one with
+`n = 0`; without weights the draw is a cut-off sample of the rows above
+the threshold.
+
 ## See also
 
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md),

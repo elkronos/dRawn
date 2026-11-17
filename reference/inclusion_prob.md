@@ -33,22 +33,33 @@ sampling_weight(data, design, simulate = FALSE, R = 5000, seed = NULL)
 
 - R:
 
-  Number of simulated draws when `simulate = TRUE`.
+  Number of simulated draws when `simulate = TRUE`. See "What a
+  simulation costs".
 
 - seed:
 
-  Optional seed for the simulation.
+  Optional seed for the simulation, applied as in
+  [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) (see
+  "Seeding" there). Checked whether or not `simulate` is `TRUE`.
 
 ## Value
 
 A numeric vector with one element per row of `data`.
 
-Rows the design can never select — outside the region, outside the time
-window, at zero weight — get `0` from `inclusion_prob()` and `NA` from
-`sampling_weight()`, since no finite number of population rows is
-represented by a row that cannot be drawn.
+A row the design can never select gets `0` from `inclusion_prob()` and
+`NA` from `sampling_weight()`, since no finite number of population rows
+is represented by a row that cannot be drawn. Such a row lies outside
+the region or the time window, comes past `max_items`, or was dropped
+under `na_rm = TRUE`.
 [`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
-counts them.
+counts them. A weight of 0 is not one of these. The designs that select
+in proportion to size refuse it, so drop such rows from `data` first.
+
+A design that
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) refuses,
+such as an `n` larger than the frame or than the rows inside a region,
+is refused here too, with the same message, rather than given
+probabilities above 1 or a census.
 
 ## Details
 
@@ -65,22 +76,22 @@ Most do, and those are computed exactly:
 |----|----|
 | [`design_simple()`](https://elkronos.github.io/dRawn/reference/design_simple.md) | `n / N` |
 | [`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md) | `n_h / N_h` within each stratum |
-| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | `1 / interval`, for every row, exactly |
-| [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | `n_clusters / N_clusters` |
-| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take is constant |
-| [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | `n * p_i` for the `"systematic"` and `"poisson"` methods |
+| [`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md) | `1 / interval` with a random `start`, or `n / N` with `n`, for every row walked, exactly |
+| [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md) | `n_clusters / N_clusters`; with `balanced = TRUE`, that times the cluster's average take over its size, worked out exactly (see [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md)) |
+| [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md) | `(n_clusters / N_clusters) * (n_h / N_h)`, when the per-cluster take `n_h` is constant; with replacement, `(n_clusters / N_clusters) * (1 - (1 - 1 / N_h)^n_h)`; with `size`, the cluster's `pi_h = n_clusters * M_h / sum(M)` in place of `n_clusters / N_clusters` |
+| [`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md) | `n * p_i` for the `"systematic"` and `"poisson"` methods, with rows past 1 taken with certainty and the rest rescaled to sum to `n`; with `strata`, `n_h * p_i` within each stratum |
 | [`design_certainty()`](https://elkronos.github.io/dRawn/reference/design_certainty.md) | `1` above the threshold, `rest`'s own below it |
 | [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md) | `n / min(N, max_items)`, and `0` past `max_items` |
 | [`design_temporal()`](https://elkronos.github.io/dRawn/reference/design_temporal.md) | `per_interval / N_bucket` within each interval |
 | [`design_spatial()`](https://elkronos.github.io/dRawn/reference/design_spatial.md) | `n / N_in_region` |
-| [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md) | `n / N`, or `n * p_i` with a `size` column |
+| [`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md) | `n / N`, or `n * p_i` with a `size` column; with `strata`, the same within each stratum |
 
-Five cases have no closed form, and the package refuses to invent one:
+A design with `reserve` gives the probabilities of its main sample,
+which the reserves do not change. The design of a sample from
+[`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
+gives `n / (N - u)`, and `0` for the `u` rows found unavailable.
 
-- `design_cluster(balanced = TRUE)` — the per-cluster take is the
-  smallest *selected* cluster's size, which is itself random. Simulation
-  on clusters of 2/4/6/8 gives 0.50, 0.41, 0.34, 0.25, against the 0.50
-  a naive `n_clusters / N_clusters` would claim for every row.
+Four cases have no closed form, and the package refuses to invent one:
 
 - `design_multistage(allocation = "proportional")` — the stage-two
   allocation depends on which clusters were selected. Simulation on
@@ -89,31 +100,72 @@ Five cases have no closed form, and the package refuses to invent one:
 
 - [`design_multistage()`](https://elkronos.github.io/dRawn/reference/design_multistage.md)
   where the per-cluster take is not constant — `n` not divisible by
-  `n_clusters`, or a cluster smaller than `n / n_clusters`. The
-  allocation runs over the *selected* clusters, so the remainder goes to
-  the largest of them and an undersized cluster is capped with its
-  shortfall dealt to whichever clusters came with it. A row's
-  probability then depends on the company it keeps. On clusters of
+  `n_clusters`, or, without replacement, a cluster smaller than
+  `n / n_clusters`. The allocation runs over the *selected* clusters, so
+  the remainder goes to the largest of them and an undersized cluster is
+  capped with its shortfall dealt to whichever clusters came with it. A
+  row's probability then depends on the company it keeps. On clusters of
   20/10/8/6 with `n = 7` over 2 clusters, the average take is out by up
   to 17%, and a cluster smaller than the take can push the figure above
   1.
+
+  For these two, the exact probability is the probability given the
+  clusters selected, averaged over every possible selection, and that
+  average has no formula. `draw(weights = TRUE)` weights the sample
+  conditional on the clusters it selected instead, which gives an
+  unbiased total without the average; see "Design weights" in
+  [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
 - `design_weighted(method = "successive")` — the default. Successive
   sampling has no closed-form inclusion probability; this is the whole
   reason the other two methods exist. Note that its realised
   probabilities are not merely unknown but genuinely different from
-  proportional-to-size: for weights `1:10` at `n = 5`, simulation puts
-  them up to 35% away.
+  proportional-to-size: for weights `1:10` at `n = 5`, enumerating every
+  ordered draw puts them up to about 36% away.
 
 - [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
   — resampling with replacement from the sample is not a probability
   sample of a finite population, so there is no `pi` to report.
+
+A
+[`design_systematic()`](https://elkronos.github.io/dRawn/reference/design_systematic.md)
+with a fixed `start` is refused too, for another reason. It is
+deterministic: each row has probability 0 or 1, and `simulate = TRUE`
+reports exactly that. Without `simulate` those values are refused,
+because `draw(weights = TRUE)` would give every sampled row a weight of
+1 and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+would report the sum over the sample as the total of the frame. So are
+`sampling_weight()`,
+[`joint_prob()`](https://elkronos.github.io/dRawn/reference/joint_prob.md),
+`draw(weights = TRUE)` and the estimators. Leave `start` as `NULL` for a
+probability sample.
 
 For all but the bootstrap, pass `simulate = TRUE` to estimate them by
 Monte Carlo instead. The estimate carries `R`-sized error, which is fine
 for checking a design and not fine for publishing a variance. Simulating
 a bootstrap is refused rather than answered: every row turns up in some
 replicate, so the count converges to 1 for all of them.
+
+## What a simulation costs
+
+`simulate = TRUE` makes `R` draws, 5,000 by default, so it takes `R`
+times as long as one
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md). Most
+designs draw from a frame of 10,000 rows in well under a second. The
+local pivotal method of
+[`design_spread()`](https://elkronos.github.io/dRawn/reference/design_spread.md)
+does work in proportion to `N^2` on every draw, so at 10,000 rows each
+draw takes seconds and the default `R` takes hours. When the draws after
+the first two, which carry one-off costs, project a run of more than 30
+seconds, a message says how long it will take, and an interactive
+session shows a progress bar. Lower `R` for a quicker answer with more
+Monte Carlo error: its standard error is `sqrt(p * (1 - p) / R)`, at
+most 0.007 for `R = 5000`.
+
+A warning that every draw raises, such as a stratum allocated no rows or
+`max_items` cutting a frame short, is given once at the end, with the
+number of draws that raised it.
 
 ## See also
 

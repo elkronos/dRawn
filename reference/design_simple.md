@@ -5,14 +5,16 @@ Draws `n` rows uniformly at random.
 ## Usage
 
 ``` r
-design_simple(n, replace = FALSE)
+design_simple(n, replace = FALSE, reserve = 0)
 ```
 
 ## Arguments
 
 - n:
 
-  Number of rows to draw. A single non-negative whole number.
+  Number of rows to draw. A single non-negative whole number, or a plan
+  from
+  [`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md).
 
 - replace:
 
@@ -21,14 +23,63 @@ design_simple(n, replace = FALSE)
   least once, which does not weight a sample holding duplicates. See
   [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
+- reserve:
+
+  Number of reserve units to list after the main sample, to replace
+  units found unavailable in the field. A single non-negative whole
+  number; `n + reserve` cannot exceed the rows of the frame. Not
+  available with `replace = TRUE` or `n = 0`. See "Reserves".
+
 ## Value
 
 A design object, for use with
 [`draw()`](https://elkronos.github.io/dRawn/reference/draw.md).
 
+## Reserves
+
+Fieldwork often finds that some sampled units cannot be reached: a site
+with no access, a business that has closed, a plot under water.
+`reserve` draws that many more units with the main sample, as a list to
+replace them from.
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md) returns
+the `n` units of the main sample followed by the `reserve` units, with
+an integer `.reserve` column: 0 for the main sample, and 1, 2, ... for
+the reserves, in the order they are used. The list is one random draw of
+`n + reserve` units in random order, so the main sample is a simple
+random sample of `n`, the one the design without `reserve` draws with
+the same seed, and the first `k` units of the list are a simple random
+sample of `k` for any `k`.
+
+Visit every unit of the main sample, and for each one found unavailable,
+visit the next reserve.
+[`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
+takes the list and what the visits found, and returns the sample to
+estimate from: the first `n` units of the list found available. They are
+a simple random sample of `n` from the units of the frame that are
+available, and
+[`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
+weights them as one, with probability `n / (N - u)` when `u` listed
+units were found unavailable. Replacing units changes what is estimated:
+the totals and means are those of the units that can be reached, not of
+the whole frame. "What the estimates describe" in
+[`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
+has the details.
+
+Until then the list is not a sample to estimate from.
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+and the `.prob` column give every row the main sample's probability,
+`n / N`, and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md),
+[`ht_mean()`](https://elkronos.github.io/dRawn/reference/ht_mean.md),
+[`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
+and
+[`sample_summary()`](https://elkronos.github.io/dRawn/reference/sample_summary.md)
+refuse the list.
+
 ## See also
 
-[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md)
+[`draw()`](https://elkronos.github.io/dRawn/reference/draw.md),
+[`use_reserves()`](https://elkronos.github.io/dRawn/reference/use_reserves.md)
 
 Other designs:
 [`design_bootstrap()`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md),
@@ -211,4 +262,21 @@ draw(df, design_simple(n = 150, replace = TRUE), seed = 1)
 #> 148  65
 #> 149  44
 #> 150  77
+
+# Ten units and three reserves, used in the order of `.reserve`
+draw(df, design_simple(n = 10, reserve = 3), seed = 1)
+#>    .reserve id
+#> 1         0 68
+#> 2         0 39
+#> 3         0  1
+#> 4         0 34
+#> 5         0 87
+#> 6         0 43
+#> 7         0 14
+#> 8         0 82
+#> 9         0 59
+#> 10        0 51
+#> 11        1 95
+#> 12        2 23
+#> 13        3 61
 ```

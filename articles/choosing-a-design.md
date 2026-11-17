@@ -82,8 +82,7 @@ plan_size(margin = 100, sd = stats::sd(invoices$value), N = nrow(invoices),
 `deff` is not a guess you have to invent — it is measurable from a
 comparable past sample with
 [`deff()`](https://elkronos.github.io/dRawn/reference/deff.md), which we
-come back to below. If the margin you ask for cannot be reached by
-sampling at all,
+come back to below. If only a census meets the margin you ask for,
 [`plan_size()`](https://elkronos.github.io/dRawn/reference/plan_size.md)
 says so rather than returning a number bigger than your frame:
 
@@ -95,9 +94,9 @@ plan_size(margin = 2, sd = stats::sd(invoices$value), N = nrow(invoices))
 #>   margin         +/- 2 at 95% confidence
 #>   assuming       sd 1091, N 600
 #> 
-#>   That is a census: the frame is not large enough to reach this margin
-#>   by sampling, so every row is needed. Widen `margin`, or accept the
-#>   precision a full count gives.
+#>   That is a census. No sample smaller than the frame meets this margin,
+#>   so every row is needed. Widen `margin`, or accept the precision a
+#>   full count gives.
 ```
 
 We’ll stay with 60 for the rest of this vignette, because it makes the
@@ -349,6 +348,8 @@ sample_summary(s)
 #> Sample of 60 from 600  (stratified design)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
+#>   effective n        60  (Kish, from the weights alone)
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-17
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate
@@ -372,9 +373,21 @@ window <- design_temporal("when", from = "2024-03-01", to = "2024-03-08",
                           interval = 1, per_interval = 4, unit = "days")
 sample_summary(draw(invoices, window, seed = 1, weights = TRUE))
 #> Sample of 28 from 600  (temporal design)
-#>   sampling fraction  0.0467
+#>   sampling fraction  0.1  (of the 280 reachable rows)
 #>   design weights     10 to 10   (cv 0)
+#>   effective n        28  (Kish, from the weights alone)
 #>   unreachable rows   320  (probability 0 under this design)
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-17
+#> 
+#>   by when:
+#>     group             drawn  in frame   rate
+#>     2024-03-01 00:00      4       40  0.100
+#>     2024-03-02 00:00      4       40  0.100
+#>     2024-03-03 00:00      4       40  0.100
+#>     2024-03-04 00:00      4       40  0.100
+#>     2024-03-05 00:00      4       40  0.100
+#>     2024-03-06 00:00      4       40  0.100
+#>     2024-03-07 00:00      4       40  0.100
 ```
 
 ## When you want the rare stratum represented
@@ -407,10 +420,10 @@ covered <- draw(invoices, design_stratified("site", n = 60, min_per_stratum = 8)
 table(covered$site)
 #> 
 #>  east north south  west 
-#>     8    28    16     8
+#>     8    27    17     8
 tapply(covered$.weight, covered$site, unique)
 #>     east    north    south     west 
-#> 11.25000 10.71429 11.25000  3.75000
+#> 11.25000 11.11111 10.58824  3.75000
 ```
 
 What a floor changes is precision, and usually only a little. Take at
@@ -450,7 +463,7 @@ inclusion_prob(invoices, naive)
 #> Its weights govern each successive draw, not each row's chance of ending up in
 #> the sample. Use method = "systematic" or "poisson" for a design whose inclusion
 #> probabilities really are proportional to the weights.
-#> Or pass simulate = TRUE to estimate it by Monte Carlo.
+#> Or estimate it by Monte Carlo with inclusion_prob(data, design, simulate = TRUE).
 ```
 
 Ask for a design whose inclusion probabilities really are proportional
@@ -558,6 +571,41 @@ On `cost` it goes 52% of the way from stratification to PPS, and on
 badly. When you are not sure the size measure predicts what you will
 measure, that is the safer use of it.
 
+Strata and size also combine. With `strata`,
+[`design_weighted()`](https://elkronos.github.io/dRawn/reference/design_weighted.md)
+splits `n` over the sites as
+[`design_stratified()`](https://elkronos.github.io/dRawn/reference/design_stratified.md)
+would, and samples each site in proportion to `value` on its own, with a
+random start of its own. Every site gets its share of the sample, and
+large invoices are still favoured within it:
+
+``` r
+
+pps_site <- design_weighted("value", n = 60, method = "systematic",
+                            strata = "site")
+allocation_table(invoices, pps_site)
+#>    site   N  n prob sd cost status
+#> 1  east  90  9   NA NA   NA   rule
+#> 2 north 300 30   NA NA   NA   rule
+#> 3 south 180 18   NA NA   NA   rule
+#> 4  west  30  3   NA NA   NA   rule
+round(cbind(bet, spread = spread_sd,
+            pps_by_site = c(cost   = spread_of(pps_site, "cost"),
+                            checks = spread_of(pps_site, "checks"))), 1)
+#>        stratified   pps spread pps_by_site
+#> cost       3360.9 517.3 1893.9       557.0
+#> checks      133.1 495.4  133.5       514.8
+```
+
+The invoices of every site were drawn from the same distribution, so
+here the strata change little against PPS over the whole frame. They pay
+where the strata differ in what you measure, and they guarantee each
+site its rows either way.
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+adds up Deville’s approximation over the sites, and
+[`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
+hands the sites to `survey` as strata.
+
 ## The units too big to leave to chance
 
 PPS is one answer to dominant units. The blunter one is to stop sampling
@@ -647,13 +695,12 @@ when you need to control both.
 
 ## Which designs can be estimated from
 
-Most designs have exact inclusion probabilities. Five situations do not,
+Most designs have exact inclusion probabilities. Four situations do not,
 and the package says so rather than approximating:
 
 ``` r
 
 no_form <- list(
-  `balanced clusters`      = design_cluster("team", n_clusters = 4, balanced = TRUE),
   `proportional multistage`= design_multistage("team", n_clusters = 6, n = 60,
                                                allocation = "proportional"),
   `uneven multistage`      = design_multistage("team", n_clusters = 6, n = 61),
@@ -666,7 +713,6 @@ for (nm in names(no_form)) {
                   error = function(e) conditionMessage(e))
   cat(nm, "->", strsplit(msg, "\n")[[1]][1], "\n")
 }
-#> balanced clusters -> `design_cluster(balanced = TRUE)` has no closed-form inclusion probability. 
 #> proportional multistage -> `design_multistage(allocation = "proportional")` has no closed-form inclusion probability. 
 #> uneven multistage -> `design_multistage()` with n = 61 over 6 clusters has no closed-form inclusion probability. 
 #> successive weighting -> `design_weighted(method = "successive")` has no closed-form inclusion probability. 
@@ -679,20 +725,73 @@ pair is worth dwelling on, because the arithmetic looks innocent. The
 second-stage allocation runs over the clusters that were *selected*, so
 a leftover row goes to the largest of them, and a cluster smaller than
 its target is capped with the shortfall dealt to whichever clusters came
-with it. A row’s chance therefore depends on the company it keeps.
-Averaging over the possibilities is not a closed form, and the average
-is not the answer.
+with it. A row’s chance therefore depends on the company it keeps. Its
+exact probability is its chance given the clusters selected, averaged
+over every possible selection, and no formula gives that average.
+
+Estimation does not need it. `draw(weights = TRUE)` weights such a
+sample conditional on the clusters it selected: with `a` of `A` clusters
+selected and `m_i` of the `N_i` rows of cluster `i` taken, `.prob` is
+`(a / A) * m_i / N_i`. The total built from those weights is unbiased
+whichever clusters were selected, and so over every selection, and
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+gives it the two-stage standard error:
+
+``` r
+
+uneven <- draw(invoices, no_form$`uneven multistage`, seed = 1, weights = TRUE)
+table(uneven$team)
+#> 
+#>  t1 t13 t19  t2  t4  t7 
+#>  10  10  10  10  11  10
+ht_total(uneven, "value")
+#> Horvitz-Thompson total  (multistage design, n = 61)
+#>   estimate 466,432.7
+#>   se       77,571.29  (analytic)
+#>   95% CI  267,029.4 to 665,836  (t, 5 df)
+#>   deff     1.23  (worse than simple random sampling)
+```
+
+Proportional allocation needs `min_per_cluster = 1` or more for this,
+because a selected cluster given no rows would count as a cluster total
+of 0.
+
+Balanced clusters, which take from each selected cluster as many rows as
+the smallest of them holds, are not on the list. Their take is random
+too, but its average for each cluster has an exact form, which
+[`inclusion_prob()`](https://elkronos.github.io/dRawn/reference/inclusion_prob.md)
+uses. With two of the four sites selected:
+
+``` r
+
+balanced <- design_cluster("site", n_clusters = 2, balanced = TRUE)
+round(cbind(
+  exact     = tapply(inclusion_prob(invoices, balanced), invoices$site, mean),
+  simulated = tapply(inclusion_prob(invoices, balanced, simulate = TRUE,
+                                    R = 1000, seed = 1), invoices$site, mean)
+), 3)
+#>       exact simulated
+#> east  0.389     0.386
+#> north 0.167     0.167
+#> south 0.278     0.274
+#> west  0.500     0.506
+```
+
+`draw(weights = TRUE)` weights a balanced sample conditional on its
+clusters as well, so that
+[`ht_total()`](https://elkronos.github.io/dRawn/reference/ht_total.md)
+can use the same two-stage standard error.
 
 Where you need a number anyway, ask for a simulation and accept the
 Monte Carlo error:
 
 ``` r
 
-sim <- inclusion_prob(invoices, no_form$`balanced clusters`,
+sim <- inclusion_prob(invoices, no_form$`uneven multistage`,
                       simulate = TRUE, R = 200, seed = 1)
-round(tapply(sim, invoices$team, unique)[1:5], 3)
+round(tapply(sim, invoices$team, mean)[1:5], 3)
 #>    t1   t10   t11   t12   t13 
-#> 0.190 0.200 0.225 0.155 0.205
+#> 0.098 0.097 0.118 0.105 0.098
 ```
 
 The one thing simulation cannot rescue is the bootstrap, and it is
@@ -723,7 +822,8 @@ joint_prob(invoices, pps, rows = 1:4)
 #> ! `design_weighted(method = "systematic")` has no closed-form joint inclusion probability.
 #> The rows are shuffled before the systematic walk, so every pair can co-occur,
 #> but the joint probabilities average over every ordering and have no closed form.
-#> Pass simulate = TRUE to estimate them; ht_total() uses Deville's approximation.
+#> ht_total() uses Deville's approximation.
+#> Or estimate them by Monte Carlo with joint_prob(data, design, simulate = TRUE).
 ```
 
 ``` r
@@ -756,7 +856,7 @@ round(cbind(
 
 ## Clusters, when fieldwork costs more than precision
 
-Visiting five teams is cheaper than visiting twenty.
+Visiting four teams is cheaper than visiting twenty.
 [`design_cluster()`](https://elkronos.github.io/dRawn/reference/design_cluster.md)
 takes whole clusters, so the row count follows from which ones you get:
 
@@ -782,12 +882,44 @@ table(res_ms$team)
 #>  10  10  10  10  10  10
 ```
 
-Both are estimable, but cluster designs pay for their convenience in
-precision — and in degrees of freedom. With four clusters there are
-three degrees of freedom, and the interval uses t on three rather than
-the normal distribution. That is why it is so wide, and it is right to
-be: a normal interval here covers about 87% of the time where it claims
-95%.
+The teams here are all the same size. Where clusters differ, or some
+matter more than others, `size` selects them in proportion to a measure
+known for every cluster, here each team’s total invoice value, and still
+takes the same number of rows from each. A row’s inclusion probability
+is its team’s chance of selection times 10 out of 30:
+
+``` r
+
+teams <- transform(invoices, team_value = ave(value, team, FUN = sum))
+ms_pps <- design_multistage("team", n_clusters = 6, n = 60,
+                            size = "team_value")
+range(inclusion_prob(teams, ms_pps))
+#> [1] 0.06474408 0.18166049
+ht_total(draw(teams, ms_pps, seed = 1, weights = TRUE), "cost")
+#> Horvitz-Thompson total  (multistage design, n = 60)
+#>   estimate 16,026.39
+#>   se       2,783.088  (deville, an approximation)
+#>   95% CI  8,872.232 to 23,180.54  (t, 5 df)
+#>   deff     0.54  (better than simple random sampling)
+#> 
+#>   Deville's approximation for the clusters selected in proportion to
+#>   size, which have no closed-form joint inclusion probabilities, plus
+#>   the variance within the selected clusters.
+```
+
+Had the measure been each team’s number of invoices, every invoice would
+have had the same chance, `n / N`.
+
+Both are estimable. Cluster designs usually pay for their convenience in
+precision, because rows of one cluster tend to resemble each other, and
+they always pay in degrees of freedom. These teams are blocks of 30
+invoices whose values have nothing to do with the team, so here
+clustering costs no precision on average, and the design effect
+estimated from one sample can fall below 1 by chance, as it does below.
+With four clusters there are three degrees of freedom, and the interval
+uses t on three rather than the normal distribution. That is why it is
+so wide, and it is right to be: a normal interval here covers about 87%
+of the time where it claims 95%.
 
 ``` r
 
@@ -801,7 +933,7 @@ ht_total(draw(invoices, by_team, seed = 1, weights = TRUE), "value")
 
 ## Streams, when the data does not fit
 
-A data frame is not a stream: its length is already known, so
+A data frame or a list is not a stream: its length is already known, so
 [`design_reservoir()`](https://elkronos.github.io/dRawn/reference/design_reservoir.md)
 takes a direct vectorised path for one. The streaming path is for data
 you cannot hold — pass a connection, or a function that returns the next
@@ -817,17 +949,30 @@ next_invoice <- function() {
 
 drawn_ids <- unlist(draw(next_invoice, design_reservoir(n = 5), seed = 1))
 drawn_ids
-#> [1] 93918 86723 83503 32995 42017
+#> [1] 32995 42017 83503 86723 93918
 ```
 
 One pass, five items held, a hundred thousand seen. Algorithm L skips
-ahead geometrically rather than drawing a random number per item.
+ahead geometrically rather than drawing a random number per item, and
+the items come back in the order they arrived.
+
+Each line of a connection is an item, a CSV header included, and a
+function that returns a data frame gives whole data frames as items.
+[`?design_reservoir`](https://elkronos.github.io/dRawn/reference/design_reservoir.md)
+shows how to leave a header out, and how `batches = TRUE` samples the
+rows of those data frames instead.
 
 ## Bootstrap, for the uncertainty of a statistic
 
 The other designs estimate a population total. The bootstrap estimates
-the sampling distribution of whatever you like — here the median, which
-has no convenient closed form:
+the sampling distribution of a statistic computed on independent rows,
+here the median of the invoice values, which has no convenient closed
+form. A sample drawn with strata or clusters is not made of independent
+rows, and
+[`?design_bootstrap`](https://elkronos.github.io/dRawn/reference/design_bootstrap.md)
+shows how to resample its clusters within strata with
+[`survey::as.svrepdesign()`](https://rdrr.io/pkg/survey/man/as.svrepdesign.html)
+instead.
 
 ``` r
 
@@ -853,9 +998,17 @@ independent rows:
 design_bootstrap(n_replicates = 100, method = "block", block_length = 20)
 #> <sampling design: bootstrap>
 #>   n_replicates  100
+#>   n             nrow(data)
 #>   method        "block"
 #>   block_length  20
+#>   output        "rows"
 ```
+
+A run must fit inside the data, so the first and last rows are drawn
+less often than the rest. `method = "circular"` lets a run wrap from the
+last row to the first, which draws every row equally often on average.
+For many replicates of a large frame, `output = "indices"` returns the
+row numbers of each replicate as a matrix instead of copying the rows.
 
 ## Reproducibility without side effects
 
@@ -898,11 +1051,10 @@ ht_total(s, "value", by = "site")
 
 ## Where this package stops
 
-`drawn` draws samples and estimates totals, means and proportions from
-them, overall or by group. It does not do regression, calibration, or
-quantiles with proper standard errors —
-[`survey`](https://cran.r-project.org/package=survey) does all of that,
-and
+`drawn` draws samples and estimates totals, means, proportions, ratios
+and quantiles from them, overall or by group. It does not do regression
+or calibration. [`survey`](https://cran.r-project.org/package=survey)
+does both, and
 [`as_svydesign()`](https://elkronos.github.io/dRawn/reference/as_svydesign.md)
 hands a sample straight over.
 
@@ -933,17 +1085,12 @@ From there it is `survey`’s vocabulary:
 
 ``` r
 
-svyquantile(~value, des, quantiles = c(0.25, 0.5, 0.75))
-#> $value
-#>      quantile ci.2.5 ci.97.5        se
-#> 0.25   171.56 108.44  271.19  40.62168
-#> 0.5    392.45 284.07  491.50  51.77361
-#> 0.75   769.03 545.15 1663.11 279.03786
-#> 
-#> attr(,"hasci")
-#> [1] TRUE
-#> attr(,"class")
-#> [1] "newsvyquantile"
+coef(summary(svyglm(value ~ site, des)))
+#>              Estimate Std. Error    t value   Pr(>|t|)
+#> (Intercept)  853.5622   246.9130  3.4569348 0.00108468
+#> sitenorth   -276.2732   272.8987 -1.0123654 0.31596292
+#> sitesouth   -160.2217   289.4230 -0.5535899 0.58218757
+#> sitewest    -678.9656   251.3635 -2.7011302 0.00925877
 ```
 
 Draw here, analyse there.

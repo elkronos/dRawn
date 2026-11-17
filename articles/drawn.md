@@ -71,7 +71,7 @@ p
 #> Sample size for a total
 #>   draw           253
 #>   to analyse     240  (after 95% response)
-#>   margin         +/- 602380.2 at 95% confidence
+#>   margin         +/- 602,380.2 at 95% confidence
 #>   assuming       sd 2536, N 2,000
 ```
 
@@ -154,6 +154,8 @@ sample_summary(audit)
 #> Sample of 253 from 2,000  (stratified design)
 #>   sampling fraction  0.126
 #>   design weights     1.887 to 10.87   (cv 0.445)
+#>   effective n        211.3  (Kish, from the weights alone)
+#>   drawn              with seed 7, by drawn 0.2.0.9000 on 2026-11-17
 #> 
 #>   by band:
 #>     group   drawn  in frame   rate
@@ -256,7 +258,7 @@ plan_size(margin = target, sd = sd(stores$last_year), N = N,
 #> Sample size for a total
 #>   draw           53
 #>   to analyse     50  (after 95% response)
-#>   margin         +/- 602380.2 at 95% confidence
+#>   margin         +/- 602,380.2 at 95% confidence
 #>   assuming       sd 2536, deff 0.186, N 2,000
 ```
 
@@ -267,8 +269,8 @@ fraction of the size of this one for the same precision.
 
 ## 6. Hand off
 
-`drawn` estimates totals, means and proportions. For regression,
-calibration or quantiles, hand the sample to `survey`; the design is
+`drawn` estimates totals, means, ratios, proportions and quantiles. For
+regression or calibration, hand the sample to `survey`; the design is
 expressed in `survey`’s own terms, so the standard errors agree.
 
 ``` r
