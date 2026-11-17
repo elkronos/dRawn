@@ -181,9 +181,12 @@ test_that("a large n costs no memory for a short stream", {
   skip_on_cran()
   # All n slots were set aside before the first item was read, so n = 2e7
   # took 150 MB for a stream of five items.
-  before <- gc(reset = TRUE)[2, 6]
+  # The last column of gc() is the peak in Mb. macOS sets a memory limit by
+  # default, which adds a column, so the peak is not always the sixth.
+  peak_mb <- function(g) g[2, ncol(g)]
+  before <- peak_mb(gc(reset = TRUE))
   got <- draw(make_counter(5), design_reservoir(n = 2e7), seed = 1)
-  expect_lt(gc()[2, 6] - before, 50)
+  expect_lt(peak_mb(gc()) - before, 50)
   expect_identical(unlist(got), 1:5)
 })
 

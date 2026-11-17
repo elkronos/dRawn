@@ -103,12 +103,21 @@ jobs:
         shell: bash
 
       # The sample summary in the README prints the date it was drawn, so a
-      # change confined to that line is ignored.
+      # change confined to that line is ignored. Pandoc and knitr versions lay
+      # out tables and error output differently, so both copies are compared
+      # with table padding removed and an error on two lines ("Error:" then
+      # "! message") joined into one; the words still have to match.
       - name: README.md is rendered from README.Rmd
         if: matrix.config.strict
         run: |
+          cp README.md "$RUNNER_TEMP/README.committed.md"
           Rscript -e 'rmarkdown::render("README.Rmd", output_options = list(html_preview = FALSE), quiet = TRUE)'
-          git diff --exit-code -I '^#> +drawn +with seed' README.md || {
+          normalise() {
+            sed -E -e '/^#> +drawn +with seed/d' \
+                   -e '/^\|/{s/ *\| */|/g; s/-{2,}/-/g}' \
+                   -e '/^#> (Error|Warning)( in .*)?:$/{N;s/\n#> ! / /}' "$1"
+          }
+          diff -u <(normalise "$RUNNER_TEMP/README.committed.md") <(normalise README.md) || {
             echo "README.md differs from a fresh render of README.Rmd; run devtools::build_readme() and commit README.md."
             exit 1
           }
