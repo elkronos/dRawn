@@ -256,6 +256,7 @@
 #'
 #' Valliant, R., Dever, J. A. and Kreuter, F. (2018). *Practical Tools for
 #' Designing and Weighting Survey Samples*, 2nd ed. Springer.
+#' \doi{10.1007/978-3-319-93632-1}
 #'
 #' @seealso [deff()] to measure the design effect of a past sample,
 #'   [deff_cluster()] for one from an intraclass correlation, [draw()] to

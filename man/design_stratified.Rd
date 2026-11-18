@@ -196,12 +196,14 @@ draw(df, walked, seed = 1)
 }
 \references{
 Neyman, J. (1934). On the two different aspects of the representative
-method. \emph{Journal of the Royal Statistical Society}, 97, 558–625.
+method: the method of stratified sampling and the method of purposive
+selection. \emph{Journal of the Royal Statistical Society}, 97, 558–625.
+\doi{10.2307/2342192}
 
 Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 
 Wolter, K. M. (2007). \emph{Introduction to Variance Estimation}, 2nd ed.
-Springer.
+Springer. \doi{10.1007/978-0-387-35099-8}
 }
 \seealso{
 \code{\link[=draw]{draw()}}, \code{\link[=allocation_table]{allocation_table()}}

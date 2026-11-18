@@ -1414,6 +1414,11 @@
 
 ## Documentation and site
 
+* References in the help pages and the articles give a DOI for every work
+  that has one, checked against Crossref. A citation whose year began a line
+  turned into a numbered list in the spatial sampling article and in this
+  changelog, as did a sentence ending "passes 1." in `?certainty_set`; each
+  reads as written now.
 * `?ht_total` said the exact multistage estimator understates by about a
   third with one row per cluster. It understates by `f1` times the
   within-cluster component, where `f1` is the share of clusters selected, and
@@ -1587,11 +1592,12 @@ and names any approximation when it prints.
   first-order probabilities and scales each row by its own `1 - pi`. It
   equals `sampling::varest()` exactly and tracks the empirical variance at
   0.98, where the previous jackknife ran at 0.89.
-* **Systematic samples get the successive-difference approximation** (Wolter
-  2007) rather than no variance at all. On a frame sorted by something related
-  to `y` it stays near the truth where the simple random formula overstates
-  two- to thirtyfold. Its limits — a cycle matching the interval, or a trend
-  so smooth the random start is the only variation — are documented.
+* **Systematic samples get the successive-difference approximation**
+  (Wolter 2007) rather than no variance at all. On a frame sorted by
+  something related to `y` it stays near the truth where the simple random
+  formula overstates two- to thirtyfold. Its limits — a cycle matching the
+  interval, or a trend so smooth the random start is the only variation — are
+  documented.
 
 ## New
 

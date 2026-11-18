@@ -163,9 +163,9 @@ sampling_weight <- function(data, design, simulate = FALSE, R = 5000,
 #'
 #' A design whose inclusion probabilities are proportional to size gives a
 #' row whose share of `n` reaches 1 a probability of exactly 1, and spreads
-#' what is left of `n` over the other rows, repeating until no share passes
-#' 1. `certainty_set()` says which rows of `data` those are, and where the
-#' cut-off falls, before any sample is drawn.
+#' what is left of `n` over the other rows, repeating until no share
+#' passes 1. `certainty_set()` says which rows of `data` those are, and where
+#' the cut-off falls, before any sample is drawn.
 #'
 #' @param data A data frame.
 #' @param design [design_weighted()] with `method = "systematic"` or

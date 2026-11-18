@@ -504,28 +504,35 @@ estimators: linearization and residual techniques. *Survey Methodology*, 25,
 
 Grafström, A., Lundström, N. L. P. and Schelin, L. (2012). Spatially balanced
 sampling through the pivotal method. *Biometrics*, 68, 514–520.
+<https://doi.org/10.1111/j.1541-0420.2011.01699.x>
 
 Grafström, A. and Schelin, L. (2014). How to select representative samples.
 *Scandinavian Journal of Statistics*, 41, 277–290.
+<https://doi.org/10.1111/sjos.12016>
 
 Hájek, J. (1971). Comment on "An essay on the logical foundations of survey
-sampling, part one" by D. Basu. In *Foundations of Statistical Inference*,
-Godambe and Sprott (eds.), p. 236. Holt, Rinehart and Winston.
+sampling, part one" by D. Basu. In V. P. Godambe and D. A. Sprott (eds.),
+*Foundations of Statistical Inference*, p. 236. Holt, Rinehart and Winston.
 
 Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal probabilities
 and without replacement. *Annals of Mathematical Statistics*, 33, 350–374.
+<https://doi.org/10.1214/aoms/1177704564>
 
 Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
 without replacement from a finite universe. *Journal of the American
 Statistical Association*, 47, 663–685.
+<https://doi.org/10.1080/01621459.1952.10483446>
 
 Korn, E. L. and Graubard, B. I. (1999). *Analysis of Health Surveys*. Wiley.
+<https://doi.org/10.1002/9781118032619>
 
 Lumley, T. (2004). Analysis of complex survey samples. *Journal of Statistical
 Software*, 9, 1–19.
+<https://doi.org/10.18637/jss.v009.i08>
 
 Madow, W. G. (1949). On the theory of systematic sampling, II. *Annals of
 Mathematical Statistics*, 20, 333–354.
+<https://doi.org/10.1214/aoms/1177729988>
 
 Matei, A. and Tillé, Y. (2005). Evaluation of variance approximations and
 estimators in maximum entropy sampling with unequal probability and fixed
@@ -533,6 +540,7 @@ sample size. *Journal of Official Statistics*, 21, 543–570.
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). *Model Assisted Survey
 Sampling*. Springer.
+<https://doi.org/10.1007/978-1-4612-4378-6>
 
 Sen, A. R. (1953). On the estimate of the variance in sampling with varying
 probabilities. *Journal of the Indian Society of Agricultural Statistics*, 5,
@@ -540,9 +548,12 @@ probabilities. *Journal of the Indian Society of Agricultural Statistics*, 5,
 
 Stevens, D. L. and Olsen, A. R. (2003). Variance estimation for spatially
 balanced samples of environmental resources. *Environmetrics*, 14, 593–610.
+<https://doi.org/10.1002/env.606>
 
 Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed. Springer.
+<https://doi.org/10.1007/978-0-387-35099-8>
 
 Yates, F. and Grundy, P. M. (1953). Selection without replacement from within
 strata with probability proportional to size. *Journal of the Royal
 Statistical Society B*, 15, 253–261.
+<https://doi.org/10.1111/j.2517-6161.1953.tb00140.x>

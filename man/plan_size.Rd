@@ -299,6 +299,7 @@ Kish, L. (1965). \emph{Survey Sampling}. Wiley.
 
 Valliant, R., Dever, J. A. and Kreuter, F. (2018). \emph{Practical Tools for
 Designing and Weighting Survey Samples}, 2nd ed. Springer.
+\doi{10.1007/978-3-319-93632-1}
 }
 \seealso{
 \code{\link[=deff]{deff()}} to measure the design effect of a past sample,

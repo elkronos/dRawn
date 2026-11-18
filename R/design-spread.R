@@ -168,20 +168,22 @@
 #' @references
 #' Deville, J.-C. and Tillé, Y. (1998). Unequal probability sampling without
 #' replacement through a splitting method. *Biometrika*, 85, 89–101.
+#' \doi{10.1093/biomet/85.1.89}
 #'
 #' Grafström, A., Lundström, N. L. P. and Schelin, L. (2012). Spatially
 #' balanced sampling through the pivotal method. *Biometrics*, 68, 514–520.
+#' \doi{10.1111/j.1541-0420.2011.01699.x}
 #'
 #' Grafström, A. and Schelin, L. (2014). How to select representative samples.
-#' *Scandinavian Journal of Statistics*, 41, 277–290.
+#' *Scandinavian Journal of Statistics*, 41, 277–290. \doi{10.1111/sjos.12016}
 #'
 #' Stevens, D. L. and Olsen, A. R. (2003). Variance estimation for spatially
 #' balanced samples of environmental resources. *Environmetrics*, 14,
-#' 593–610.
+#' 593–610. \doi{10.1002/env.606}
 #'
 #' Stevens, D. L. and Olsen, A. R. (2004). Spatially balanced sampling of
 #' natural resources. *Journal of the American Statistical Association*, 99,
-#' 262–278.
+#' 262–278. \doi{10.1198/016214504000000250}
 #'
 #' @examples
 #' set.seed(1)

@@ -159,16 +159,17 @@ round(inclusion_prob(df, by_region), 3)
 }
 \references{
 Madow, W. G. (1949). On the theory of systematic sampling, II. \emph{Annals of
-Mathematical Statistics}, 20, 333–354.
+Mathematical Statistics}, 20, 333–354. \doi{10.1214/aoms/1177729988}
 
 Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal
 probabilities and without replacement. \emph{Annals of Mathematical Statistics},
-33, 350–374.
+33, 350–374. \doi{10.1214/aoms/1177704564}
 
 Brewer, K. R. W. and Hanif, M. (1983). \emph{Sampling with Unequal
-Probabilities}. Springer.
+Probabilities}. Springer. \doi{10.1007/978-1-4684-9407-5}
 
 Tillé, Y. (2006). \emph{Sampling Algorithms}. Springer.
+\doi{10.1007/0-387-34240-0}
 }
 \seealso{
 \code{\link[=draw]{draw()}}, \code{\link[=inclusion_prob]{inclusion_prob()}}, \code{\link[=certainty_set]{certainty_set()}} for the rows
