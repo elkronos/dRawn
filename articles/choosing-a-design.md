@@ -349,7 +349,7 @@ sample_summary(s)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
 #>   effective n        60  (Kish, from the weights alone)
-#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-17
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-18
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate
@@ -377,7 +377,7 @@ sample_summary(draw(invoices, window, seed = 1, weights = TRUE))
 #>   design weights     10 to 10   (cv 0)
 #>   effective n        28  (Kish, from the weights alone)
 #>   unreachable rows   320  (probability 0 under this design)
-#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-17
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-18
 #> 
 #>   by when:
 #>     group             drawn  in frame   rate

@@ -724,6 +724,7 @@ its `.prob`.
 Horvitz, D. G. and Thompson, D. J. (1952). A generalization of sampling
 without replacement from a finite universe. *Journal of the American
 Statistical Association*, 47, 663–685.
+[doi:10.1080/01621459.1952.10483446](https://doi.org/10.1080/01621459.1952.10483446)
 
 Sen, A. R. (1953). On the estimate of the variance in sampling with
 varying probabilities. *Journal of the Indian Society of Agricultural
@@ -732,10 +733,12 @@ Statistics*, 5, 119–127.
 Yates, F. and Grundy, P. M. (1953). Selection without replacement from
 within strata with probability proportional to size. *Journal of the
 Royal Statistical Society B*, 15, 253–261.
+[doi:10.1111/j.2517-6161.1953.tb00140.x](https://doi.org/10.1111/j.2517-6161.1953.tb00140.x)
 
 Hartley, H. O. and Rao, J. N. K. (1962). Sampling with unequal
 probabilities and without replacement. *Annals of Mathematical
 Statistics*, 33, 350–374.
+[doi:10.1214/aoms/1177704564](https://doi.org/10.1214/aoms/1177704564)
 
 Deville, J.-C. (1999). Variance estimation for complex statistics and
 estimators: linearization and residual techniques. *Survey Methodology*,
@@ -747,12 +750,15 @@ fixed sample size. *Journal of Official Statistics*, 21, 543–570.
 
 Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
 Springer.
+[doi:10.1007/978-0-387-35099-8](https://doi.org/10.1007/978-0-387-35099-8)
 
 Korn, E. L. and Graubard, B. I. (1999). *Analysis of Health Surveys*.
 Wiley.
+[doi:10.1002/9781118032619](https://doi.org/10.1002/9781118032619)
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). *Model Assisted
 Survey Sampling*. Springer.
+[doi:10.1007/978-1-4612-4378-6](https://doi.org/10.1007/978-1-4612-4378-6)
 
 ## See also
 

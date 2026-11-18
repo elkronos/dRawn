@@ -319,7 +319,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="documentation-and-site-development-version">Documentation and site<a class="anchor" aria-label="anchor" href="#documentation-and-site-development-version"></a></h3>
-<ul><li>
+<ul><li>References in the help pages and the articles give a DOI for every work that has one, checked against Crossref. A citation whose year began a line turned into a numbered list in the spatial sampling article and in this changelog, as did a sentence ending “passes 1.” in <code><a href="../reference/certainty_set.html">?certainty_set</a></code>; each reads as written now.</li>
+<li>
 <code><a href="../reference/ht_total.html">?ht_total</a></code> said the exact multistage estimator understates by about a third with one row per cluster. It understates by <code>f1</code> times the within-cluster component, where <code>f1</code> is the share of clusters selected, and the jackknife used in its place overstates by <code>f1</code> times the between-cluster component, which came to 3.3 times the true variance in one example with 30 of 40 clusters selected. <code><a href="../reference/design_multistage.html">?design_multistage</a></code> and <code><a href="../reference/inclusion_prob.html">?inclusion_prob</a></code> give the probability under <code>replace = TRUE</code>.</li>
 <li>
 <code><a href="../reference/designs.html">?designs</a></code> and <code><a href="../reference/design_stratified.html">?design_stratified</a></code> name all three allocation rules, <code>"neyman"</code> included, where they described <code>"proportional"</code> and <code>"equal"</code> only.</li>
@@ -379,9 +380,7 @@
 <li>
 <strong>Systematic PPS uses Deville’s (1999) approximation</strong>, which needs only first-order probabilities and scales each row by its own <code>1 - pi</code>. It equals <code><a href="https://rdrr.io/pkg/sampling/man/varest.html" class="external-link">sampling::varest()</a></code> exactly and tracks the empirical variance at 0.98, where the previous jackknife ran at 0.89.</li>
 <li>
-<strong>Systematic samples get the successive-difference approximation</strong> (Wolter
-<ol start="2007" style="list-style-type: decimal"><li>rather than no variance at all. On a frame sorted by something related to <code>y</code> it stays near the truth where the simple random formula overstates two- to thirtyfold. Its limits — a cycle matching the interval, or a trend so smooth the random start is the only variation — are documented.</li>
-</ol></li>
+<strong>Systematic samples get the successive-difference approximation</strong> (Wolter 2007) rather than no variance at all. On a frame sorted by something related to <code>y</code> it stays near the truth where the simple random formula overstates two- to thirtyfold. Its limits — a cycle matching the interval, or a trend so smooth the random start is the only variation — are documented.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="new-0-2-0">New<a class="anchor" aria-label="anchor" href="#new-0-2-0"></a></h3>

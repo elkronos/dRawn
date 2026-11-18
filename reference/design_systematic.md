@@ -147,9 +147,11 @@ strata's successive-difference approximations; see
 
 Madow, W. G. and Madow, L. H. (1944). On the theory of systematic
 sampling, I. *Annals of Mathematical Statistics*, 15, 1–24.
+[doi:10.1214/aoms/1177731312](https://doi.org/10.1214/aoms/1177731312)
 
 Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
 Springer.
+[doi:10.1007/978-0-387-35099-8](https://doi.org/10.1007/978-0-387-35099-8)
 
 ## See also
 

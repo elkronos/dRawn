@@ -135,7 +135,7 @@ sample_summary(s)
 #>   design weights     1 to 124.4   (cv 1.44)
 #>   effective n        49.1  (Kish, from the weights alone)
 #>   certain rows       65  (65 above the threshold)
-#>   drawn              with seed 11, by drawn 0.2.0.9000 on 2026-11-17
+#>   drawn              with seed 11, by drawn 0.2.0.9000 on 2026-11-18
 ```
 
 `certain rows` counts the invoices taken with certainty and says why.

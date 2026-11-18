@@ -170,7 +170,7 @@ sample_summary(s)
 #>   sampling fraction  0.1
 #>   design weights     10 to 10   (cv 0)
 #>   effective n        40  (Kish, from the weights alone)
-#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-17
+#>   drawn              with seed 1, by drawn 0.2.0.9000 on 2026-11-18
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate

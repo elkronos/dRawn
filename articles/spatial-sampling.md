@@ -137,7 +137,7 @@ sample_summary(plots)
 #>   sampling fraction  0.0375
 #>   design weights     26.67 to 26.67   (cv 0)
 #>   effective n        60  (Kish, from the weights alone)
-#>   drawn              with seed 3, by drawn 0.2.0.9000 on 2026-11-17
+#>   drawn              with seed 3, by drawn 0.2.0.9000 on 2026-11-18
 ```
 
 After fieldwork, the total, and the mean per cell:
@@ -265,9 +265,8 @@ every other design. For more specialised spatial work:
 
 - [`spsurvey`](https://cran.r-project.org/package=spsurvey) implements
   the generalized random tessellation stratified (GRTS) design (Stevens
-  and Olsen
-  2004. and a full analysis workflow for environmental monitoring,
-        including designs over lines and areas.
+  and Olsen 2004) and a full analysis workflow for environmental
+  monitoring, including designs over lines and areas.
 - [`BalancedSampling`](https://cran.r-project.org/package=BalancedSampling)
   implements the pivotal and cube families in compiled code, including
   the local cube method, which balances on auxiliary totals exactly as
@@ -277,14 +276,16 @@ every other design. For more specialised spatial work:
 
 Grafström, A., Lundström, N. L. P. and Schelin, L. (2012). Spatially
 balanced sampling through the pivotal method. *Biometrics*, 68, 514–520.
+<https://doi.org/10.1111/j.1541-0420.2011.01699.x>
 
 Grafström, A. and Schelin, L. (2014). How to select representative
 samples. *Scandinavian Journal of Statistics*, 41, 277–290.
+<https://doi.org/10.1111/sjos.12016>
 
 Stevens, D. L. and Olsen, A. R. (2003). Variance estimation for
 spatially balanced samples of environmental resources. *Environmetrics*,
-14, 593–610.
+14, 593–610. <https://doi.org/10.1002/env.606>
 
 Stevens, D. L. and Olsen, A. R. (2004). Spatially balanced sampling of
 natural resources. *Journal of the American Statistical Association*,
-99, 262–278.
+99, 262–278. <https://doi.org/10.1198/016214504000000250>

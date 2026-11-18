@@ -327,6 +327,7 @@ Kish, L. (1965). *Survey Sampling*. Wiley.
 
 Valliant, R., Dever, J. A. and Kreuter, F. (2018). *Practical Tools for
 Designing and Weighting Survey Samples*, 2nd ed. Springer.
+[doi:10.1007/978-3-319-93632-1](https://doi.org/10.1007/978-3-319-93632-1)
 
 ## See also
 

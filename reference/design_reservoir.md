@@ -118,10 +118,12 @@ batch that run past the cap.
 
 Vitter, J. S. (1985). Random sampling with a reservoir. *ACM
 Transactions on Mathematical Software*, 11, 37–57.
+[doi:10.1145/3147.3165](https://doi.org/10.1145/3147.3165)
 
 Li, K.-H. (1994). Reservoir-sampling algorithms of time complexity
 O(n(1 + log(N/n))). *ACM Transactions on Mathematical Software*, 20,
 481–493.
+[doi:10.1145/198429.198435](https://doi.org/10.1145/198429.198435)
 
 ## See also
 

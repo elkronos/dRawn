@@ -155,7 +155,7 @@ sample_summary(audit)
 #>   sampling fraction  0.126
 #>   design weights     1.887 to 10.87   (cv 0.445)
 #>   effective n        211.3  (Kish, from the weights alone)
-#>   drawn              with seed 7, by drawn 0.2.0.9000 on 2026-11-17
+#>   drawn              with seed 7, by drawn 0.2.0.9000 on 2026-11-18
 #> 
 #>   by band:
 #>     group   drawn  in frame   rate

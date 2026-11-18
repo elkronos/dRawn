@@ -173,7 +173,7 @@ sample_summary(back)
 #>   sampling fraction  0.2
 #>   design weights     5 to 5   (cv 0)
 #>   effective n        40  (Kish, from the weights alone)
-#>   rebuilt            by as_drawn() of drawn 0.2.0.9000 on 2026-11-17; the seed is not recorded
+#>   rebuilt            by as_drawn() of drawn 0.2.0.9000 on 2026-11-18; the seed is not recorded
 #> 
 #>   by site:
 #>     group  drawn  in frame   rate

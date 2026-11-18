@@ -204,9 +204,11 @@ estimates the quantiles over the rows that have one.
 Woodruff, R. S. (1952). Confidence intervals for medians and other
 position measures. *Journal of the American Statistical Association*,
 47, 635–646.
+[doi:10.1080/01621459.1952.10483443](https://doi.org/10.1080/01621459.1952.10483443)
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). *Model Assisted
 Survey Sampling*. Springer.
+[doi:10.1007/978-1-4612-4378-6](https://doi.org/10.1007/978-1-4612-4378-6)
 
 ## See also
 

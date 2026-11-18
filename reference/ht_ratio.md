@@ -143,6 +143,7 @@ estimators: linearization and residual techniques. *Survey Methodology*,
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). *Model Assisted
 Survey Sampling*. Springer.
+[doi:10.1007/978-1-4612-4378-6](https://doi.org/10.1007/978-1-4612-4378-6)
 
 ## See also
 
