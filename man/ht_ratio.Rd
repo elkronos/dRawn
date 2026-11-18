@@ -137,7 +137,7 @@ estimators: linearization and residual techniques. \emph{Survey Methodology},
 25, 193–203.
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Survey
-Sampling}. Springer.
+Sampling}. Springer. \doi{10.1007/978-1-4612-4378-6}
 }
 \seealso{
 \code{\link[=ht_total]{ht_total()}}, \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=as_svydesign]{as_svydesign()}}

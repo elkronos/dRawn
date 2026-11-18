@@ -62,10 +62,11 @@
 #'
 #' @references
 #' Efron, B. (1979). Bootstrap methods: another look at the jackknife.
-#' *Annals of Statistics*, 7, 1–26.
+#' *Annals of Statistics*, 7, 1–26. \doi{10.1214/aos/1176344552}
 #'
 #' Künsch, H. R. (1989). The jackknife and the bootstrap for general
 #' stationary observations. *Annals of Statistics*, 17, 1217–1241.
+#' \doi{10.1214/aos/1176347265}
 #'
 #' Politis, D. N. and Romano, J. P. (1992). A circular block-resampling
 #' procedure for stationary data. In R. LePage and L. Billard (eds.),

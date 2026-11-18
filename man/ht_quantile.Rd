@@ -186,10 +186,10 @@ ht_quantile(s, "spend", probs = c(0.25, 0.5, 0.75), by = "site")
 \references{
 Woodruff, R. S. (1952). Confidence intervals for medians and other
 position measures. \emph{Journal of the American Statistical Association},
-47, 635–646.
+47, 635–646. \doi{10.1080/01621459.1952.10483443}
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Survey
-Sampling}. Springer.
+Sampling}. Springer. \doi{10.1007/978-1-4612-4378-6}
 }
 \seealso{
 \code{\link[=ht_mean]{ht_mean()}}, \code{\link[=ht_total]{ht_total()}}, \code{\link[=as_svydesign]{as_svydesign()}}

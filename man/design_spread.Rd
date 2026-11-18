@@ -236,20 +236,22 @@ ht_total(draw(plots, by_region, seed = 1, weights = TRUE), "biomass")
 \references{
 Deville, J.-C. and Tillé, Y. (1998). Unequal probability sampling without
 replacement through a splitting method. \emph{Biometrika}, 85, 89–101.
+\doi{10.1093/biomet/85.1.89}
 
 Grafström, A., Lundström, N. L. P. and Schelin, L. (2012). Spatially
 balanced sampling through the pivotal method. \emph{Biometrics}, 68, 514–520.
+\doi{10.1111/j.1541-0420.2011.01699.x}
 
 Grafström, A. and Schelin, L. (2014). How to select representative samples.
-\emph{Scandinavian Journal of Statistics}, 41, 277–290.
+\emph{Scandinavian Journal of Statistics}, 41, 277–290. \doi{10.1111/sjos.12016}
 
 Stevens, D. L. and Olsen, A. R. (2003). Variance estimation for spatially
 balanced samples of environmental resources. \emph{Environmetrics}, 14,
-593–610.
+593–610. \doi{10.1002/env.606}
 
 Stevens, D. L. and Olsen, A. R. (2004). Spatially balanced sampling of
 natural resources. \emph{Journal of the American Statistical Association}, 99,
-262–278.
+262–278. \doi{10.1198/016214504000000250}
 }
 \seealso{
 \code{\link[=draw]{draw()}}, \code{\link[=design_spatial]{design_spatial()}} to restrict sampling to a region,

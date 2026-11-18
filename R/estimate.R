@@ -184,14 +184,14 @@
 #' survey data. *Survey Methodology*, 24, 193–201.
 #'
 #' Korn, E. L. and Graubard, B. I. (1999). *Analysis of Health Surveys*.
-#' Wiley.
+#' Wiley. \doi{10.1002/9781118032619}
 #'
 #' Hájek, J. (1971). Comment on "An essay on the logical foundations of survey
 #' sampling, part one" by D. Basu. In V. P. Godambe and D. A. Sprott (eds.),
 #' *Foundations of Statistical Inference*, p. 236. Holt, Rinehart and Winston.
 #'
 #' Särndal, C.-E., Swensson, B. and Wretman, J. (1992). *Model Assisted Survey
-#' Sampling*. Springer.
+#' Sampling*. Springer. \doi{10.1007/978-1-4612-4378-6}
 #'
 #' Deville, J.-C. (1999). Variance estimation for complex statistics and
 #' estimators: linearization and residual techniques. *Survey Methodology*,
@@ -608,7 +608,7 @@ sampled_proportion_note <- function(name = NULL) {
 #' 25, 193–203.
 #'
 #' Särndal, C.-E., Swensson, B. and Wretman, J. (1992). *Model Assisted Survey
-#' Sampling*. Springer.
+#' Sampling*. Springer. \doi{10.1007/978-1-4612-4378-6}
 #'
 #' @examples
 #' set.seed(1)

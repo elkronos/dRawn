@@ -138,12 +138,14 @@
 #'
 #' @references
 #' Neyman, J. (1934). On the two different aspects of the representative
-#' method. *Journal of the Royal Statistical Society*, 97, 558–625.
+#' method: the method of stratified sampling and the method of purposive
+#' selection. *Journal of the Royal Statistical Society*, 97, 558–625.
+#' \doi{10.2307/2342192}
 #'
 #' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
 #'
 #' Wolter, K. M. (2007). *Introduction to Variance Estimation*, 2nd ed.
-#' Springer.
+#' Springer. \doi{10.1007/978-0-387-35099-8}
 #'
 #' @examples
 #' df <- data.frame(id = 1:100, site = rep(letters[1:4], each = 25))

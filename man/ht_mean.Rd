@@ -260,14 +260,14 @@ proportions with small expected number of positive counts estimated from
 survey data. \emph{Survey Methodology}, 24, 193–201.
 
 Korn, E. L. and Graubard, B. I. (1999). \emph{Analysis of Health Surveys}.
-Wiley.
+Wiley. \doi{10.1002/9781118032619}
 
 Hájek, J. (1971). Comment on "An essay on the logical foundations of survey
 sampling, part one" by D. Basu. In V. P. Godambe and D. A. Sprott (eds.),
 \emph{Foundations of Statistical Inference}, p. 236. Holt, Rinehart and Winston.
 
 Särndal, C.-E., Swensson, B. and Wretman, J. (1992). \emph{Model Assisted Survey
-Sampling}. Springer.
+Sampling}. Springer. \doi{10.1007/978-1-4612-4378-6}
 
 Deville, J.-C. (1999). Variance estimation for complex statistics and
 estimators: linearization and residual techniques. \emph{Survey Methodology},

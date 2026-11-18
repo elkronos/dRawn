@@ -31,11 +31,9 @@ rows the same probabilities too.
 \description{
 A design whose inclusion probabilities are proportional to size gives a
 row whose share of \code{n} reaches 1 a probability of exactly 1, and spreads
-what is left of \code{n} over the other rows, repeating until no share passes
-\enumerate{
-\item \code{certainty_set()} says which rows of \code{data} those are, and where the
-cut-off falls, before any sample is drawn.
-}
+what is left of \code{n} over the other rows, repeating until no share
+passes 1. \code{certainty_set()} says which rows of \code{data} those are, and where
+the cut-off falls, before any sample is drawn.
 }
 \examples{
 df <- data.frame(id = 1:10, w = c(1, 2, 3, 4, 5, 6, 7, 8, 60, 90))

@@ -123,11 +123,11 @@ unlink(path)
 }
 \references{
 Vitter, J. S. (1985). Random sampling with a reservoir. \emph{ACM Transactions
-on Mathematical Software}, 11, 37–57.
+on Mathematical Software}, 11, 37–57. \doi{10.1145/3147.3165}
 
 Li, K.-H. (1994). Reservoir-sampling algorithms of time complexity
 O(n(1 + log(N/n))). \emph{ACM Transactions on Mathematical Software}, 20,
-481–493.
+481–493. \doi{10.1145/198429.198435}
 }
 \seealso{
 \code{\link[=draw]{draw()}}

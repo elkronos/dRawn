@@ -21,10 +21,10 @@ library(drawn)
 population it came from.**
 
 Pulling rows out of a data frame is easy. The hard part is what comes next:
-someone asks what the total was across all 40,000 invoices, and you examined
-200. Answering honestly needs to know how likely each examined row was to be
-picked, and that number lives in the *design*, not in the sample. `drawn` keeps
-the design around, so a sample can answer for itself:
+someone asks what the total was across all 40,000 invoices, and you
+examined 200. Answering honestly needs to know how likely each examined row
+was to be picked, and that number lives in the *design*, not in the sample.
+`drawn` keeps the design around, so a sample can answer for itself:
 
 ```{r setup-frame}
 set.seed(42)
